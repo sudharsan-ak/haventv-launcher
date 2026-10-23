@@ -15,7 +15,10 @@ private const val PEACOCK = "com.peacocktv.peacockandroid"
 private const val PRIME = "com.amazon.amazonvideo.livingroom"
 
 /** Networks that live TV apps carry as channels, as ESPN names them. */
-private val TV_CHANNELS = listOf("ESPN", "ESPN2", "ABC", "NBC", "TNT", "TRUTV", "NBA TV")
+private val TV_CHANNELS = listOf("ESPN", "ESPN2", "ABC", "NBC", "CBS", "FOX", "TNT", "TRUTV", "NBA TV")
+
+/** Broadcast networks that live TV apps show under a local station's name (set in Watch Now settings). */
+val LOCAL_NETWORKS = listOf("ABC", "NBC", "CBS", "FOX")
 
 /**
  * Where [game] can be watched, from the networks ESPN lists for it:
@@ -37,9 +40,14 @@ fun HavenState.watchOptions(game: Game): List<WatchOption> {
     val options = mutableListOf<WatchOption>()
 
     // National channels, tuned in whichever live TV app shares them (YouTube TV, Sling, …).
+    val local = settingsStore.settings.localStations
     for (net in upper) {
         if (net !in TV_CHANNELS) continue
-        val hit = watchNow.live.flatMap { g -> g.items.map { g to it } }.firstOrNull { (_, item) -> sameChannel(item.title, net) }
+        // ABC/NBC/CBS/FOX appear under the local station's name, e.g. ABC = "WFAA 8".
+        val station = local[net]
+        val hit = watchNow.live.flatMap { g -> g.items.map { g to it } }.firstOrNull { (_, item) ->
+            sameChannel(item.title, net) || (station != null && item.title.equals(station, ignoreCase = true))
+        }
         if (hit != null) options += WatchOption("Watch on ${hit.first.provider} · ${hit.second.title}") { watchNow.open(hit.second) }
     }
     // ESPN app: the exact stream if its Live row lists this game, otherwise the app.

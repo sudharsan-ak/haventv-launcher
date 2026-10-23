@@ -74,6 +74,7 @@ import com.aktvhome.launcher.data.Defaults
 import com.aktvhome.launcher.data.DnsChoice
 import com.aktvhome.launcher.data.HomeOverride
 import com.aktvhome.launcher.data.Nba
+import com.aktvhome.launcher.ui.watch.LOCAL_NETWORKS
 import com.aktvhome.launcher.data.PrivateDns
 import com.aktvhome.launcher.data.Motion
 import com.aktvhome.launcher.data.ThemeId
@@ -184,6 +185,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
     var editingDns by remember { mutableStateOf(false) }
     var editingKey by remember { mutableStateOf(false) }
     var pickingTeam by remember { mutableStateOf(false) }
+    var pickingStation by remember { mutableStateOf<String?>(null) }
     var collectionMenu by remember { mutableStateOf<AppCollection?>(null) }
     var renaming by remember { mutableStateOf<AppCollection?>(null) }
     var iconFor by remember { mutableStateOf<AppCollection?>(null) }
@@ -585,6 +587,13 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                                     store.update { it.copy(watchLive = !it.watchLive) }
                                 }
                             }
+                            // Live TV apps name local network stations by call sign (ABC = "WFAA 8"),
+                            // so tune-in needs to know which shared channel is which network.
+                            LOCAL_NETWORKS.forEach { net ->
+                                SettingsRow("Local $net station", "Which live channel carries $net where you are, for game tune-in.", colors) {
+                                    Pill(s.localStations[net] ?: "Not set", colors) { pickingStation = net }
+                                }
+                            }
                             InfoStrip(
                                 "One-time setup",
                                 "Continue watching and Live channels need: adb shell pm grant com.aktvhome.launcher android.permission.READ_TV_LISTINGS",
@@ -603,6 +612,23 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
         TextInputDialog(colors, "Your name", s.name,
             onSave = { n -> store.update { it.copy(name = n.trim()) }; editingName = false },
             onDismiss = { editingName = false })
+    }
+    pickingStation?.let { net ->
+        // Every channel the live TV apps share, so the right local station can be picked.
+        val channels = state.watchNow.live.flatMap { g -> g.items.map { it.title to "${it.title} · ${g.provider}" } }.distinctBy { it.first }
+        LaunchedEffect(Unit) { state.watchNow.tick(force = true) }
+        CollectionPickerDialog(
+            colors,
+            names = listOf("" to "Not set") + channels,
+            currentId = s.localStations[net] ?: "",
+            onPick = { title ->
+                store.update { it.copy(localStations = if (title.isBlank()) it.localStations - net else it.localStations + (net to title)) }
+                pickingStation = null
+            },
+            onNew = null,
+            onDismiss = { pickingStation = null },
+            title = if (channels.isEmpty()) "No live channels shared yet" else "Local $net station",
+        )
     }
     if (pickingTeam) {
         CollectionPickerDialog(

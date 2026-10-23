@@ -78,6 +78,8 @@ data class Settings(
     val watchLive: Boolean = true,
     /** ESPN team abbreviation of the favorite team ("" = none), e.g. "GS". */
     val favoriteTeam: String = "",
+    /** Local station for each broadcast network, e.g. "ABC" to "WFAA 8", as the live TV app names it. */
+    val localStations: Map<String, String> = emptyMap(),
 ) {
     fun backgroundFor(theme: ThemeId) = when (theme) {
         ThemeId.KINGDOM -> bgKingdom
@@ -118,6 +120,7 @@ class SettingsStore(context: Context) {
             .putBoolean("watchContinue", next.watchContinue)
             .putBoolean("watchLive", next.watchLive)
             .putString("favoriteTeam", next.favoriteTeam)
+            .putString("localStations", next.localStations.entries.joinToString("\n") { "${it.key}=${it.value}" })
             .apply()
     }
 
@@ -159,6 +162,9 @@ class SettingsStore(context: Context) {
         watchContinue = prefs.getBoolean("watchContinue", true),
         watchLive = prefs.getBoolean("watchLive", true),
         favoriteTeam = prefs.getString("favoriteTeam", null) ?: "",
+        localStations = (prefs.getString("localStations", null) ?: "").lines().mapNotNull { line ->
+            line.split('=', limit = 2).takeIf { it.size == 2 && it[1].isNotBlank() }?.let { it[0] to it[1] }
+        }.toMap(),
     )
 
     private inline fun <reified E : Enum<E>> enumOr(name: String?, fallback: E): E =
