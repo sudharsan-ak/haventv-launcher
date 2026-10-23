@@ -95,19 +95,7 @@ fun WatchDrawer(state: HavenState, colors: ThemeColors) {
                     TeamCard(state, colors, fav, claim())
                 }
                 Section("NBA", colors)
-                // Day chips: today plus six days ahead, a picked date if one is chosen, and the calendar.
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val days = (0L..6L).map { w.today().plusDays(it) }
-                    (if (day in days) days else days + day).forEach { d ->
-                        val label = when (d) {
-                            w.today() -> "Today"
-                            w.today().plusDays(1) -> "Tomorrow"
-                            else -> d.format(dayFmt)
-                        }
-                        Pill(label, colors, selected = d == day, focusRequester = claim(), onFocused = { day = d }) { day = d }
-                    }
-                    Pill("Pick a date", colors) { picking = true }
-                }
+                WeekStrip(state, colors, day, claim()) { day = it }
                 val list = w.games[day]
                 when {
                     list == null && w.nbaError -> Note("Couldn't reach ESPN. Check the connection and try again.", colors)
@@ -119,33 +107,12 @@ fun WatchDrawer(state: HavenState, colors: ThemeColors) {
 
             "continue" -> if (s.watchContinue) {
                 Section("Continue watching", colors)
-                if (w.continueWatching.isEmpty()) Note("Nothing to continue. Apps that share progress with the TV show up here.", colors)
-                w.continueWatching.forEach { item ->
-                    GlassCard(colors, Modifier.fillMaxWidth(), focusRequester = claim(), onClick = { w.open(item) }) { ink ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(item.title, color = ink, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                val sub = listOf(item.detail, state.apps[item.pkg]?.label.orEmpty(), item.progress?.let { "${(it * 100).toInt()}% watched" }.orEmpty())
-                                    .filter { it.isNotBlank() }.joinToString(" · ")
-                                if (sub.isNotBlank()) Text(sub, color = ink.copy(alpha = 0.7f), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                            Text("Resume", color = ink, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
+                ContinueList(state, colors, claim())
             }
 
             "live" -> if (s.watchLive) {
                 Section("Live channels", colors)
-                if (w.live.isEmpty()) Note("No live channels. Live TV apps that share their channels show up here.", colors)
-                w.live.forEach { group ->
-                    Text(state.apps[group.pkg]?.label ?: group.provider, color = colors.inkSoft, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        group.items.forEach { item ->
-                            Pill((if (item.live) "● " else "") + item.title, colors, focusRequester = claim()) { w.open(item) }
-                        }
-                    }
-                }
+                LiveGrid(state, colors, claim())
             }
 
           }
@@ -158,9 +125,6 @@ fun WatchDrawer(state: HavenState, colors: ThemeColors) {
         }
     }
 
-    if (picking) {
-        DatePickerDialog(colors, day, onPick = { day = it; picking = false }, onDismiss = { picking = false })
-    }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
 }
 
@@ -239,7 +203,7 @@ private fun Note(text: String, colors: ThemeColors) {
 
 /** Month grid for picking any date; past dates show final scores, future ones the schedule. */
 @Composable
-private fun DatePickerDialog(colors: ThemeColors, current: LocalDate, onPick: (LocalDate) -> Unit, onDismiss: () -> Unit) {
+fun DatePickerDialog(colors: ThemeColors, current: LocalDate, onPick: (LocalDate) -> Unit, onDismiss: () -> Unit) {
     var month by remember { mutableStateOf(current.withDayOfMonth(1)) }
     val first = remember { FocusRequester() }
     HavenOverlay(dim = 0.3f, onDismiss = onDismiss) {

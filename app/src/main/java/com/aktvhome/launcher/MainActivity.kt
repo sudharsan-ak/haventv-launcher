@@ -24,7 +24,10 @@ import com.aktvhome.launcher.ui.kingdom.KingdomHome
 import com.aktvhome.launcher.ui.settings.Personalize
 import com.aktvhome.launcher.ui.settings.QuickSettings
 import com.aktvhome.launcher.ui.settings.RestorePrompt
+import com.aktvhome.launcher.ui.watch.ContinuePanel
 import com.aktvhome.launcher.ui.watch.GameDetail
+import com.aktvhome.launcher.ui.watch.LivePanel
+import com.aktvhome.launcher.ui.watch.NbaPanel
 import com.aktvhome.launcher.ui.watch.TeamSchedule
 import com.aktvhome.launcher.ui.watch.WatchDrawer
 import com.aktvhome.launcher.ui.theme.Palettes
@@ -78,6 +81,9 @@ class MainActivity : ComponentActivity() {
                 Overlay.QUICK -> QuickSettings(state, colors)
                 Overlay.PERSONALIZE -> Personalize(state, colors)
                 Overlay.WATCH -> WatchDrawer(state, colors)
+                Overlay.NBA -> NbaPanel(state, colors)
+                Overlay.LIVE -> LivePanel(state, colors)
+                Overlay.CONTINUE -> ContinuePanel(state, colors)
                 Overlay.NONE -> Unit
             }
             // Schedule and game detail stack on top of the drawer (or the home, from the strip).

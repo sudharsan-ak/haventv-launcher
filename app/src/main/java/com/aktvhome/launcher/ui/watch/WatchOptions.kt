@@ -52,7 +52,7 @@ fun HavenState.watchOptions(game: Game): List<WatchOption> {
     }
     // ESPN app: the exact stream if its Live row lists this game, otherwise the app.
     if (upper.any { it.startsWith("ESPN") || it == "ABC" } && ESPN_APP in apps) {
-        val event = watchNow.live.firstOrNull { it.pkg == ESPN_APP }?.items?.firstOrNull { mentions(it, game) }
+        val event = (watchNow.appRows + watchNow.live).firstOrNull { it.pkg == ESPN_APP }?.items?.firstOrNull { mentions(it, game) }
         options += if (event != null) WatchOption("ESPN app · live stream") { watchNow.open(event) }
         else WatchOption("ESPN app") { openPackage(ESPN_APP) }
     }

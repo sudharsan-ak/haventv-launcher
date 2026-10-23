@@ -16,6 +16,8 @@ data class TvItem(
     val progress: Float?,
     val live: Boolean,
     val intentUri: String?,
+    /** Artwork or channel logo URL, when the app shares one. */
+    val art: String? = null,
 )
 
 /** One app's live channel row, e.g. YouTube TV with ESPN, NBC 5, USA. */
@@ -46,14 +48,12 @@ class TvListings(private val context: Context) {
                 progress = progress,
                 live = false,
                 intentUri = c.str("intent_uri"),
+                art = c.str("poster_art_uri") ?: c.str("thumbnail_uri"),
             )
         }.sortedByDescending { it.first }.map { it.second }.distinctBy { it.pkg to it.title }.take(limit)
 
-    /**
-     * Live channels, grouped by app. An app's row counts as live if its programs are marked live,
-     * are events or channels, or the app sits in the Live TV collection.
-     */
-    fun liveGroups(liveApps: Set<String>, labelOf: (String) -> String): List<LiveGroup> {
+    /** Every app's shared rows (YouTube TV's channels, ESPN's live shows, …), grouped by app. */
+    fun appRows(labelOf: (String) -> String): List<LiveGroup> {
         val channelPkg = mutableMapOf<Long, String>()
         query(TvContract.Channels.CONTENT_URI) { c ->
             if (c.str("type") == TvContract.Channels.TYPE_PREVIEW) channelPkg[c.long("_id")] = c.str("package_name") ?: ""
@@ -62,15 +62,13 @@ class TvListings(private val context: Context) {
         val items = query(TvContract.PreviewPrograms.CONTENT_URI) { c ->
             if (c.int("browsable") == 0) return@query null
             val pkg = c.str("package_name") ?: channelPkg[c.long("channel_id")] ?: return@query null
-            val type = c.int("type")
-            val live = c.int("live") == 1
-            val eventOrChannel = type == TvContract.PreviewPrograms.TYPE_EVENT || type == TvContract.PreviewPrograms.TYPE_CHANNEL
-            if (!live && !eventOrChannel && pkg !in liveApps) return@query null
-            TvItem(pkg, c.str("title") ?: return@query null, c.str("short_description").orEmpty(), null, live, c.str("intent_uri"))
+            TvItem(
+                pkg, c.str("title") ?: return@query null, c.str("short_description").orEmpty(), null,
+                c.int("live") == 1, c.str("intent_uri"),
+                art = c.str("logo_uri") ?: c.str("poster_art_uri") ?: c.str("thumbnail_uri"),
+            )
         }
-        return items.groupBy { it.pkg }
-            .map { (pkg, list) -> LiveGroup(pkg, labelOf(pkg), list.distinctBy { it.title }.take(12)) }
-            .sortedByDescending { g -> g.items.count { it.live } }
+        return items.groupBy { it.pkg }.map { (pkg, list) -> LiveGroup(pkg, labelOf(pkg), list.distinctBy { it.title }) }
     }
 
     /** Opens an item in its app: the app's own link first, then just the app. */

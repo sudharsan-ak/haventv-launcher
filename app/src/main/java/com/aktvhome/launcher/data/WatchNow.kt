@@ -6,6 +6,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -27,8 +29,16 @@ class WatchNow(
 
     var continueWatching by mutableStateOf<List<TvItem>>(emptyList())
         private set
+    /** Channels from your Live TV apps (YouTube TV…), shared now or remembered, A to Z. */
     var live by mutableStateOf<List<LiveGroup>>(emptyList())
         private set
+    /** Every other app's shared row (e.g. ESPN's live shows), used to find a game's exact stream. */
+    var appRows by mutableStateOf<List<LiveGroup>>(emptyList())
+        private set
+    /** Channel and show artwork, loaded on demand. */
+    val art = mutableStateMapOf<String, ImageBitmap>()
+    private val artLoading = mutableSetOf<String>()
+    private val remembered = context.getSharedPreferences("channels", Context.MODE_PRIVATE)
 
     /** Games per date. A missing date means not loaded yet; an empty list means no games. */
     val games = mutableStateMapOf<LocalDate, List<Game>>()
@@ -56,8 +66,14 @@ class WatchNow(
             tvAt = now
             scope.launch(Dispatchers.IO) {
                 val cw = if (s.watchContinue) listings.continueWatching() else emptyList()
-                val lv = if (s.watchLive) listings.liveGroups(liveApps(), labelOf) else emptyList()
-                withContext(Dispatchers.Main) { continueWatching = cw; live = lv }
+                val rows = listings.appRows(labelOf)
+                val liveSet = liveApps()
+                val lv = if (s.watchLive) rows.filter { it.pkg in liveSet }.map { remember(it) } else emptyList()
+                withContext(Dispatchers.Main) {
+                    continueWatching = cw
+                    live = lv
+                    appRows = rows.filter { it.pkg !in liveSet }
+                }
             }
         }
         if (!s.watchNba) return
@@ -103,6 +119,48 @@ class WatchNow(
             ?: list.firstOrNull { it.state == GameState.PRE }
             ?: list.firstOrNull { it.involves(fav) }
             ?: list.firstOrNull()
+    }
+
+    /**
+     * Live TV apps share only some channels at a time (YouTube TV shares about ten), and rotate
+     * them. Each channel's link is permanent, so every channel ever shared is remembered and stays
+     * tunable. Returns the group with remembered channels added, A to Z.
+     */
+    private fun remember(group: LiveGroup): LiveGroup {
+        val key = "c_${group.pkg}"
+        val saved = runCatching { org.json.JSONArray(remembered.getString(key, "[]")) }.getOrDefault(org.json.JSONArray())
+        val byTitle = linkedMapOf<String, TvItem>()
+        for (i in 0 until saved.length()) {
+            val o = saved.getJSONObject(i)
+            byTitle[o.getString("t")] = TvItem(group.pkg, o.getString("t"), "", null, false, o.optString("u").ifBlank { null }, o.optString("a").ifBlank { null })
+        }
+        group.items.forEach { byTitle[it.title] = it }
+        val out = org.json.JSONArray()
+        byTitle.values.forEach { out.put(org.json.JSONObject().put("t", it.title).put("u", it.intentUri ?: "").put("a", it.art ?: "")) }
+        remembered.edit().putString(key, out.toString()).apply()
+        return group.copy(items = byTitle.values.sortedBy { it.title.lowercase() })
+    }
+
+    /** Loads [url]'s image into [art] (once), scaled down for tiles. */
+    fun loadArt(url: String?) {
+        if (url == null || url in art || url in artLoading) return
+        artLoading += url
+        scope.launch(Dispatchers.IO) {
+            val bmp = runCatching {
+                val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 10_000
+                conn.readTimeout = 15_000
+                conn.inputStream.use { stream ->
+                    val raw = android.graphics.BitmapFactory.decodeStream(stream)
+                    val w = 320
+                    android.graphics.Bitmap.createScaledBitmap(raw, w, (raw.height * w / raw.width).coerceAtLeast(1), true)
+                }.asImageBitmap()
+            }.getOrNull()
+            withContext(Dispatchers.Main) {
+                artLoading -= url
+                if (bmp != null) art[url] = bmp
+            }
+        }
     }
 
     fun nextFavorite(): Game? = schedule.firstOrNull { it.state != GameState.FINAL }

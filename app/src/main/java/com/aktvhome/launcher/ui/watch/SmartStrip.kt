@@ -65,9 +65,9 @@ fun SmartStrip(state: HavenState, colors: ThemeColors, first: FocusRequester, mo
                     if (g.involves(fav)) Nba.teamName(fav).substringAfterLast(' ').uppercase() + " · TODAY" else "TONIGHT",
                     matchup(g), g.status + (g.network?.let { " · $it" } ?: ""), g.state == GameState.LIVE,
                     colors, claim().weight(1.25f),
-                ) { state.detailGame = g }
+                ) { state.overlay = Overlay.NBA }
                 w.games[w.today()] == null && !w.nbaError -> StripCard("TONIGHT", "Loading games…", "ESPN", false, colors, claim().weight(1.25f)) {
-                    state.overlay = Overlay.WATCH
+                    state.overlay = Overlay.NBA
                 }
                 else -> {
                     val next = w.nextFavorite()
@@ -75,7 +75,7 @@ fun SmartStrip(state: HavenState, colors: ThemeColors, first: FocusRequester, mo
                         "TONIGHT", if (w.nbaError) "Scores unavailable" else "No NBA games today",
                         next?.let { "Next: ${shortDate(it)} · ${matchup(it)}" } ?: "Check other days in Watch Now",
                         false, colors, claim().weight(1.25f),
-                    ) { state.overlay = Overlay.WATCH }
+                    ) { state.overlay = Overlay.NBA }
                 }
             }
         }
@@ -86,7 +86,7 @@ fun SmartStrip(state: HavenState, colors: ThemeColors, first: FocusRequester, mo
                 item?.let { listOf(it.detail, state.apps[it.pkg]?.label.orEmpty(), it.progress?.let { p -> "${(p * 100).toInt()}% watched" }.orEmpty()).filter { s -> s.isNotBlank() }.joinToString(" · ") }
                     ?: "Apps that share progress show up here",
                 false, colors, claim().weight(1f),
-            ) { if (item != null) w.open(item) else state.overlay = Overlay.WATCH }
+            ) { state.overlay = Overlay.CONTINUE }
         }
         "live" -> if (s.watchLive) {
             val groups = w.live
@@ -94,7 +94,7 @@ fun SmartStrip(state: HavenState, colors: ThemeColors, first: FocusRequester, mo
                 "LIVE TV", groups.take(2).joinToString(" + ") { state.apps[it.pkg]?.label ?: it.provider }.ifBlank { "No live channels" },
                 groups.firstOrNull()?.items?.take(3)?.joinToString(", ") { it.title } ?: "Live TV apps that share channels show up here",
                 groups.any { g -> g.items.any { it.live } }, colors, claim().weight(1f),
-            ) { state.overlay = Overlay.WATCH }
+            ) { state.overlay = Overlay.LIVE }
         }
       }
         SeeMore(colors, claim()) { state.overlay = Overlay.WATCH }

@@ -23,7 +23,8 @@ import kotlinx.coroutines.launch
 import java.time.LocalTime
 
 /** What floats over the home screen. The home itself always stays drawn behind. */
-enum class Overlay { NONE, QUICK, PERSONALIZE, WATCH }
+/** WATCH is the full Watch Now drawer; NBA, LIVE and CONTINUE are the single-card panels. */
+enum class Overlay { NONE, QUICK, PERSONALIZE, WATCH, NBA, LIVE, CONTINUE }
 
 /** A collection as shown on screen: only installed, non-hidden apps, in the user's order. */
 data class ShownCollection(val collection: AppCollection, val apps: List<AppEntry>) {
