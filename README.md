@@ -81,8 +81,9 @@ mode and network debugging on.
 
    ```bash
    adb shell appops set com.aktvhome.launcher MANAGE_EXTERNAL_STORAGE allow
-   ``` Keep your signing key
-   safe: updates must be signed with the same key.
+   ```
+
+   Keep your signing key safe: updates must be signed with the same key.
 
 ## One-time permissions (over ADB)
 
