@@ -16,7 +16,8 @@ import java.time.LocalDate
 
 /**
  * Everything behind the Smart Strip and the Watch Now drawer. Refreshed from the UI clock while
- * Haven is open ([tick]); nothing runs in the background. NBA data only loads when its section is on.
+ * Haven is open ([tick]); NBA data only loads when its section is on. The alert banners keep
+ * their own copy in the Home button service, for its watch options ([loadRows]).
  */
 class WatchNow(
     private val context: Context,
@@ -64,24 +65,12 @@ class WatchNow(
         val now = System.currentTimeMillis()
         if ((s.watchContinue || s.watchLive) && (force || now - tvAt > 60_000)) {
             tvAt = now
-            scope.launch(Dispatchers.IO) {
-                val cw = if (s.watchContinue) listings.continueWatching() else emptyList()
-                val rows = listings.appRows(labelOf)
-                val liveSet = liveApps()
-                val lv = if (s.watchLive) rows.filter { it.pkg in liveSet }.map { remember(it) } else emptyList()
-                withContext(Dispatchers.Main) {
-                    continueWatching = cw
-                    live = lv
-                    appRows = rows.filter { it.pkg !in liveSet }
-                }
-            }
+            scope.launch { loadRows() }
         }
         // Today's games also feed Kingdom's headline when it follows your team.
         if (!s.watchNba && !(s.headlineChanging && s.favoriteTeam.isNotBlank())) return
-        // Today: every 30 s while a game is live, every 5 minutes otherwise.
-        val todayGames = games[today()]
-        val liveNow = todayGames?.any { it.state == GameState.LIVE } == true
-        loadDay(today(), maxAgeMs = if (liveNow) 30_000 else 5 * 60_000, force = force)
+        // Today: every 10 s while a game is live (see [liveTick]), every 5 minutes otherwise.
+        loadDay(today(), maxAgeMs = if (liveToday()) 10_000 else 5 * 60_000, force = force)
         val fav = s.favoriteTeam
         if (fav.isNotBlank() && (fav != scheduleTeam || now - scheduleAt > 6 * 3_600_000L || (force && schedule.isEmpty()))) {
             scheduleTeam = fav
@@ -92,6 +81,36 @@ class WatchNow(
             }
         }
     }
+
+    fun liveToday(): Boolean = games[today()]?.any { it.state == GameState.LIVE } == true
+
+    /**
+     * Called every 10 s while Haven is in front: refreshes today's scoreboard when a game is live,
+     * so the NBA card, the headline and its rotation keep up (ESPN caches it for only 2 s).
+     */
+    fun liveTick() {
+        val s = settingsStore.settings
+        if (!s.watchNba && !s.headlineChanging) return
+        if (liveToday()) loadDay(today(), maxAgeMs = 9_000)
+    }
+
+    /** Reads Continue watching and the apps' shared rows now. The alert banners call it directly. */
+    suspend fun loadRows() {
+        val s = settingsStore.settings
+        val liveSet = liveApps()
+        val (cw, rows) = withContext(Dispatchers.IO) {
+            (if (s.watchContinue) listings.continueWatching() else emptyList()) to listings.appRows(labelOf)
+        }
+        val lv = withContext(Dispatchers.IO) { if (s.watchLive) rows.filter { it.pkg in liveSet }.map { remember(it) } else emptyList() }
+        withContext(Dispatchers.Main) {
+            continueWatching = cw
+            live = lv
+            appRows = rows.filter { it.pkg !in liveSet }
+        }
+    }
+
+    /** True when [date]'s games were fetched in the last 3 minutes (the alerts' rule for fresh). */
+    fun fresh(date: LocalDate): Boolean = System.currentTimeMillis() - (loadedAt[date] ?: 0L) <= 3 * 60_000L
 
     /** Loads a day's games if missing or older than [maxAgeMs]. */
     fun loadDay(date: LocalDate, maxAgeMs: Long = 10 * 60_000, force: Boolean = false) {
@@ -142,8 +161,8 @@ class WatchNow(
         return group.copy(items = byTitle.values.sortedBy { it.title.lowercase() })
     }
 
-    /** Loads [url]'s image into [art] (once), scaled down for tiles. */
-    fun loadArt(url: String?) {
+    /** Loads [url]'s image into [art] (once), scaled down to [width] px for tiles (logos ask for less). */
+    fun loadArt(url: String?, width: Int = 320) {
         if (url == null || url in art || url in artLoading) return
         artLoading += url
         scope.launch(Dispatchers.IO) {
@@ -153,7 +172,7 @@ class WatchNow(
                 conn.readTimeout = 15_000
                 conn.inputStream.use { stream ->
                     val raw = android.graphics.BitmapFactory.decodeStream(stream)
-                    val w = 320
+                    val w = width
                     android.graphics.Bitmap.createScaledBitmap(raw, w, (raw.height * w / raw.width).coerceAtLeast(1), true)
                 }.asImageBitmap()
             }.getOrNull()
@@ -182,7 +201,35 @@ class WatchNow(
         }
     }
 
-    suspend fun boxScore(game: Game): BoxScore? = withContext(Dispatchers.IO) { runCatching { Nba.boxScore(game.espnId, game) }.getOrNull() }
+    /** Players looked up this session; their season, splits and log don't change during a game. */
+    private val players = mutableMapOf<String, PlayerInfo>()
+
+    fun cachedPlayer(id: String): PlayerInfo? = players[id]
+
+    /** A player's profile, season, splits and game log (each part may be missing). */
+    suspend fun player(id: String): PlayerInfo {
+        players[id]?.let { return it }
+        val info = withContext(Dispatchers.IO) {
+            PlayerInfo(
+                runCatching { Nba.playerProfile(id) }.getOrNull(),
+                runCatching { Nba.playerSeason(id) }.getOrNull(),
+                runCatching { Nba.playerSplits(id) }.getOrDefault(emptyList()),
+                runCatching { Nba.playerLog(id) }.getOrDefault(emptyList()),
+            )
+        }
+        // Only keep a full answer; a failed part is tried again next time.
+        if (info.profile != null && info.season != null) players[id] = info
+        return info
+    }
+
+    /** A game's summary from ESPN, or null if it couldn't be fetched. */
+    suspend fun summary(espnId: String): GameSummary? = withContext(Dispatchers.IO) { runCatching { Nba.summary(espnId) }.getOrNull() }
+
+    /** A game already loaded (any day's scoreboard, or the team schedule), with when it was fetched. */
+    fun findGame(espnId: String): Pair<Game, Long>? {
+        for ((date, list) in games) list.firstOrNull { it.espnId == espnId }?.let { return it to (loadedAt[date] ?: 0L) }
+        return schedule.firstOrNull { it.espnId == espnId }?.let { it to scheduleAt }
+    }
 
     private fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
 }

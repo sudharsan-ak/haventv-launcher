@@ -11,6 +11,8 @@ import androidx.activity.compose.setContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.aktvhome.launcher.data.Background
 import com.aktvhome.launcher.data.HomeOverride
@@ -67,6 +69,15 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            // Live games: today's scores every 10 s, only while Haven is in front.
+            val lifecycle = LocalLifecycleOwner.current.lifecycle
+            LaunchedEffect(Unit) {
+                while (true) {
+                    delay(10_000)
+                    if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) state.watchNow.liveTick()
+                }
+            }
+
             // As the home screen there's nothing to go back to, so Back only ends a move.
             BackHandler(enabled = state.moving != null || state.isHome) { state.moving = null }
 
@@ -89,7 +100,7 @@ class MainActivity : ComponentActivity() {
             }
             // Schedule and game detail stack on top of the drawer (or the home, from the strip).
             if (state.scheduleOpen) TeamSchedule(state, colors)
-            state.detailGame?.let { GameDetail(state, colors, it) }
+            state.detailGameId?.let { GameDetail(state, colors, it) }
             if (state.backup.offerRestore) RestorePrompt(state, colors)
         }
     }
@@ -100,7 +111,7 @@ class MainActivity : ComponentActivity() {
         if (!intent.hasCategory(Intent.CATEGORY_HOME)) return
         state.isHome = true
         state.overlay = Overlay.NONE
-        state.detailGame = null
+        state.detailGameId = null
         state.scheduleOpen = false
         state.menuFor = null
         state.moving = null

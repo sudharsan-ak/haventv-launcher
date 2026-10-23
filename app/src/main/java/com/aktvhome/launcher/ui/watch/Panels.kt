@@ -11,21 +11,26 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -35,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,8 +50,12 @@ import com.aktvhome.launcher.data.Game
 import com.aktvhome.launcher.data.GameState
 import com.aktvhome.launcher.data.LiveGroup
 import com.aktvhome.launcher.data.Nba
+import com.aktvhome.launcher.data.Team
+import com.aktvhome.launcher.data.WatchNow
+import com.aktvhome.launcher.data.networkApp
 import com.aktvhome.launcher.data.TvItem
 import com.aktvhome.launcher.ui.HavenState
+import com.aktvhome.launcher.ui.GlassDialog
 import com.aktvhome.launcher.ui.Overlay
 import com.aktvhome.launcher.ui.Pill
 import com.aktvhome.launcher.ui.onKeyDown
@@ -57,6 +67,8 @@ import com.aktvhome.launcher.ui.settings.glassPanel
 import com.aktvhome.launcher.ui.theme.ThemeColors
 import com.aktvhome.launcher.ui.tvClickable
 import java.time.LocalDate
+import java.time.ZoneId
+import kotlinx.coroutines.delay
 import java.time.format.DateTimeFormatter
 
 private const val YOUTUBE_TV = "com.google.android.youtube.tvunplugged"
@@ -119,83 +131,203 @@ private fun Panel(colors: ThemeColors, title: String, subtitle: String, onClose:
     }
 }
 
-/** NBA card: one game up top (with ways to watch), the week strip, and that day's games. */
+private enum class GameFilter(val label: String) { ALL("All games"), MINE("My team"), ALERTS("My alerts") }
+
+private val dateLineFmt = DateTimeFormatter.ofPattern("EEE, MMM d")
+private val tipFmt = DateTimeFormatter.ofPattern("h:mm a")
+
+/** "Today", "Yesterday", "Tomorrow", or "Sun, Oct 25". */
+private fun dayWord(day: LocalDate, today: LocalDate): String = when (day) {
+    today -> "Today"
+    today.minusDays(1) -> "Yesterday"
+    today.plusDays(1) -> "Tomorrow"
+    else -> day.format(dateLineFmt)
+}
+
+/**
+ * NBA card: a day's games, your teams' first. Filter chips (All games, My team, My alerts) and a
+ * date pill; live rows refresh every 10 s in place, focus staying on its row. OK opens a game's
+ * details.
+ */
 @Composable
 fun NbaPanel(state: HavenState, colors: ThemeColors) {
     val w = state.watchNow
-    val fav = state.settingsStore.settings.favoriteTeam
-    var day by remember { mutableStateOf(w.today()) }
+    val s = state.settingsStore.settings
+    val fav = s.favoriteTeam
+    val mine = s.followedTeams + setOfNotNull(fav.ifBlank { null })
+    val today = w.today()
+    var day by remember { mutableStateOf(today) }
+    var filter by remember { mutableStateOf(GameFilter.ALL) }
+    var choosingDay by remember { mutableStateOf(false) }
+    var picking by remember { mutableStateOf(false) }
     val first = remember { FocusRequester() }
-    val days = remember { DayFocus() }
+    val close = { state.overlay = Overlay.NONE }
     LaunchedEffect(day) { w.loadDay(day) }
-    val top = if (day == w.today()) w.featured() else w.games[day]?.firstOrNull()
-    Panel(colors, "NBA", "Scores from ESPN · games open where they air", { state.overlay = Overlay.NONE }) {
-        if (top != null) FeaturedGame(state, colors, top, first)
-        WeekStrip(state, colors, day, if (top == null) first else null, days) { day = it }
-        val list = w.games[day]
-        when {
-            list == null && w.nbaError -> Text("Couldn't reach ESPN. Check the connection and try again.", color = colors.inkSoft, fontSize = 12.sp)
-            list == null -> Text("Loading games…", color = colors.inkSoft, fontSize = 12.sp)
-            list.isEmpty() -> Text("No NBA games on ${day.format(DateTimeFormatter.ofPattern("EEEE, MMM d"))}.", color = colors.inkSoft, fontSize = 12.sp)
-            // Up from the first game goes back to the selected day, not the nearest chip above.
-            // OK opens the game's popup (watch buttons, Dismiss) right where you are.
-            else -> list.forEachIndexed { i, g ->
-                GameRow(g, fav, colors, modifier = if (i == 0) upTo(days.of(day)) else Modifier) { state.detailGame = g }
-            }
+    val list = w.games[day]
+    val anyLive = list?.any { it.state == GameState.LIVE } == true
+    LaunchedEffect(day, anyLive) {
+        while (anyLive) {
+            delay(10_000)
+            w.loadDay(day, force = true)
         }
-        if (fav.isNotBlank()) {
-            val next = w.nextFavorite()
-            GlassCard(colors, Modifier.fillMaxWidth(), onClick = { state.scheduleOpen = true }) { ink ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "${Nba.teamName(fav)}" + (next?.let { " · Next: ${shortDate(it)} ${opponent(it, fav)} ${it.status}" } ?: ""),
-                        color = ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1,
-                    )
-                    Text("Full schedule ›", color = ink, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+    }
+    // Compact and frosted like the settings panels, over a home dimmed and blurred a bit more.
+    HavenOverlay(dim = 0.35f, onDismiss = close, blur = 30) {
+        Column(
+            Modifier.align(Alignment.Center).width(560.dp).fillMaxHeight(0.86f)
+                .glassPanel(colors, RoundedCornerShape(24.dp))
+                .verticalScroll(rememberScrollState())
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                NetImage(w, Nba.LEAGUE_LOGO, 28.dp)
+                Column(Modifier.weight(1f)) {
+                    Eyebrow("NBA · ${dayWord(day, today)}", colors)
+                    Text(day.format(dateLineFmt), color = colors.ink, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                }
+                CloseButton(colors, onClick = close)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                GameFilter.entries.forEachIndexed { i, f ->
+                    Pill(f.label, colors, selected = f == filter, focusRequester = if (i == 0) first else null) { filter = f }
+                }
+                Spacer(Modifier.weight(1f))
+                Pill("${dayWord(day, today)} ▾", colors) { choosingDay = true }
+            }
+            when {
+                list == null && w.nbaError -> Text("Couldn't reach ESPN. Check the connection and try again.", color = colors.inkSoft, fontSize = 12.sp)
+                list == null -> Text("Loading games…", color = colors.inkSoft, fontSize = 12.sp)
+                else -> {
+                    fun ours(g: Game) = g.away.abbr in mine || g.home.abbr in mine
+                    val shown = when (filter) {
+                        GameFilter.ALL -> list
+                        GameFilter.MINE -> list.filter(::ours)
+                        GameFilter.ALERTS -> list.filter { it.espnId in s.alertGames }
+                    }
+                    // The main team's game leads its section; the rest keep ESPN's order (live first).
+                    val my = shown.filter(::ours).sortedByDescending { it.involves(fav) }
+                    val other = shown.filter { !ours(it) }
+                    if (shown.isEmpty()) {
+                        val why = when (filter) {
+                            GameFilter.ALL -> "No NBA games on ${day.format(dateLineFmt)}."
+                            GameFilter.MINE -> "Your teams don't play on ${day.format(dateLineFmt)}."
+                            GameFilter.ALERTS -> "No games with Set alert on this day. Open a game and press Set alert."
+                        }
+                        Text(why, color = colors.inkSoft, fontSize = 12.sp)
+                    }
+                    if (my.isNotEmpty()) {
+                        SectionLabel("My team", colors)
+                        my.forEach { g -> key(g.espnId) { ScoreRow(state, g, colors, highlighted = true) { state.detailGameId = g.espnId } } }
+                    }
+                    if (other.isNotEmpty()) {
+                        SectionLabel("Other games", colors)
+                        other.forEach { g -> key(g.espnId) { ScoreRow(state, g, colors, highlighted = false) { state.detailGameId = g.espnId } } }
+                    }
+                }
+            }
+            if (fav.isNotBlank()) {
+                val next = w.nextFavorite()
+                GlassCard(colors, Modifier.fillMaxWidth(), onClick = { state.scheduleOpen = true }) { ink ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "${Nba.teamName(fav)}" + (next?.let { " · Next: ${shortDate(it)} ${opponent(it, fav)} ${it.status}" } ?: ""),
+                            color = ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1,
+                        )
+                        Text("Full schedule ›", color = ink, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
     }
+    if (choosingDay) {
+        DayMenu(colors, today, day, onPick = { day = it; choosingDay = false }, onPickDate = { choosingDay = false; picking = true }, onDismiss = { choosingDay = false })
+    }
+    if (picking) DatePickerDialog(colors, day, onPick = { day = it; picking = false }, onDismiss = { picking = false })
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
 }
 
 @Composable
-private fun FeaturedGame(state: HavenState, colors: ThemeColors, g: Game, focus: FocusRequester) {
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(colors.glass)
-            .border(1.dp, colors.edge, RoundedCornerShape(20.dp)).padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Eyebrow(listOfNotNull(if (g.state == GameState.LIVE) "Live" else null, shortDate(g), g.network).joinToString(" · "), colors)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TeamBlock(g.away.abbr, g.away.name, g.away.score, g.away.color, g.state, Alignment.Start, colors, Modifier.weight(1f))
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 12.dp)) {
-                Text(g.status, color = colors.ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                listOfNotNull(g.away.leader, g.home.leader).takeIf { g.state != GameState.PRE }?.let {
-                    Text(it.joinToString("  ·  "), color = colors.inkSoft, fontSize = 11.sp)
-                }
+private fun SectionLabel(text: String, colors: ThemeColors) {
+    Box(Modifier.padding(top = 4.dp)) { Eyebrow(text, colors) }
+}
+
+/** Yesterday, Today, Tomorrow, the next five days, and Pick a date… */
+@Composable
+private fun DayMenu(colors: ThemeColors, today: LocalDate, current: LocalDate, onPick: (LocalDate) -> Unit, onPickDate: () -> Unit, onDismiss: () -> Unit) {
+    val focus = remember { FocusRequester() }
+    val days = (-1L..6L).map { today.plusDays(it) }
+    GlassDialog(colors, "Show games for", onDismiss) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            days.forEach { d ->
+                Pill(
+                    dayWord(d, today), colors, selected = d == current, modifier = Modifier.fillMaxWidth(),
+                    focusRequester = if (d == current || (current !in days && d == today)) focus else null,
+                ) { onPick(d) }
             }
-            TeamBlock(g.home.abbr, g.home.name, g.home.score, g.home.color, g.state, Alignment.End, colors, Modifier.weight(1f))
+            Pill("Pick a date…", colors, modifier = Modifier.fillMaxWidth(), onClick = onPickDate)
         }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            state.watchOptions(g).forEachIndexed { i, o ->
-                Pill(if (i == 0) "▶  ${o.label}" else o.label, colors, selected = i == 0, focusRequester = if (i == 0) focus else null) {
-                    o.open(); state.overlay = Overlay.NONE
+    }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+}
+
+/**
+ * A game: away logo, name and record; in the middle the tip-off time, the live score and clock
+ * (with a red dot) or the final, and the network with its app's icon; then the home side.
+ */
+@Composable
+private fun ScoreRow(state: HavenState, g: Game, colors: ThemeColors, highlighted: Boolean, onClick: () -> Unit) {
+    val w = state.watchNow
+    GlassCard(
+        colors, Modifier.fillMaxWidth().heightIn(min = 56.dp), selected = highlighted,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp), onClick = onClick,
+    ) { ink ->
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ScoreSide(w, g.away, ink, Modifier.weight(1f), home = false)
+            Column(Modifier.width(128.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                when (g.state) {
+                    GameState.PRE -> Text(g.start.atZone(ZoneId.systemDefault()).format(tipFmt), color = ink, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    GameState.LIVE -> {
+                        Text("${g.away.score} – ${g.home.score}", color = ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Box(Modifier.size(7.dp).clip(CircleShape).background(LIVE_RED))
+                            Text(g.clockLine(), color = ink, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                    GameState.FINAL -> {
+                        Text("${g.away.score} – ${g.home.score}", color = ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text("Final", color = ink.copy(alpha = 0.75f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                g.network?.let { net ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        val icon = g.networks.firstNotNullOfOrNull { networkApp(it) }?.let { state.apps[it]?.icon }
+                        if (icon != null) Image(icon, null, Modifier.size(14.dp).clip(RoundedCornerShape(3.dp)))
+                        Text(net, color = ink.copy(alpha = 0.7f), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
-            if (g.state != GameState.PRE) Pill("Box score", colors) { state.detailGame = g }
+            ScoreSide(w, g.home, ink, Modifier.weight(1f), home = true)
+            Text("›", color = ink.copy(alpha = 0.7f), fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
 
+/** Logo, short name and record; mirrored for the home team so the logos sit on the outside. */
 @Composable
-private fun TeamBlock(abbr: String, name: String, score: String, color: String, st: GameState, align: Alignment.Horizontal, colors: ThemeColors, modifier: Modifier) {
-    Column(modifier, horizontalAlignment = align) {
-        Text(abbr, color = teamColor(color), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-        Text(name, color = colors.ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        if (st != GameState.PRE) Text(score, color = colors.ink, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+private fun ScoreSide(w: WatchNow, team: Team, ink: Color, modifier: Modifier, home: Boolean) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp, if (home) Alignment.End else Alignment.Start)) {
+        if (!home) NetImage(w, Nba.logo(team), 32.dp)
+        Column(horizontalAlignment = if (home) Alignment.End else Alignment.Start) {
+            Text(team.name, color = ink, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (team.record.isNotBlank()) Text("(${team.record})", color = ink.copy(alpha = 0.65f), fontSize = 10.sp)
+        }
+        if (home) NetImage(w, Nba.logo(team), 32.dp)
     }
 }
+
+/** The red of every LIVE mark. */
+val LIVE_RED = Color(0xFFE53935)
 
 /** Live TV card: live NBA games pinned, then each Live TV app's channels A to Z, plus its full guide. */
 @Composable
@@ -207,7 +339,7 @@ fun LivePanel(state: HavenState, colors: ThemeColors) {
         val liveGames = if (state.settingsStore.settings.watchNba) w.games[w.today()]?.filter { it.state == GameState.LIVE }.orEmpty() else emptyList()
         if (liveGames.isNotEmpty()) {
             Text("Live games", color = colors.ink, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            liveGames.forEach { g -> GameRow(g, state.settingsStore.settings.favoriteTeam, colors) { state.detailGame = g } }
+            liveGames.forEach { g -> GameRow(g, state.settingsStore.settings.favoriteTeam, colors) { state.detailGameId = g.espnId } }
         }
         LiveGrid(state, colors, first)
     }

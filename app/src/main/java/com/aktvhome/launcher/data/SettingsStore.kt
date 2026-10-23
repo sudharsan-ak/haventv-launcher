@@ -88,7 +88,37 @@ data class Settings(
     val localStations: Map<String, String> = emptyMap(),
     /** Order of the Watch Now cards and drawer sections: ids from [WATCH_SECTIONS]. */
     val watchOrder: List<String> = WATCH_SECTIONS.map { it.first },
+    /** NBA alerts for your teams' games, and for other games (the two switches in NBA alerts). */
+    val alertsMine: Boolean = true,
+    val alertsOthers: Boolean = true,
+    /**
+     * Teams whose games get the "Your team" alerts (ESPN abbreviations). Starts as just
+     * [favoriteTeam]; [favoriteTeam] stays the main team on Home either way.
+     */
+    val followedTeams: Set<String> = emptySet(),
+    val alertsFavorite: Set<AlertEvent> = AlertEvent.entries.toSet(),
+    val alertsOther: Set<AlertEvent> = OTHER_EVENTS,
+    /** Banners leave out scores and results. */
+    val hideScores: Boolean = false,
+    /** Minutes between two other-team alerts. */
+    val alertCooldown: Int = 10,
+    /** Seconds a banner stays up without a key press. */
+    val bannerSeconds: Int = 5,
+    /**
+     * Single games with "Set alert" on: ESPN event id to tip-off (epoch ms). They get the "Your
+     * team" alerts, and drop off a day after the game.
+     */
+    val alertGames: Map<String, Long> = emptyMap(),
 ) {
+    fun alertPrefs() = AlertPrefs(
+        on = alertsMine || alertsOthers,
+        followed = followedTeams,
+        alertGames = alertGames.keys,
+        favoriteEvents = if (alertsMine) alertsFavorite else emptySet(),
+        otherEvents = if (alertsOthers) alertsOther else emptySet(),
+        cooldownMs = alertCooldown * 60_000L,
+    )
+
     fun backgroundFor(theme: ThemeId) = when (theme) {
         ThemeId.KINGDOM -> bgKingdom
         ThemeId.TIDE -> bgTide
@@ -136,6 +166,15 @@ class SettingsStore(context: Context) {
             .putString("favoriteTeam", next.favoriteTeam)
             .putString("localStations", next.localStations.entries.joinToString("\n") { "${it.key}=${it.value}" })
             .putString("watchOrder", next.watchOrder.joinToString(","))
+            .putBoolean("alertsMine", next.alertsMine)
+            .putBoolean("alertsOthers", next.alertsOthers)
+            .putString("followedTeams", next.followedTeams.joinToString(","))
+            .putString("alertsFavorite", next.alertsFavorite.joinToString(",") { it.name })
+            .putString("alertsOther", next.alertsOther.joinToString(",") { it.name })
+            .putBoolean("hideScores", next.hideScores)
+            .putInt("alertCooldown", next.alertCooldown)
+            .putInt("bannerSeconds", next.bannerSeconds)
+            .putString("alertGames", next.alertGames.entries.joinToString("\n") { "${it.key}=${it.value}" })
             .apply()
     }
 
@@ -184,7 +223,23 @@ class SettingsStore(context: Context) {
         // Keep any saved order, and add sections that didn't exist when it was saved.
         watchOrder = (prefs.getString("watchOrder", null)?.split(",").orEmpty().filter { id -> WATCH_SECTIONS.any { it.first == id } } +
             WATCH_SECTIONS.map { it.first }).distinct(),
+        alertsMine = prefs.getBoolean("alertsMine", true),
+        alertsOthers = prefs.getBoolean("alertsOthers", true),
+        followedTeams = prefs.getString("followedTeams", null)?.split(",")?.filter { it.isNotBlank() }?.toSet()
+            ?: setOfNotNull(prefs.getString("favoriteTeam", null)?.ifBlank { null }),
+        alertsFavorite = events(prefs.getString("alertsFavorite", null)) ?: AlertEvent.entries.toSet(),
+        alertsOther = events(prefs.getString("alertsOther", null)) ?: OTHER_EVENTS,
+        hideScores = prefs.getBoolean("hideScores", false),
+        alertCooldown = prefs.getInt("alertCooldown", 10),
+        bannerSeconds = prefs.getInt("bannerSeconds", 5),
+        // A game's alert ends a day after it (30 h after tip-off covers any late finish).
+        alertGames = (prefs.getString("alertGames", null) ?: "").lines().mapNotNull { line ->
+            line.split('=', limit = 2).takeIf { it.size == 2 }?.let { (id, at) -> at.toLongOrNull()?.let { id to it } }
+        }.filter { System.currentTimeMillis() - it.second < 30 * 3_600_000L }.toMap(),
     )
+
+    private fun events(saved: String?): Set<AlertEvent>? =
+        saved?.split(",")?.mapNotNull { n -> AlertEvent.entries.firstOrNull { it.name == n } }?.toSet()
 
     private inline fun <reified E : Enum<E>> enumOr(name: String?, fallback: E): E =
         name?.let { n -> enumValues<E>().firstOrNull { it.name == n } } ?: fallback

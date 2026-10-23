@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -53,10 +54,11 @@ import com.aktvhome.launcher.ui.tvClickable
 
 /**
  * Full-screen, see-through window for the settings overlays. The home screen stays live
- * behind it under a light tint ([dim]), so changes show up there as they're made.
+ * behind it under a light tint ([dim]) and [blur], so changes show up there as they're made.
+ * The NBA panels dim and blur a little more, so logos and numbers stay crisp on top.
  */
 @Composable
-fun HavenOverlay(dim: Float, onDismiss: () -> Unit, content: @Composable BoxScope.() -> Unit) {
+fun HavenOverlay(dim: Float, onDismiss: () -> Unit, blur: Int = 20, content: @Composable BoxScope.() -> Unit) {
     Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         val window = (LocalView.current.parent as? DialogWindowProvider)?.window
         SideEffect {
@@ -64,9 +66,9 @@ fun HavenOverlay(dim: Float, onDismiss: () -> Unit, content: @Composable BoxScop
             window?.setWindowAnimations(0)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 window?.let {
-                    it.setBackgroundBlurRadius(20)
+                    it.setBackgroundBlurRadius(blur)
                     it.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-                    it.attributes = it.attributes.apply { blurBehindRadius = 20 }
+                    it.attributes = it.attributes.apply { blurBehindRadius = blur }
                 }
             }
         }
@@ -114,6 +116,7 @@ fun GlassCard(
     focusRequester: FocusRequester? = null,
     onFocused: () -> Unit = {},
     onLongClick: (() -> Unit)? = null,
+    contentPadding: PaddingValues = PaddingValues(16.dp),
     onClick: () -> Unit,
     content: @Composable (ink: Color) -> Unit,
 ) {
@@ -127,7 +130,7 @@ fun GlassCard(
             .border(if (selected || focused) 2.dp else 1.dp, if (selected || focused) colors.accent else colors.edge, shape)
             .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocused() }
             .tvClickable(onLongClick = onLongClick, onClick = onClick)
-            .padding(16.dp),
+            .padding(contentPadding),
     ) {
         content(if (focused) colors.pillInk else colors.ink)
     }

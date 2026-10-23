@@ -1,22 +1,49 @@
 package com.aktvhome.launcher.ui.watch
 
+import com.aktvhome.launcher.data.ESPN_APP
 import com.aktvhome.launcher.data.Game
 import com.aktvhome.launcher.data.GameState
+import com.aktvhome.launcher.data.LiveGroup
+import com.aktvhome.launcher.data.PEACOCK
+import com.aktvhome.launcher.data.PRIME
+import com.aktvhome.launcher.data.TV_CHANNELS
 import com.aktvhome.launcher.data.TvItem
+import com.aktvhome.launcher.data.carries
+import com.aktvhome.launcher.data.streamingApps
 import com.aktvhome.launcher.ui.HavenState
 
-/** One way to watch a game, best first. */
-data class WatchOption(val label: String, val open: () -> Unit)
+/** One way to watch a game, best first. [app] is just the app's name, for "Watch on <app>". */
+data class WatchOption(val label: String, val app: String = label, val open: () -> Unit)
 
-private const val ESPN_APP = "com.espn.score_center"
-private const val PEACOCK = "com.peacocktv.peacockandroid"
-private const val PRIME = "com.amazon.amazonvideo.livingroom"
+/**
+ * What [watchOptions] reads and how it opens things, so it runs in Haven (the NBA cards) and in
+ * the Home button service (alert banners) alike.
+ */
+class WatchSources(
+    /** An installed app's label, or null when it isn't installed. */
+    val labelOf: (String) -> String?,
+    val localStations: Map<String, String>,
+    /** Channels from your Live TV apps. */
+    val live: List<LiveGroup>,
+    /** Every other app's shared rows (ESPN's live shows). */
+    val appRows: List<LiveGroup>,
+    val openItem: (TvItem) -> Unit,
+    val openApp: (String) -> Unit,
+    val openGame: (Game) -> Unit,
+)
 
-/** Networks that live TV apps carry as channels, as ESPN names them. */
-private val TV_CHANNELS = listOf("ESPN", "ESPN2", "ABC", "NBC", "CBS", "FOX", "TNT", "TRUTV", "NBA TV")
-
-/** Broadcast networks that live TV apps show under a local station's name (set in Watch Now settings). */
-val LOCAL_NETWORKS = listOf("ABC", "NBC", "CBS", "FOX")
+fun HavenState.watchOptions(game: Game): List<WatchOption> = watchOptions(
+    game,
+    WatchSources(
+        labelOf = { pkg -> apps[pkg]?.label },
+        localStations = settingsStore.settings.localStations,
+        live = watchNow.live,
+        appRows = watchNow.appRows,
+        openItem = watchNow::open,
+        openApp = { pkg -> apps[pkg]?.let { launch(it) } },
+        openGame = watchNow::openGame,
+    ),
+)
 
 /**
  * Where [game] can be watched, from the networks ESPN lists for it:
@@ -27,48 +54,35 @@ val LOCAL_NETWORKS = listOf("ABC", "NBC", "CBS", "FOX")
  * - the NBA app last, always, for League Pass, local channels and game info.
  * Finished games offer only the NBA app (replays).
  */
-fun HavenState.watchOptions(game: Game): List<WatchOption> {
-    val nbaApp = WatchOption("NBA app") { watchNow.openGame(game) }
+fun watchOptions(game: Game, src: WatchSources): List<WatchOption> {
+    val nbaApp = WatchOption("NBA app", "NBA app") { src.openGame(game) }
     // Finished games: replays and recaps live in the NBA app. Upcoming games show where they'll air.
     if (game.state == GameState.FINAL) return listOf(nbaApp)
 
-    val networks = game.network.orEmpty().split(",").map { it.trim() }.filter { it.isNotEmpty() }
-    val upper = networks.map { it.uppercase() }
     val options = mutableListOf<WatchOption>()
 
     // National channels, tuned in whichever live TV app shares them (YouTube TV, Sling, …).
-    val local = settingsStore.settings.localStations
-    for (net in upper) {
+    // ABC/NBC/CBS/FOX appear under the local station's name, e.g. ABC = "WFAA 8".
+    for (net in game.networks) {
         if (net !in TV_CHANNELS) continue
-        // ABC/NBC/CBS/FOX appear under the local station's name, e.g. ABC = "WFAA 8".
-        val station = local[net]
-        val hit = watchNow.live.flatMap { g -> g.items.map { g to it } }.firstOrNull { (_, item) ->
-            sameChannel(item.title, net) || (station != null && item.title.equals(station, ignoreCase = true))
+        val hit = src.live.flatMap { g -> g.items.map { g to it } }.firstOrNull { (_, item) -> carries(item.title, net, src.localStations) }
+        if (hit != null) {
+            val app = src.labelOf(hit.first.pkg) ?: hit.first.provider
+            options += WatchOption("Watch on $app · ${hit.second.title}", app) { src.openItem(hit.second) }
         }
-        if (hit != null) options += WatchOption("Watch on ${apps[hit.first.pkg]?.label ?: hit.first.provider} · ${hit.second.title}") { watchNow.open(hit.second) }
     }
+    val streaming = streamingApps(game).filter { src.labelOf(it) != null }
     // ESPN app: the exact stream if its Live row lists this game, otherwise the app.
-    if (upper.any { it.startsWith("ESPN") || it == "ABC" } && ESPN_APP in apps) {
-        val event = (watchNow.appRows + watchNow.live).firstOrNull { it.pkg == ESPN_APP }?.items?.firstOrNull { mentions(it, game) }
-        options += if (event != null) WatchOption("ESPN app · live stream") { watchNow.open(event) }
-        else WatchOption("ESPN app") { openPackage(ESPN_APP) }
+    if (ESPN_APP in streaming) {
+        val event = (src.appRows + src.live).firstOrNull { it.pkg == ESPN_APP }?.items?.firstOrNull { mentions(it, game) }
+        options += if (event != null) WatchOption("ESPN app · live stream", "ESPN") { src.openItem(event) }
+        else WatchOption("ESPN app", "ESPN") { src.openApp(ESPN_APP) }
     }
-    if (upper.any { it.contains("PEACOCK") || it == "NBC" } && PEACOCK in apps) options += WatchOption("Peacock") { openPackage(PEACOCK) }
-    if (upper.any { it.contains("PRIME") || it.contains("AMAZON") } && PRIME in apps) options += WatchOption("Prime Video") { openPackage(PRIME) }
+    if (PEACOCK in streaming) options += WatchOption("Peacock") { src.openApp(PEACOCK) }
+    if (PRIME in streaming) options += WatchOption("Prime Video") { src.openApp(PRIME) }
 
     options += nbaApp
     return options.distinctBy { it.label }
-}
-
-/**
- * "ESPN" matches "ESPN" but not "ESPN2"; "NBA TV" matches "NBATV". Broadcast networks also match
- * their local station when it's named network + number, e.g. NBC = "NBC 5", FOX = "FOX 4".
- */
-private fun sameChannel(title: String, network: String): Boolean {
-    val t = title.uppercase().replace(" ", "")
-    val n = network.replace(" ", "")
-    if (t == n || t == "${n}HD") return true
-    return network in LOCAL_NETWORKS && Regex("^${Regex.escape(network)}\\s*\\d+$").matches(title.uppercase().trim())
 }
 
 /** True when an ESPN Live item names both teams (by nickname or abbreviation). */
@@ -76,8 +90,4 @@ private fun mentions(item: TvItem, game: Game): Boolean {
     val text = "${item.title} ${item.detail}".uppercase()
     fun has(abbr: String, name: String) = name.uppercase() in text || Regex("\\b${Regex.escape(abbr)}\\b").containsMatchIn(text)
     return has(game.away.abbr, game.away.name) && has(game.home.abbr, game.home.name)
-}
-
-private fun HavenState.openPackage(pkg: String) {
-    apps[pkg]?.let { launch(it) }
 }

@@ -75,7 +75,7 @@ import com.aktvhome.launcher.data.DnsChoice
 import com.aktvhome.launcher.data.HomeOverride
 import com.aktvhome.launcher.data.Nba
 import com.aktvhome.launcher.data.WATCH_SECTIONS
-import com.aktvhome.launcher.ui.watch.LOCAL_NETWORKS
+import com.aktvhome.launcher.data.LOCAL_NETWORKS
 import com.aktvhome.launcher.data.PrivateDns
 import com.aktvhome.launcher.data.Motion
 import com.aktvhome.launcher.data.ThemeId
@@ -129,7 +129,7 @@ private enum class Page(val label: String, val group: SettingsGroup, val availab
     DISPLAY("Display", SettingsGroup.HOME),
     COLLECTIONS("Collections", SettingsGroup.HOME),
     HIDDEN("Hidden apps", SettingsGroup.HOME),
-    NBA_ALERTS("NBA alerts", SettingsGroup.WATCHING, available = false),
+    NBA_ALERTS("NBA alerts", SettingsGroup.WATCHING),
     WATCH_NOW("Watch Now", SettingsGroup.WATCHING),
     LIVE_CHANNELS("Live channels", SettingsGroup.WATCHING, available = false),
     HOME_BUTTON("Home button", SettingsGroup.SYSTEM),
@@ -644,7 +644,8 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                             }
                             if (b.problem.isNotBlank()) InfoStrip("Backup problem", b.problem, colors)
                         }
-                        Page.NBA_ALERTS, Page.LIVE_CHANNELS -> Unit
+                        Page.NBA_ALERTS -> NbaAlertsPage(state, colors, first)
+                        Page.LIVE_CHANNELS -> Unit
                     }
                 }
             }
@@ -823,7 +824,7 @@ private fun SettingsTab(
 }
 
 @Composable
-private fun SettingsRow(
+internal fun SettingsRow(
     title: String,
     note: String,
     colors: ThemeColors,
@@ -848,7 +849,7 @@ private fun SettingsRow(
 }
 
 @Composable
-private fun ChoicePills(
+internal fun ChoicePills(
     values: List<String>,
     selected: String,
     colors: ThemeColors,
@@ -1060,7 +1061,7 @@ private fun ArrowButton(icon: ImageVector, label: String, enabled: Boolean, focu
 }
 
 @Composable
-private fun Switch(on: Boolean, colors: ThemeColors) {
+internal fun Switch(on: Boolean, colors: ThemeColors) {
     Box(
         Modifier
             .size(40.dp, 22.dp)
