@@ -1,5 +1,6 @@
 package com.aktvhome.launcher.ui.settings
 
+import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
@@ -104,8 +105,6 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
     }
 
     LaunchedEffect(Unit) { tv.load() }
-    // A page opened before the TV answered gets its focus once the settings arrive.
-    LaunchedEffect(tv.loaded) { if (tv.loaded && page != null) runCatching { pageFirst.requestFocus() } }
 
     HavenOverlay(dim = 0.12f, onDismiss = close) {
         val panelShape = RoundedCornerShape(26.dp)
@@ -177,8 +176,9 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
                     QuickTile("Screen", "Wide mode & more", Icons.Rounded.AspectRatio, colors) {
                         open(screenSettings())
                     }
-                    QuickTile("Wi-Fi", wifiText(context), Icons.Rounded.Wifi, colors, tileFocus[TvPage.WIFI]) {
-                        show(TvPage.WIFI)
+                    // "Wi-Fi & Bluetooth" doesn't fit a one-third tile; the page itself keeps the full name.
+                    QuickTile("Wi-Fi & BT", "${wifiText(context)} · ${bluetoothText(context)}", Icons.Rounded.Wifi, colors, tileFocus[TvPage.NETWORK]) {
+                        show(TvPage.NETWORK)
                     }
                     QuickTile("Sleep timer", sleepEnds?.let { "Off at ${timeText(it)}" } ?: "Off", Icons.Rounded.Bedtime, colors, tileFocus[TvPage.SLEEP]) {
                         show(TvPage.SLEEP)
@@ -194,16 +194,21 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
                 )
             }
         }
-    }
-    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
-    // Same-frame focus move when switching between tiles and a page (no flash on another tile).
-    SideEffect {
-        if (focusPending[0]) {
-            focusPending[0] = false
-            val target = if (page != null) pageFirst else lastPage?.let { tileFocus[it] } ?: first
-            runCatching { target.requestFocus() }
+        // Both focus moves sit in the overlay's own composition, which runs after this function's:
+        // from outside, they'd fire before the new page or tiles exist and focus would fall back
+        // to the close button.
+        // A page opened before the TV answered gets its focus once the settings arrive.
+        LaunchedEffect(tv.loaded) { if (tv.loaded && page != null) runCatching { pageFirst.requestFocus() } }
+        // Same-frame focus move when switching between tiles and a page (no flash on another tile).
+        SideEffect {
+            if (focusPending[0]) {
+                focusPending[0] = false
+                val target = if (page != null) pageFirst else lastPage?.let { tileFocus[it] } ?: first
+                runCatching { target.requestFocus() }
+            }
         }
     }
+    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
 }
 
 /** One line of three equal tiles. */
@@ -431,6 +436,9 @@ fun openSystemPage(context: Context, intent: Intent) {
     runCatching { context.startActivity(intent.addFlags(flags)) }
         .onFailure { runCatching { context.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(flags)) } }
 }
+
+private fun bluetoothText(context: Context): String =
+    if (context.getSystemService(BluetoothManager::class.java)?.adapter?.isEnabled == true) "BT on" else "BT off"
 
 private fun wifiText(context: Context): String {
     val on = Settings.Global.getInt(context.contentResolver, Settings.Global.WIFI_ON, 0) != 0

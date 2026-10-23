@@ -4,6 +4,8 @@ package com.aktvhome.launcher.ui.settings
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothClass
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.Context
@@ -37,6 +39,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -63,6 +66,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.aktvhome.launcher.HomeOverrideService
 import com.aktvhome.launcher.data.SleepTimer
 import com.aktvhome.launcher.data.SonyControl
 import com.aktvhome.launcher.data.SonySetting
@@ -72,16 +79,22 @@ import com.aktvhome.launcher.ui.theme.ThemeColors
 import com.aktvhome.launcher.ui.tvClickable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import java.net.Inet4Address
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.coroutines.resume
 import kotlin.math.roundToInt
 
-/** The TV pages. Quick settings opens one at a time; All settings › TV controls shows them as sections. */
+/**
+ * The TV pages. Quick settings opens one at a time (Wi-Fi and Bluetooth share a page there, as
+ * tabs); All settings › TV controls shows them as sections.
+ */
 enum class TvPage(val title: String) {
     PICTURE("Picture"), SOUND("Sound"), SAVING("Power saving"), SLEEP("Sleep timer"),
-    WIFI("Wi-Fi"), BLUETOOTH("Bluetooth"),
+    WIFI("Wi-Fi"), BLUETOOTH("Bluetooth"), NETWORK("Wi-Fi & Bluetooth"),
 }
 
 /**
@@ -222,6 +235,7 @@ private fun TvSection(page: TvPage, state: HavenState, tv: TvSettings, colors: T
         TvPage.SLEEP -> SleepPage(colors, top)
         TvPage.WIFI -> WifiPage(state, colors, top)
         TvPage.BLUETOOTH -> BluetoothPage(colors, top)
+        TvPage.NETWORK -> NetworkPage(state, colors, top)
     }
 }
 
@@ -298,7 +312,34 @@ private fun PicturePage(tv: TvSettings, colors: ThemeColors, top: Modifier) {
 @Composable
 private fun SoundPage(tv: TvSettings, colors: ThemeColors, top: Modifier) {
     if (NotPaired(tv, colors)) return
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val bt = rememberBluetooth(AUDIO_PROFILES)
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { bt.allowed = it }
+    // Set while the TV's page for a speaker is open; the output to switch to once it closes.
+    val away = remember { booleanArrayOf(false) }
+    var nextOutput by remember { mutableStateOf<String?>(null) }
+    val speakers = bt.paired.filter { it.audio }
+    val speaker = speakers.firstOrNull { it.address in bt.connected }
+
+    // Back from the speaker's page: switch the output if one was picked, then read everything
+    // again. A speaker takes a few seconds to connect, so look once more a little later.
+    OnResume {
+        if (!away[0]) return@OnResume
+        away[0] = false
+        nextOutput?.let { nextOutput = null; tv.setOutput(it) }
+        repeat(2) { i ->
+            if (i > 0) delay(3_000)
+            bt.refresh(AUDIO_PROFILES)
+            tv.load()
+        }
+    }
+
+    fun device(d: BtDevice, action: String) {
+        away[0] = true
+        pressOnDevicePage(context, d, action)
+    }
+
     val v = tv.volume
     if (v != null) {
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -312,7 +353,25 @@ private fun SoundPage(tv: TvSettings, colors: ThemeColors, top: Modifier) {
         if (v != null) Chip("Mute", v.mute, colors) { scope.launch { tv.toggleMute() } }
         tv.output?.let { current ->
             OUTPUTS.forEachIndexed { i, (value, text) ->
-                Chip(text, value == current, colors, if (v == null && i == 0) top else Modifier) { scope.launch { tv.setOutput(value) } }
+                Chip(text, speaker == null && value == current, colors, if (v == null && i == 0) top else Modifier) {
+                    // A connected speaker keeps the sound until it's disconnected.
+                    if (speaker != null) {
+                        nextOutput = value
+                        device(speaker, "Disconnect")
+                    } else {
+                        scope.launch { tv.setOutput(value) }
+                    }
+                }
+            }
+        }
+        // Paired Bluetooth speakers and headphones: one press connects through the TV's own page.
+        if (!bt.allowed) {
+            Chip("Show paired devices", false, colors) { ask.launch(Manifest.permission.BLUETOOTH_CONNECT) }
+        } else {
+            speakers.forEach { d ->
+                Chip(d.name, d == speaker, colors) {
+                    if (d == speaker) openSystemPage(context, devicePage(d)) else device(d, "Connect")
+                }
             }
         }
     }
@@ -421,47 +480,136 @@ private fun WifiPage(state: HavenState, colors: ThemeColors, top: Modifier) {
     }
 }
 
-private data class BtDevice(val name: String, val address: String)
+/** Quick settings' Wi-Fi & Bluetooth page: a tab for each, as chips across the top. */
+@Composable
+private fun NetworkPage(state: HavenState, colors: ThemeColors, top: Modifier) {
+    var tab by remember { mutableStateOf(TvPage.WIFI) }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Chip("Wi-Fi", tab == TvPage.WIFI, colors, if (tab == TvPage.WIFI) top else Modifier) { tab = TvPage.WIFI }
+        Chip("Bluetooth", tab == TvPage.BLUETOOTH, colors, if (tab == TvPage.BLUETOOTH) top else Modifier) { tab = TvPage.BLUETOOTH }
+    }
+    Box(Modifier.fillMaxWidth().height(1.dp).background(colors.edge))
+    if (tab == TvPage.WIFI) WifiPage(state, colors, Modifier) else BluetoothPage(colors, Modifier)
+}
 
-@SuppressLint("MissingPermission") // only called once BLUETOOTH_CONNECT is granted
 @Composable
 private fun BluetoothPage(colors: ThemeColors, top: Modifier) {
     val context = LocalContext.current
-    var allowed by remember { mutableStateOf(granted(context, Manifest.permission.BLUETOOTH_CONNECT)) }
-    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed = it }
-    val adapter = remember { context.getSystemService(BluetoothManager::class.java)?.adapter }
-    var paired by remember { mutableStateOf<List<BtDevice>>(emptyList()) }
-    var connected by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val bt = rememberBluetooth(ALL_PROFILES)
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { bt.allowed = it }
+    // Set while a device's page is open, so the list is read again on the way back.
+    val away = remember { booleanArrayOf(false) }
     val pairNew = {
         openSystemPage(context, Intent().setClassName("com.android.tv.settings", "com.android.tv.settings.accessories.AddAccessoryActivity"))
     }
-
-    LaunchedEffect(allowed) {
-        if (!allowed || adapter == null) return@LaunchedEffect
-        paired = runCatching { adapter.bondedDevices.map { BtDevice(it.name ?: it.address, it.address) } }.getOrDefault(emptyList())
-        // Which paired devices are connected right now: audio (A2DP, headset) and remotes/keyboards (input).
-        for (profile in listOf(BluetoothProfile.A2DP, BluetoothProfile.HEADSET, 4 /* input devices */)) {
-            runCatching {
-                adapter.getProfileProxy(context, object : BluetoothProfile.ServiceListener {
-                    override fun onServiceConnected(p: Int, proxy: BluetoothProfile) {
-                        connected = connected + runCatching { proxy.connectedDevices.map { it.address } }.getOrDefault(emptyList())
-                        adapter.closeProfileProxy(p, proxy)
-                    }
-                    override fun onServiceDisconnected(p: Int) = Unit
-                }, profile)
-            }
-        }
+    OnResume {
+        if (!away[0]) return@OnResume
+        away[0] = false
+        bt.refresh(ALL_PROFILES)
     }
 
-    LinkRow("Bluetooth", if (adapter?.isEnabled == true) "On" else "Off", "Pair a new device ›", colors, top, pairNew)
-    if (!allowed) {
+    LinkRow("Bluetooth", if (bt.adapter?.isEnabled == true) "On" else "Off", "Pair a new device ›", colors, top, pairNew)
+    // Remotes & Accessories: the Bluetooth switch, Pair accessory and every paired device.
+    LinkRow("Bluetooth settings ›", "", "Remotes & Accessories", colors, Modifier) {
+        openSystemPage(context, slicePage("general"))
+    }
+    if (!bt.allowed) {
         Chip("Show paired devices", false, colors) { ask.launch(Manifest.permission.BLUETOOTH_CONNECT) }
         return
     }
     Eyebrow("Paired", colors)
-    if (paired.isEmpty()) Text("No paired devices.", color = colors.inkSoft, fontSize = 12.sp)
-    paired.sortedByDescending { it.address in connected }.forEach { d ->
-        InfoLine(d.name, if (d.address in connected) "Connected" else "Not connected", colors)
+    if (bt.paired.isEmpty()) Text("No paired devices.", color = colors.inkSoft, fontSize = 12.sp)
+    bt.paired.sortedByDescending { it.address in bt.connected }.forEach { d ->
+        LinkRow(d.name, if (d.address in bt.connected) "Connected" else "Not connected", "Open in TV settings ›", colors, Modifier) {
+            away[0] = true
+            openSystemPage(context, devicePage(d))
+        }
+    }
+}
+
+// ---- Bluetooth ----
+
+/** A paired device; [audio] for speakers, headphones and soundbars. */
+private data class BtDevice(val name: String, val address: String, val audio: Boolean)
+
+private val AUDIO_PROFILES = listOf(BluetoothProfile.A2DP, BluetoothProfile.HEADSET)
+
+/** Audio, plus remotes and keyboards (input devices). */
+private val ALL_PROFILES = AUDIO_PROFILES + 4
+
+/** Paired devices and which are connected right now, read once BLUETOOTH_CONNECT is granted. */
+private class Bluetooth(private val context: Context) {
+    val adapter: BluetoothAdapter? = context.getSystemService(BluetoothManager::class.java)?.adapter
+    var allowed by mutableStateOf(granted(context, Manifest.permission.BLUETOOTH_CONNECT))
+    var paired by mutableStateOf<List<BtDevice>>(emptyList())
+    var connected by mutableStateOf<Set<String>>(emptySet())
+
+    @SuppressLint("MissingPermission") // only runs once BLUETOOTH_CONNECT is granted
+    suspend fun refresh(profiles: List<Int>) {
+        val a = adapter
+        if (!allowed || a == null) return
+        paired = runCatching {
+            a.bondedDevices.map {
+                BtDevice(it.name ?: it.address, it.address, it.bluetoothClass?.majorDeviceClass == BluetoothClass.Device.Major.AUDIO_VIDEO)
+            }
+        }.getOrDefault(emptyList())
+        connected = profiles.flatMap { connectedOn(a, it) }.toSet()
+    }
+
+    @SuppressLint("MissingPermission")
+    private suspend fun connectedOn(adapter: BluetoothAdapter, profile: Int): List<String> = withTimeoutOrNull(2_000) {
+        suspendCancellableCoroutine<List<String>> { cont ->
+            val asked = runCatching {
+                adapter.getProfileProxy(context, object : BluetoothProfile.ServiceListener {
+                    override fun onServiceConnected(p: Int, proxy: BluetoothProfile) {
+                        val list = runCatching { proxy.connectedDevices.map { it.address } }.getOrDefault(emptyList())
+                        adapter.closeProfileProxy(p, proxy)
+                        if (cont.isActive) cont.resume(list)
+                    }
+                    override fun onServiceDisconnected(p: Int) = Unit
+                }, profile)
+            }.getOrDefault(false)
+            if (!asked) cont.resume(emptyList())
+        }
+    } ?: emptyList()
+}
+
+@Composable
+private fun rememberBluetooth(profiles: List<Int>): Bluetooth {
+    val context = LocalContext.current
+    val bt = remember { Bluetooth(context) }
+    LaunchedEffect(bt.allowed) { bt.refresh(profiles) }
+    return bt
+}
+
+/** A page of the TV's Settings by its slice (the way the TV's own menus open them). */
+private fun slicePage(path: String): Intent =
+    Intent("android.settings.SLICE_SETTINGS")
+        .setClassName("com.android.tv.settings", "com.android.tv.settings.slice.SliceActivity")
+        .putExtra("slice_uri", "content://com.android.tv.settings.accessories.sliceprovider/$path")
+
+/** The TV's own page for a paired device: its name, then Connect (or Disconnect), Rename, Forget. */
+private fun devicePage(d: BtDevice): Intent = slicePage("device/${d.address}")
+
+/**
+ * Opens [d]'s page and has Haven's Home button service press [action] there, then go Back to
+ * Haven. Without the service the page just stays open for you to press it.
+ */
+private fun pressOnDevicePage(context: Context, d: BtDevice, action: String) {
+    HomeOverrideService.pressInTvSettings(action, d.name)
+    openSystemPage(context, devicePage(d))
+}
+
+/** Runs [action] each time Haven comes back to the front. */
+@Composable
+private fun OnResume(action: suspend () -> Unit) {
+    val owner = LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
+    val latest by rememberUpdatedState(action)
+    DisposableEffect(owner) {
+        val observer = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) scope.launch { latest() } }
+        owner.lifecycle.addObserver(observer)
+        onDispose { owner.lifecycle.removeObserver(observer) }
     }
 }
 

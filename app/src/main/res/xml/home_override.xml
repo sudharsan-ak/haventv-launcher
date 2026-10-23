@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Haven's Home button. Listens to the Home key itself (like Projectivy and Button Mapper) and to
-  which app is in front, by package name. The one exception that reads screen text: while you're
-  pairing Haven with the TV, it reads the PIN from Sony's registration popup (nothing else).
+  which app is in front, by package name. Two exceptions read screen text, each only while Haven
+  is waiting for it:
+  - while you're pairing Haven with the TV, it reads the PIN from Sony's registration popup;
+  - after you pick a Bluetooth speaker in Sound, it presses Connect or Disconnect on that device's
+    page in the TV's Settings app (com.android.tv.settings), then goes Back. Nothing else is read
+    or pressed, and it stops after 10 s.
 -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowStateChanged"
