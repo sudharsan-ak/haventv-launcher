@@ -11,12 +11,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -169,19 +171,20 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
             w.loadDay(day, force = true)
         }
     }
-    HavenOverlay(dim = 0.45f, onDismiss = close) {
+    // Compact and frosted like the settings panels, over a home dimmed and blurred a bit more.
+    HavenOverlay(dim = 0.35f, onDismiss = close, blur = 30) {
         Column(
-            Modifier.align(Alignment.Center).width(820.dp).fillMaxHeight(0.88f)
-                .glassPanel(colors, RoundedCornerShape(28.dp), alpha = 0.92f)
+            Modifier.align(Alignment.Center).width(560.dp).fillMaxHeight(0.86f)
+                .glassPanel(colors, RoundedCornerShape(24.dp))
                 .verticalScroll(rememberScrollState())
-                .padding(26.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                NetImage(w, Nba.LEAGUE_LOGO, 34.dp)
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                NetImage(w, Nba.LEAGUE_LOGO, 28.dp)
                 Column(Modifier.weight(1f)) {
                     Eyebrow("NBA · ${dayWord(day, today)}", colors)
-                    Text(day.format(dateLineFmt), color = colors.ink, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    Text(day.format(dateLineFmt), color = colors.ink, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 }
                 CloseButton(colors, onClick = close)
             }
@@ -275,21 +278,24 @@ private fun DayMenu(colors: ThemeColors, today: LocalDate, current: LocalDate, o
 @Composable
 private fun ScoreRow(state: HavenState, g: Game, colors: ThemeColors, highlighted: Boolean, onClick: () -> Unit) {
     val w = state.watchNow
-    GlassCard(colors, Modifier.fillMaxWidth(), selected = highlighted, onClick = onClick) { ink ->
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    GlassCard(
+        colors, Modifier.fillMaxWidth().heightIn(min = 56.dp), selected = highlighted,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp), onClick = onClick,
+    ) { ink ->
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ScoreSide(w, g.away, ink, Modifier.weight(1f), home = false)
-            Column(Modifier.width(180.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(Modifier.width(128.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 when (g.state) {
-                    GameState.PRE -> Text(g.start.atZone(ZoneId.systemDefault()).format(tipFmt), color = ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    GameState.PRE -> Text(g.start.atZone(ZoneId.systemDefault()).format(tipFmt), color = ink, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     GameState.LIVE -> {
-                        Text("${g.away.score} – ${g.home.score}", color = ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text("${g.away.score} – ${g.home.score}", color = ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                             Box(Modifier.size(7.dp).clip(CircleShape).background(LIVE_RED))
                             Text(g.clockLine(), color = ink, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                     GameState.FINAL -> {
-                        Text("${g.away.score} – ${g.home.score}", color = ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text("${g.away.score} – ${g.home.score}", color = ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         Text("Final", color = ink.copy(alpha = 0.75f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
@@ -302,7 +308,7 @@ private fun ScoreRow(state: HavenState, g: Game, colors: ThemeColors, highlighte
                 }
             }
             ScoreSide(w, g.home, ink, Modifier.weight(1f), home = true)
-            Text("›", color = ink.copy(alpha = 0.7f), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text("›", color = ink.copy(alpha = 0.7f), fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -310,13 +316,13 @@ private fun ScoreRow(state: HavenState, g: Game, colors: ThemeColors, highlighte
 /** Logo, short name and record; mirrored for the home team so the logos sit on the outside. */
 @Composable
 private fun ScoreSide(w: WatchNow, team: Team, ink: Color, modifier: Modifier, home: Boolean) {
-    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp, if (home) Alignment.End else Alignment.Start)) {
-        if (!home) NetImage(w, Nba.logo(team), 30.dp)
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp, if (home) Alignment.End else Alignment.Start)) {
+        if (!home) NetImage(w, Nba.logo(team), 32.dp)
         Column(horizontalAlignment = if (home) Alignment.End else Alignment.Start) {
-            Text(team.name, color = ink, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (team.record.isNotBlank()) Text("(${team.record})", color = ink.copy(alpha = 0.65f), fontSize = 11.sp)
+            Text(team.name, color = ink, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (team.record.isNotBlank()) Text("(${team.record})", color = ink.copy(alpha = 0.65f), fontSize = 10.sp)
         }
-        if (home) NetImage(w, Nba.logo(team), 30.dp)
+        if (home) NetImage(w, Nba.logo(team), 32.dp)
     }
 }
 

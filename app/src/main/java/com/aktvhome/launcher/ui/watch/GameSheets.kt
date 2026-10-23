@@ -132,11 +132,12 @@ fun GameDetail(state: HavenState, colors: ThemeColors, id: String) {
     val scrolls = remember(id) { mutableMapOf<DetailTab, ScrollState>() }
     val watchFocus = remember { FocusRequester() }
 
-    HavenOverlay(dim = 0.45f, onDismiss = close) {
+    // Compact and frosted like the settings panels, over a home dimmed and blurred a bit more.
+    HavenOverlay(dim = 0.35f, onDismiss = close, blur = 30) {
         Column(
-            Modifier.align(Alignment.Center).width(760.dp).fillMaxHeight(0.9f)
-                .glassPanel(colors, RoundedCornerShape(26.dp), alpha = 0.95f).padding(horizontal = 24.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            Modifier.align(Alignment.Center).width(600.dp).fillMaxHeight(0.88f)
+                .glassPanel(colors, RoundedCornerShape(24.dp)).padding(horizontal = 18.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f)) {
@@ -146,7 +147,7 @@ fun GameDetail(state: HavenState, colors: ThemeColors, id: String) {
                     }
                     Text(
                         game?.let { "${it.away.name} vs ${it.home.name}" } ?: "Game details",
-                        color = colors.ink, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        color = colors.ink, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                 }
                 CloseButton(colors, onClick = close)
@@ -225,7 +226,7 @@ private fun StatusPill(g: Game, colors: ThemeColors) {
 private fun ScoreBlock(w: WatchNow, g: Game, colors: ThemeColors) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         TeamScore(w, g.away, g.state, colors, Modifier.weight(1f))
-        Column(Modifier.width(170.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.width(140.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             when (g.state) {
                 GameState.PRE -> {
                     Text(g.start.atZone(ZoneId.systemDefault()).format(clockFmt), color = colors.ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -248,11 +249,11 @@ private fun ScoreBlock(w: WatchNow, g: Game, colors: ThemeColors) {
 @Composable
 private fun TeamScore(w: WatchNow, t: Team, st: GameState, colors: ThemeColors, modifier: Modifier) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)) {
-        NetImage(w, Nba.logo(t), 44.dp)
+        NetImage(w, Nba.logo(t), 32.dp)
         Column {
-            Text(t.abbr, color = colors.ink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            if (st != GameState.PRE) Text(t.score, color = colors.ink, fontSize = 32.sp, fontWeight = FontWeight.Bold)
-            if (t.record.isNotBlank()) Text(t.record, color = colors.inkSoft, fontSize = 11.sp)
+            Text(t.abbr, color = colors.ink, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            if (st != GameState.PRE) Text(t.score, color = colors.ink, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            if (t.record.isNotBlank()) Text(t.record, color = colors.inkSoft, fontSize = 10.sp)
         }
     }
 }
