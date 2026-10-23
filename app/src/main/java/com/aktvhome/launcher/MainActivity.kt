@@ -126,19 +126,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             delay(5_000)
             HomeOverride.reconnectIfStale(applicationContext)
-        }
-        // One-time, read-only report of the TV's settings for designing Quick settings pages.
-        lifecycleScope.launch {
-            val prefs = getSharedPreferences("sony_auth", MODE_PRIVATE)
-            if (!prefs.getBoolean("reportWritten", false) && state.sony.paired) {
-                val file = java.io.File(
-                    android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS),
-                    "Haven/sony-report.json",
-                )
-                runCatching { state.sony.writeReport(file) }.onSuccess { prefs.edit().putBoolean("reportWritten", true).apply() }
-            }
-        }
-    }
+        }    }
 
     override fun onStop() {
         unregisterReceiver(packageReceiver)

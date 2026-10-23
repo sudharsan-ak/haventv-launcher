@@ -27,6 +27,12 @@
         tools:ignore="ScopedStorage" />
     <!-- Reads whether Private DNS is verified or a VPN is overriding it (status line). -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Wi-Fi page in Quick settings: network name, signal and nearby networks. Android only
+         shows Wi-Fi names to apps with location access (asked once with Android's own popup). -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <!-- Lets "Keep enforced" restore Private DNS after a restart. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
@@ -50,6 +56,9 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
         android:theme="@style/Theme.Haven">
+
+        <!-- Haven's sleep timer: powers the TV off when it runs out. -->
+        <receiver android:name=".data.SleepTimerReceiver" android:exported="false" />
 
         <activity
             android:name=".MainActivity"

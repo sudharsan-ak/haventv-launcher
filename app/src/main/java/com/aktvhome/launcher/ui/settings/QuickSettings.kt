@@ -40,7 +40,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Shield
-import androidx.compose.material.icons.rounded.Speaker
+import androidx.compose.material.icons.rounded.EnergySavingsLeaf
+import com.aktvhome.launcher.data.SleepTimer
 import androidx.compose.material.icons.rounded.Wallpaper
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.Icon
@@ -73,8 +74,9 @@ private inline fun <reified E : Enum<E>> E.next(): E = enumValues<E>().let { it[
 
 /**
  * The small card under the gear. Haven tiles step to the next value on OK, and the home screen
- * behind changes straight away. TV tiles open the TV's own page for that setting (Sony's settings
- * can only be changed there).
+ * behind changes straight away. TV tiles open a page right here (‹ Back returns), read from and
+ * changed through the TV's control service; Screen opens Sony's own page, since the control
+ * service doesn't offer it.
  */
 @Composable
 fun QuickSettings(state: HavenState, colors: ThemeColors) {
@@ -84,6 +86,26 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
     val first = remember { FocusRequester() }
     val close = { state.overlay = Overlay.NONE }
     val open = { intent: Intent -> openSystemPage(context, intent) }
+    val tv = remember { TvSettings(state.sony) }
+    var page by remember { mutableStateOf<TvPage?>(null) }
+    // The tile each page was opened from, so Back lands on it again.
+    val tileFocus = remember { TvPage.entries.associateWith { FocusRequester() } }
+    val pageFirst = remember { FocusRequester() }
+    val focusPending = remember { booleanArrayOf(false) }
+    var lastPage by remember { mutableStateOf<TvPage?>(null) }
+    var sleepEnds by remember { mutableStateOf(SleepTimer.endsAt(context)) }
+
+    fun show(next: TvPage?) {
+        if (next != null) lastPage = next
+        if (next == null) sleepEnds = SleepTimer.endsAt(context)
+        tv.problem = null
+        focusPending[0] = true
+        page = next
+    }
+
+    LaunchedEffect(Unit) { tv.load() }
+    // A page opened before the TV answered gets its focus once the settings arrive.
+    LaunchedEffect(tv.loaded) { if (tv.loaded && page != null) runCatching { pageFirst.requestFocus() } }
 
     HavenOverlay(dim = 0.12f, onDismiss = close) {
         val panelShape = RoundedCornerShape(26.dp)
@@ -93,20 +115,30 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
                 .padding(top = 60.dp, end = 40.dp)
                 .width(460.dp)
                 .glassPanel(colors, panelShape, alpha = 0.66f)
+                .onPreviewKeyEvent { e ->
+                    // Back on a page returns to the tiles instead of closing Quick settings.
+                    if (page == null || e.nativeKeyEvent.keyCode != android.view.KeyEvent.KEYCODE_BACK) return@onPreviewKeyEvent false
+                    if (e.type == KeyEventType.KeyUp) show(null)
+                    true
+                }
                 .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            val current = page
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (current != null) BarButton("‹ Back", colors, Modifier.width(96.dp)) { show(null) }
                 Column(Modifier.weight(1f)) {
-                    Eyebrow("Haven · Preferences", colors)
-                    Text("Quick settings", color = colors.ink, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Eyebrow(if (current == null) "Haven · Preferences" else "Quick settings · TV", colors)
+                    Text(current?.title ?: "Quick settings", color = colors.ink, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 }
                 CloseButton(colors, onClick = close)
             }
 
-            val dns by rememberDnsView(state)
-            val dnsOn = dns.active?.host != null || dns.active == DnsChoice.CUSTOM
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (current != null) {
+                TvPageBody(current, state, tv, colors, pageFirst)
+            } else {
+                val dns by rememberDnsView(state)
+                val dnsOn = dns.active?.host != null || dns.active == DnsChoice.CUSTOM
                 TileRow {
                     QuickTile("Theme", s.theme.label, Icons.Rounded.Palette, colors, first) {
                         store.update { it.copy(theme = it.theme.next()) }
@@ -131,42 +163,47 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
                 Spacer(Modifier.height(2.dp))
                 Eyebrow("TV", colors)
                 TileRow {
-                    QuickTile("Picture", brightnessText(context), Icons.Rounded.Image, colors) {
-                        open(sony("com.sony.dtv.configsettings", "PictureSettingActivity", "com.sony.dtv.base.picturesettings"))
+                    QuickTile("Picture", tv.pictureSummary() ?: "Picture settings", Icons.Rounded.Image, colors, tileFocus[TvPage.PICTURE]) {
+                        show(TvPage.PICTURE)
                     }
-                    QuickTile("Sound", "Sound settings", Icons.Rounded.MusicNote, colors) {
-                        open(sony("com.sony.dtv.configsettings", "SoundSettingActivity", "com.sony.dtv.base.soundsettings"))
+                    QuickTile("Sound", tv.soundSummary() ?: "Sound & output", Icons.Rounded.MusicNote, colors, tileFocus[TvPage.SOUND]) {
+                        show(TvPage.SOUND)
                     }
-                    QuickTile("Audio system", "Speakers & soundbar", Icons.Rounded.Speaker, colors) {
-                        open(sony("com.sony.dtv.configsettings", "AudioSystemSettingsActivity", "com.sony.dtv.base.audiosystemsettings"))
+                    QuickTile("Power saving", tv.saving?.let(::savingLabel) ?: "Energy", Icons.Rounded.EnergySavingsLeaf, colors, tileFocus[TvPage.SAVING]) {
+                        show(TvPage.SAVING)
                     }
                 }
                 TileRow {
                     QuickTile("Screen", "Wide mode & more", Icons.Rounded.AspectRatio, colors) {
                         open(sony("com.sony.dtv.configsettings", "ScreenSettingActivity", "com.sony.dtv.base.screensettings"))
                     }
-                    QuickTile("Wi-Fi", wifiText(context), Icons.Rounded.Wifi, colors) {
-                        open(Intent(Settings.ACTION_WIFI_SETTINGS))
+                    QuickTile("Wi-Fi", wifiText(context), Icons.Rounded.Wifi, colors, tileFocus[TvPage.WIFI]) {
+                        show(TvPage.WIFI)
                     }
-                    QuickTile("Sleep timer", "Sony timers", Icons.Rounded.Bedtime, colors) {
-                        open(
-                            Intent("com.sony.dtv.timers.intent.action.SLEEP_TIMER")
-                                .setClassName("com.sony.dtv.timers", "com.sony.dtv.activity.TimersMainActivity"),
-                        )
+                    QuickTile("Sleep timer", sleepEnds?.let { "Off at ${timeText(it)}" } ?: "Off", Icons.Rounded.Bedtime, colors, tileFocus[TvPage.SLEEP]) {
+                        show(TvPage.SLEEP)
                     }
                 }
-            }
 
-            Spacer(Modifier.height(2.dp))
-            PowerArea(
-                state, colors,
-                onAllSettings = { state.overlay = Overlay.PERSONALIZE },
-                onAndroidSettings = { open(Intent(Settings.ACTION_SETTINGS)) },
-                onPoweringOff = close,
-            )
+                Spacer(Modifier.height(2.dp))
+                PowerArea(
+                    state, colors,
+                    onAllSettings = { state.overlay = Overlay.PERSONALIZE },
+                    onAndroidSettings = { open(Intent(Settings.ACTION_SETTINGS)) },
+                    onPoweringOff = close,
+                )
+            }
         }
     }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    // Same-frame focus move when switching between tiles and a page (no flash on another tile).
+    SideEffect {
+        if (focusPending[0]) {
+            focusPending[0] = false
+            val target = if (page != null) pageFirst else lastPage?.let { tileFocus[it] } ?: first
+            runCatching { target.requestFocus() }
+        }
+    }
 }
 
 /** One line of three equal tiles. */
@@ -390,13 +427,6 @@ private fun openSystemPage(context: Context, intent: Intent) {
     val flags = Intent.FLAG_ACTIVITY_NEW_TASK
     runCatching { context.startActivity(intent.addFlags(flags)) }
         .onFailure { runCatching { context.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(flags)) } }
-}
-
-/** Sony's picture Brightness shows as a percent of Android's screen brightness (102 of 255 = 40). */
-private fun brightnessText(context: Context): String {
-    val raw = runCatching { Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS) }.getOrNull()
-        ?: return "Picture settings"
-    return "Brightness ${Math.round(raw * 100 / 255f)}"
 }
 
 private fun wifiText(context: Context): String {

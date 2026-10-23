@@ -4,8 +4,37 @@ import android.content.Context
 import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+
+/** One TV setting: its current value and either a list of choices or a number range. */
+data class SonySetting(
+    val target: String,
+    val current: String,
+    val choices: List<String>,
+    val min: Int?,
+    val max: Int?,
+    val step: Int,
+) {
+    val isRange: Boolean get() = min != null && max != null
+
+    companion object {
+        fun from(o: JSONObject): SonySetting {
+            val cands = o.optJSONArray("candidate")
+            val items = (0 until (cands?.length() ?: 0)).map { cands!!.getJSONObject(it) }
+            val range = items.firstOrNull { it.has("max") }
+            return SonySetting(
+                o.optString("target"), o.optString("currentValue"),
+                items.mapNotNull { it.optString("value").ifBlank { null } },
+                range?.optInt("min"), range?.optInt("max"), range?.optInt("step", 1)?.coerceAtLeast(1) ?: 1,
+            )
+        }
+    }
+}
+
+data class SonyVolume(val target: String, val volume: Int, val mute: Boolean, val min: Int, val max: Int)
 
 /**
  * Power off and restart through the BRAVIA's own control API (Sony's IP control), reached on the
@@ -36,54 +65,71 @@ class SonyControl(context: Context) {
 
     suspend fun restart(): Result = command("system", """{"method":"requestReboot","id":1,"params":[],"version":"1.0"}""")
 
-    /**
-     * One-time, read-only look at what the TV's control service reports (picture, sound, screen,
-     * power saving, network), saved to Download/Haven/sony-report.json for designing the Quick
-     * settings pages. Only "get" calls; nothing on the TV changes.
-     */
-    suspend fun writeReport(file: java.io.File) {
-        if (!paired) return
-        val calls = listOf(
-            "video" to """{"method":"getPictureQualitySettings","id":1,"params":[{"target":""}],"version":"1.0"}""",
-            "video" to """{"method":"getScreenRotation","id":1,"params":[],"version":"1.0"}""",
-            "video" to """{"method":"getMethodTypes","id":1,"params":[""],"version":"1.0"}""",
-            "audio" to """{"method":"getSoundSettings","id":1,"params":[{"target":""}],"version":"1.1"}""",
-            "audio" to """{"method":"getSpeakerSettings","id":1,"params":[{"target":""}],"version":"1.0"}""",
-            "audio" to """{"method":"getVolumeInformation","id":1,"params":[],"version":"1.0"}""",
-            "audio" to """{"method":"getMethodTypes","id":1,"params":[""],"version":"1.0"}""",
-            "videoScreen" to """{"method":"getSceneSetting","id":1,"params":[],"version":"1.0"}""",
-            "videoScreen" to """{"method":"getBannerMode","id":1,"params":[],"version":"1.0"}""",
-            "videoScreen" to """{"method":"getAudioSourceScreen","id":1,"params":[],"version":"1.0"}""",
-            "videoScreen" to """{"method":"getMultiScreenMode","id":1,"params":[],"version":"1.1"}""",
-            "videoScreen" to """{"method":"getMethodTypes","id":1,"params":[""],"version":"1.0"}""",
-            "system" to """{"method":"getPowerSavingMode","id":1,"params":[],"version":"1.0"}""",
-            "system" to """{"method":"getNetworkSettings","id":1,"params":[{"netif":""}],"version":"1.0"}""",
-            "system" to """{"method":"getLEDIndicatorStatus","id":1,"params":[],"version":"1.0"}""",
-            "system" to """{"method":"getSystemSupportedFunction","id":1,"params":[],"version":"1.0"}""",
-            "system" to """{"method":"getMethodTypes","id":1,"params":[""],"version":"1.0"}""",
-            "avContent" to """{"method":"getPlayingContentInfo","id":1,"params":[],"version":"1.0"}""",
-            "avContent" to """{"method":"getCurrentExternalInputsStatus","id":1,"params":[],"version":"1.1"}""",
-        )
-        val out = StringBuilder("{\n")
-        calls.forEachIndexed { i, (service, body) ->
-            var reply = read(service, body)
-            if (reply.first == 401 || reply.first == 403) {
-                register(pin = null)
-                reply = read(service, body)
+    // ---- Picture, sound and power saving (read and change, as the TV's own menus do) ----
+
+    /** Picture settings the TV offers, in its order, without the ones it marks unavailable. */
+    suspend fun pictureSettings(): List<SonySetting>? =
+        call("video", "getPictureQualitySettings", JSONArray().put(JSONObject().put("target", "")))
+            ?.optJSONArray("result")?.optJSONArray(0)?.let { list ->
+                (0 until list.length()).map { list.getJSONObject(it) }
+                    .filter { it.optBoolean("isAvailable", true) }
+                    .map(SonySetting::from)
             }
-            val method = Regex("\"method\":\"(\\w+)\"").find(body)?.groupValues?.get(1)
-            val json = reply.second.ifBlank { "null" }.takeIf { it.trimStart().startsWith("{") } ?: org.json.JSONObject.quote(reply.second)
-            out.append("  \"$service.$method\": {\"http\": ${reply.first}, \"reply\": $json}")
-            out.append(if (i < calls.lastIndex) ",\n" else "\n")
+
+    suspend fun setPicture(target: String, value: String): Boolean =
+        call("video", "setPictureQualitySettings", settings(target, value)) != null
+
+    /** "speaker", "hdmi" (audio system) or "speaker_hdmi". */
+    suspend fun soundOutput(): String? =
+        call("audio", "getSoundSettings", JSONArray().put(JSONObject().put("target", "outputTerminal")), "1.1")
+            ?.optJSONArray("result")?.optJSONArray(0)?.optJSONObject(0)?.optString("currentValue")
+
+    suspend fun setSoundOutput(value: String): Boolean =
+        call("audio", "setSoundSettings", settings("outputTerminal", value), "1.1") != null
+
+    /** Volume of whatever is playing the sound now (TV speakers or the audio system). */
+    suspend fun volume(): SonyVolume? =
+        call("audio", "getVolumeInformation", JSONArray())?.optJSONArray("result")?.optJSONArray(0)?.optJSONObject(0)?.let {
+            SonyVolume(it.optString("target"), it.optInt("volume"), it.optBoolean("mute"), it.optInt("minVolume", 0), it.optInt("maxVolume", 100))
         }
-        out.append("}\n")
-        withContext(Dispatchers.IO) {
-            file.parentFile?.mkdirs()
-            file.writeText(out.toString())
+
+    suspend fun setVolume(target: String, volume: Int): Boolean =
+        call("audio", "setAudioVolume", JSONArray().put(JSONObject().put("target", target).put("volume", volume.toString()))) != null
+
+    suspend fun setMute(mute: Boolean): Boolean =
+        call("audio", "setAudioMute", JSONArray().put(JSONObject().put("status", mute))) != null
+
+    suspend fun subwooferLevel(): Int? =
+        call("audio", "getSpeakerSettings", JSONArray().put(JSONObject().put("target", "subwooferLevel")))
+            ?.optJSONArray("result")?.optJSONArray(0)?.optJSONObject(0)?.optString("currentValue")?.toIntOrNull()
+
+    suspend fun setSubwooferLevel(level: Int): Boolean =
+        call("audio", "setSpeakerSettings", settings("subwooferLevel", level.toString())) != null
+
+    /** "off", "low", "high" or "pictureOff". */
+    suspend fun powerSaving(): String? =
+        call("system", "getPowerSavingMode", JSONArray())?.optJSONArray("result")?.optJSONObject(0)?.optString("mode")
+
+    suspend fun setPowerSaving(mode: String): Boolean =
+        call("system", "setPowerSavingMode", JSONArray().put(JSONObject().put("mode", mode))) != null
+
+    private fun settings(target: String, value: String): JSONArray =
+        JSONArray().put(JSONObject().put("settings", JSONArray().put(JSONObject().put("target", target).put("value", value))))
+
+    /** One call to the TV's control service; renews the login once if it's refused. Null on any error. */
+    private suspend fun call(service: String, method: String, params: JSONArray, version: String = "1.0"): JSONObject? {
+        if (!paired) return null
+        val body = JSONObject().put("method", method).put("id", 1).put("params", params).put("version", version).toString()
+        var reply = read(service, body)
+        if (reply.first == 401 || reply.first == 403) {
+            if (register(pin = null) != Result.DONE) return null
+            reply = read(service, body)
         }
+        if (reply.first != 200) return null
+        return runCatching { JSONObject(reply.second) }.getOrNull()?.takeIf { !it.has("error") }
     }
 
-    /** POSTs a read-only call and returns (HTTP status, body). */
+    /** POSTs a call and returns (HTTP status, body). */
     private suspend fun read(service: String, body: String): Pair<Int, String> = withContext(Dispatchers.IO) {
         runCatching {
             val conn = open(service)
