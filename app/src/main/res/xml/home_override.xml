@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Haven's Home button. Listens to the Home key itself (like Projectivy and Button Mapper) and to
-  which app is in front. It only looks at app package names; it never reads what's on screen.
+  which app is in front, by package name. The one exception that reads screen text: while you're
+  pairing Haven with the TV, it reads the PIN from Sony's registration popup (nothing else).
 -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowStateChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagRequestFilterKeyEvents"
+    android:accessibilityFlags="flagRequestFilterKeyEvents|flagRetrieveInteractiveWindows"
     android:canRequestFilterKeyEvents="true"
     android:canRetrieveWindowContent="true"
     android:description="@string/home_override_description"

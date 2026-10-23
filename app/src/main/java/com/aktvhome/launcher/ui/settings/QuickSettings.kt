@@ -32,8 +32,11 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import com.aktvhome.launcher.data.SonyControl
+import com.aktvhome.launcher.HomeOverrideService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Speaker
@@ -80,7 +83,6 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
     val first = remember { FocusRequester() }
     val close = { state.overlay = Overlay.NONE }
     val open = { intent: Intent -> openSystemPage(context, intent) }
-    var pinShowing by remember { mutableStateOf(false) }
 
     HavenOverlay(dim = 0.12f, onDismiss = close) {
         val panelShape = RoundedCornerShape(26.dp)
@@ -103,8 +105,7 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
 
             val dns by rememberDnsView(state)
             val dnsOn = dns.active?.host != null || dns.active == DnsChoice.CUSTOM
-            // The PIN pad needs the room, so the tiles step aside while pairing.
-            if (!pinShowing) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 TileRow {
                     QuickTile("Theme", s.theme.label, Icons.Rounded.Palette, colors, first) {
                         store.update { it.copy(theme = it.theme.next()) }
@@ -161,7 +162,6 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
                 onAllSettings = { state.overlay = Overlay.PERSONALIZE },
                 onAndroidSettings = { open(Intent(Settings.ACTION_SETTINGS)) },
                 onPoweringOff = close,
-                onPinShowing = { pinShowing = it },
             )
         }
     }
@@ -209,12 +209,13 @@ private fun RowScope.QuickTile(
     }
 }
 
-private enum class PowerStep { BAR, CHOOSE, CONFIRM_RESTART, PIN }
+private enum class PowerStep { BAR, CHOOSE, CONFIRM_RESTART }
 
 /**
  * The bottom bar: All settings, Android settings and a power button. Power swaps the bar in place
- * for Power off / Restart / Cancel (Restart asks once more). The first time, it pairs Haven with
- * the TV instead: the TV shows a PIN and a number pad appears here.
+ * for Power off / Restart / Cancel (Restart asks once more). The first time, it pairs Haven with the
+ * TV: Sony shows a PIN popup over Haven, and Haven's Home button service reads the PIN from it and
+ * submits it (the popup takes focus and cancels the PIN when closed, so it can't be typed here).
  */
 @Composable
 private fun PowerArea(
@@ -223,14 +224,12 @@ private fun PowerArea(
     onAllSettings: () -> Unit,
     onAndroidSettings: () -> Unit,
     onPoweringOff: () -> Unit,
-    onPinShowing: (Boolean) -> Unit,
 ) {
     val sony = state.sony
     val scope = rememberCoroutineScope()
     var step by remember { mutableStateOf(PowerStep.BAR) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
-    var pin by remember { mutableStateOf("") }
     val stepFocus = remember { FocusRequester() }
     val powerFocus = remember { FocusRequester() }
     var moved by remember { mutableStateOf(false) }
@@ -240,23 +239,40 @@ private fun PowerArea(
         step = next
     }
 
-    val unreachable = "Couldn't reach the TV's control service. Check Settings › Remote device settings › Control remotely is on."
-
-    fun pair() {
-        scope.launch {
-            busy = true
-            message = null
-            val r = sony.startPairing()
-            busy = false
-            when (r) {
-                SonyControl.Result.DONE -> go(PowerStep.CHOOSE)
-                SonyControl.Result.NEEDS_PAIRING -> {
-                    pin = ""
-                    message = "Enter the PIN shown on the TV."
-                    go(PowerStep.PIN)
-                }
-                SonyControl.Result.FAILED -> message = unreachable
+    suspend fun pair() {
+        if (!HomeOverrideService.canReadPin) {
+            message = "Pairing needs Haven's Home button service. Turn it on in All settings › TV & network › Home button."
+            return
+        }
+        busy = true
+        message = "Pairing with the TV…"
+        when (sony.startPairing()) {
+            SonyControl.Result.DONE -> { busy = false; message = null; go(PowerStep.CHOOSE); return }
+            SonyControl.Result.FAILED -> {
+                busy = false
+                message = "Couldn't reach the TV's control service. Check Settings › Remote device settings › Control remotely is on."
+                return
             }
+            SonyControl.Result.NEEDS_PAIRING -> Unit
+        }
+        // Sony's popup is up now; read its PIN (it can take a moment to appear).
+        var pin: String? = null
+        repeat(25) {
+            if (pin == null) {
+                delay(400)
+                pin = withContext(Dispatchers.Default) { HomeOverrideService.readSonyPin() }
+            }
+        }
+        val found = pin
+        val result = if (found != null) sony.submitPin(found) else null
+        busy = false
+        when (result) {
+            SonyControl.Result.DONE -> {
+                message = "Paired. Haven now shows in Remote device settings."
+                go(PowerStep.CHOOSE)
+            }
+            null -> message = "Couldn't read the PIN from the TV's popup. Press Reject on it, then try ⏻ again."
+            else -> message = "Pairing didn't finish. Press ⏻ to try again."
         }
     }
 
@@ -274,28 +290,6 @@ private fun PowerArea(
         }
     }
 
-    fun submit() {
-        if (pin.length < 4) return
-        scope.launch {
-            busy = true
-            val r = sony.submitPin(pin)
-            busy = false
-            when (r) {
-                SonyControl.Result.DONE -> {
-                    message = "Paired. Haven now shows in Remote device settings."
-                    go(PowerStep.CHOOSE)
-                }
-                SonyControl.Result.NEEDS_PAIRING -> {
-                    // A wrong PIN closes the TV's prompt; ask for a new one.
-                    pin = ""
-                    sony.startPairing()
-                    message = "That PIN didn't match. Enter the new one on the TV."
-                }
-                SonyControl.Result.FAILED -> message = unreachable
-            }
-        }
-    }
-
     Column(
         Modifier.onPreviewKeyEvent { e ->
             // Back steps out of the power choices instead of closing Quick settings.
@@ -309,13 +303,13 @@ private fun PowerArea(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         message?.let { Text(it, color = colors.ink, fontSize = 11.sp) }
-        if (busy) Text("Talking to the TV…", color = colors.inkSoft, fontSize = 11.sp)
         when (step) {
             PowerStep.BAR -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 BarButton("All settings", colors, Modifier.weight(1f), onClick = onAllSettings)
                 BarButton("Android settings", colors, Modifier.weight(1f), onClick = onAndroidSettings)
                 BarButton(null, colors, Modifier.width(48.dp), Icons.Rounded.PowerSettingsNew, powerFocus) {
-                    if (sony.paired) go(PowerStep.CHOOSE) else pair()
+                    if (busy) return@BarButton
+                    if (sony.paired) go(PowerStep.CHOOSE) else scope.launch { pair() }
                 }
             }
             PowerStep.CHOOSE -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -332,32 +326,11 @@ private fun PowerArea(
                 }
                 BarButton("No", colors, Modifier.width(96.dp)) { go(PowerStep.CHOOSE) }
             }
-            PowerStep.PIN -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    if (pin.isEmpty()) "PIN: ____" else "PIN: $pin",
-                    color = colors.ink, fontSize = 16.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp,
-                )
-                listOf(listOf("1", "2", "3", "4", "5"), listOf("6", "7", "8", "9", "0"), listOf("⌫", "Cancel", "OK")).forEachIndexed { r, keys ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        keys.forEachIndexed { c, k ->
-                            BarButton(k, colors, Modifier.weight(1f), focusRequester = if (r == 0 && c == 0) stepFocus else null) {
-                                when (k) {
-                                    "⌫" -> pin = pin.dropLast(1)
-                                    "Cancel" -> { message = null; go(PowerStep.BAR) }
-                                    "OK" -> submit()
-                                    else -> if (pin.length < 8) pin += k
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 
     // Each step starts with focus on its first button; back on the bar, focus returns to power.
     LaunchedEffect(step) {
-        onPinShowing(step == PowerStep.PIN)
         if (!moved) return@LaunchedEffect
         delay(60)
         runCatching { (if (step == PowerStep.BAR) powerFocus else stepFocus).requestFocus() }
