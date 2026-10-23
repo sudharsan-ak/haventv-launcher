@@ -215,11 +215,11 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
                     }
                     if (my.isNotEmpty()) {
                         SectionLabel("My team", colors)
-                        my.forEach { g -> key(g.espnId) { ScoreRow(state, g, colors, highlighted = true) { state.detailGame = g } } }
+                        my.forEach { g -> key(g.espnId) { ScoreRow(state, g, colors, highlighted = true) { state.detailGameId = g.espnId } } }
                     }
                     if (other.isNotEmpty()) {
                         SectionLabel("Other games", colors)
-                        other.forEach { g -> key(g.espnId) { ScoreRow(state, g, colors, highlighted = false) { state.detailGame = g } } }
+                        other.forEach { g -> key(g.espnId) { ScoreRow(state, g, colors, highlighted = false) { state.detailGameId = g.espnId } } }
                     }
                 }
             }
@@ -333,7 +333,7 @@ fun LivePanel(state: HavenState, colors: ThemeColors) {
         val liveGames = if (state.settingsStore.settings.watchNba) w.games[w.today()]?.filter { it.state == GameState.LIVE }.orEmpty() else emptyList()
         if (liveGames.isNotEmpty()) {
             Text("Live games", color = colors.ink, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            liveGames.forEach { g -> GameRow(g, state.settingsStore.settings.favoriteTeam, colors) { state.detailGame = g } }
+            liveGames.forEach { g -> GameRow(g, state.settingsStore.settings.favoriteTeam, colors) { state.detailGameId = g.espnId } }
         }
         LiveGrid(state, colors, first)
     }

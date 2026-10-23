@@ -61,8 +61,11 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
         private set
 
     var overlay by mutableStateOf(Overlay.NONE)
-    /** NBA game shown in the game detail view (from the strip, the drawer or the schedule). */
-    var detailGame by mutableStateOf<com.aktvhome.launcher.data.Game?>(null)
+    /**
+     * ESPN id of the game shown in the game details (from the games list, the drawer or the
+     * schedule). Only the id: the details always show the latest data for it.
+     */
+    var detailGameId by mutableStateOf<String?>(null)
     /** Whether the favorite team's full schedule is open. */
     var scheduleOpen by mutableStateOf(false)
     /** Bumped each time the home screen comes back into view; themes key their welcome on it. */

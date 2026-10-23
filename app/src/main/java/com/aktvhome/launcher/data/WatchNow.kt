@@ -191,7 +191,14 @@ class WatchNow(
         }
     }
 
-    suspend fun boxScore(game: Game): BoxScore? = withContext(Dispatchers.IO) { runCatching { Nba.boxScore(game.espnId, game) }.getOrNull() }
+    /** A game's summary from ESPN, or null if it couldn't be fetched. */
+    suspend fun summary(espnId: String): GameSummary? = withContext(Dispatchers.IO) { runCatching { Nba.summary(espnId) }.getOrNull() }
+
+    /** A game already loaded (any day's scoreboard, or the team schedule), with when it was fetched. */
+    fun findGame(espnId: String): Pair<Game, Long>? {
+        for ((date, list) in games) list.firstOrNull { it.espnId == espnId }?.let { return it to (loadedAt[date] ?: 0L) }
+        return schedule.firstOrNull { it.espnId == espnId }?.let { it to scheduleAt }
+    }
 
     private fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
 }

@@ -89,7 +89,7 @@ class MainActivity : ComponentActivity() {
             }
             // Schedule and game detail stack on top of the drawer (or the home, from the strip).
             if (state.scheduleOpen) TeamSchedule(state, colors)
-            state.detailGame?.let { GameDetail(state, colors, it) }
+            state.detailGameId?.let { GameDetail(state, colors, it) }
             if (state.backup.offerRestore) RestorePrompt(state, colors)
         }
     }
@@ -100,7 +100,7 @@ class MainActivity : ComponentActivity() {
         if (!intent.hasCategory(Intent.CATEGORY_HOME)) return
         state.isHome = true
         state.overlay = Overlay.NONE
-        state.detailGame = null
+        state.detailGameId = null
         state.scheduleOpen = false
         state.menuFor = null
         state.moving = null

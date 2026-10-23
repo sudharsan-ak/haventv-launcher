@@ -12,11 +12,6 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-/** One player line in the game detail box score. */
-data class PlayerLine(val name: String, val pts: String, val reb: String, val ast: String)
-
-data class BoxScore(val away: List<PlayerLine>, val home: List<PlayerLine>)
-
 /**
  * NBA scores from ESPN's public (unofficial) site API, and NBA's own game IDs from nba.com's
  * games page, which the NBA app's links need. The two IDs differ and are matched by teams + date.
@@ -72,28 +67,96 @@ object Nba {
             .sortedBy { it.start }
     }
 
-    /** Top 5 scorers per team from the game summary, for the game detail view. */
-    fun boxScore(espnId: String, game: Game): BoxScore? {
+    /**
+     * Everything the game details show, from ESPN's game summary: the game itself (latest score,
+     * clock, records), line scores, plays, box score and team stats, and the season series.
+     */
+    fun summary(espnId: String): GameSummary {
         val o = JSONObject(get("$ESPN/summary?event=$espnId"))
-        val teams = o.optJSONObject("boxscore")?.optJSONArray("players") ?: return null
-        var away = emptyList<PlayerLine>()
-        var home = emptyList<PlayerLine>()
-        for (t in 0 until teams.length()) {
-            val team = teams.getJSONObject(t)
-            val abbr = team.getJSONObject("team").optString("abbreviation")
-            val stats = team.optJSONArray("statistics")?.optJSONObject(0) ?: continue
-            val labels = stats.getJSONArray("labels").strings()
-            val pi = labels.indexOf("PTS"); val ri = labels.indexOf("REB"); val ai = labels.indexOf("AST")
-            val athletes = stats.optJSONArray("athletes") ?: continue
-            val lines = (0 until athletes.length()).mapNotNull { i ->
-                val a = athletes.getJSONObject(i)
-                val s = a.optJSONArray("stats")?.strings() ?: return@mapNotNull null
-                if (s.isEmpty() || pi < 0) return@mapNotNull null
-                PlayerLine(a.getJSONObject("athlete").optString("shortName"), s.getOrElse(pi) { "0" }, s.getOrElse(ri) { "-" }, s.getOrElse(ai) { "-" })
-            }.sortedByDescending { it.pts.toIntOrNull() ?: -1 }.take(5)
-            if (abbr == game.away.abbr) away = lines else if (abbr == game.home.abbr) home = lines
+        val header = o.getJSONObject("header")
+        val comp = header.getJSONArray("competitions").getJSONObject(0)
+        val game = runCatching {
+            parseEvent(JSONObject().put("id", header.optString("id", espnId)).put("date", comp.getString("date")).put("competitions", JSONArray().put(comp)))
+        }.getOrNull()
+
+        val idToAbbr = mutableMapOf<String, String>()
+        val lines = mutableMapOf<String, List<String>>()
+        comp.optJSONArray("competitors")?.let { cs ->
+            for (i in 0 until cs.length()) {
+                val c = cs.getJSONObject(i)
+                val team = c.getJSONObject("team")
+                val abbr = team.optString("abbreviation")
+                idToAbbr[team.optString("id")] = abbr
+                c.optJSONArray("linescores")?.let { ls ->
+                    lines[abbr] = (0 until ls.length()).map { k -> ls.getJSONObject(k).let { it.optString("displayValue").ifBlank { it.optString("value") } } }
+                }
+            }
         }
-        return if (away.isEmpty() && home.isEmpty()) null else BoxScore(away, home)
+
+        val plays = o.optJSONArray("plays")?.let { ps ->
+            (0 until ps.length()).mapNotNull { i ->
+                val p = ps.getJSONObject(i)
+                val text = p.optString("text").ifBlank { return@mapNotNull null }
+                Play(
+                    period = p.optJSONObject("period")?.optInt("number") ?: 0,
+                    clock = p.optJSONObject("clock")?.optString("displayValue").orEmpty(),
+                    text = text,
+                    team = p.optJSONObject("team")?.optString("id")?.let { idToAbbr[it] },
+                    awayScore = p.optString("awayScore"),
+                    homeScore = p.optString("homeScore"),
+                )
+            }
+        }.orEmpty()
+
+        val box = o.optJSONObject("boxscore")
+        val teamStats = mutableMapOf<String, Map<String, String>>()
+        box?.optJSONArray("teams")?.let { ts ->
+            for (i in 0 until ts.length()) {
+                val t = ts.getJSONObject(i)
+                val abbr = t.getJSONObject("team").optString("abbreviation")
+                val stats = mutableMapOf<String, String>()
+                t.optJSONArray("statistics")?.let { st ->
+                    for (k in 0 until st.length()) {
+                        val e = st.getJSONObject(k)
+                        val v = e.optString("displayValue")
+                        // Findable by any of its names: "fieldGoalPct", "Field Goal %", "FG%".
+                        listOf("name", "label", "abbreviation").forEach { key -> e.optString(key).takeIf { it.isNotBlank() }?.let { stats[it] = v } }
+                    }
+                }
+                teamStats[abbr] = stats
+            }
+        }
+        val players = mutableMapOf<String, List<BoxPlayer>>()
+        box?.optJSONArray("players")?.let { ts ->
+            for (i in 0 until ts.length()) {
+                val t = ts.getJSONObject(i)
+                val abbr = t.getJSONObject("team").optString("abbreviation")
+                val st = t.optJSONArray("statistics")?.optJSONObject(0) ?: continue
+                val labels = st.optJSONArray("labels")?.strings().orEmpty()
+                val athletes = st.optJSONArray("athletes") ?: continue
+                players[abbr] = (0 until athletes.length()).mapNotNull { k ->
+                    val a = athletes.getJSONObject(k)
+                    val stats = a.optJSONArray("stats")?.strings().orEmpty()
+                    if (stats.isEmpty()) return@mapNotNull null
+                    val who = a.getJSONObject("athlete")
+                    BoxPlayer(
+                        name = who.optString("displayName"),
+                        position = who.optJSONObject("position")?.optString("abbreviation").orEmpty(),
+                        headshot = who.optJSONObject("headshot")?.optString("href")?.ifBlank { null },
+                        stats = labels.zip(stats).toMap(),
+                    )
+                }
+            }
+        }
+        val abbrs = (lines.keys + teamStats.keys + players.keys).distinct()
+        val series = o.optJSONArray("seasonseries")?.optJSONObject(0)?.let { it.optString("summary").ifBlank { it.optString("description") } }?.ifBlank { null }
+        return GameSummary(
+            game = game,
+            lines = lines,
+            plays = plays,
+            teams = abbrs.associateWith { TeamBox(players[it].orEmpty(), teamStats[it].orEmpty()) },
+            series = series,
+        )
     }
 
     /**

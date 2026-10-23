@@ -57,3 +57,26 @@ data class Game(
     /** Networks ESPN lists for the game, upper case: "ESPN", "ABC", "PRIME VIDEO". */
     val networks: List<String> get() = network.orEmpty().split(",").map { it.trim().uppercase() }.filter { it.isNotEmpty() }
 }
+
+/** One play: "Q4 1:42", what happened, which team, and the score after it. */
+data class Play(val period: Int, val clock: String, val text: String, val team: String?, val awayScore: String, val homeScore: String)
+
+/** A player's line in the box score; [stats] by ESPN's labels (MIN, PTS, FG, 3PT, REB, AST…). */
+data class BoxPlayer(val name: String, val position: String, val headshot: String?, val stats: Map<String, String>) {
+    val points: Int get() = stats["PTS"]?.toIntOrNull() ?: -1
+}
+
+/** A team's box score: its players, and its totals by ESPN's stat names and labels. */
+data class TeamBox(val players: List<BoxPlayer>, val stats: Map<String, String>)
+
+/**
+ * A game's summary. [game] has the latest score and clock; [lines] and [teams] are keyed by team
+ * abbreviation; [plays] run oldest first. Missing parts are empty (before tip-off, most are).
+ */
+data class GameSummary(
+    val game: Game?,
+    val lines: Map<String, List<String>>,
+    val plays: List<Play>,
+    val teams: Map<String, TeamBox>,
+    val series: String?,
+)
