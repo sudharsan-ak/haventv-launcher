@@ -167,11 +167,11 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
     val fav = s.favoriteTeam
     val mine = s.followedTeams + setOfNotNull(fav.ifBlank { null })
     val today = w.today()
-    var day by remember { mutableStateOf(today) }
+    var day by remember { mutableStateOf(state.nbaGame?.second ?: today) }
     var filter by remember { mutableStateOf(GameFilter.ALL) }
     var choosingDay by remember { mutableStateOf(false) }
     var picking by remember { mutableStateOf(false) }
-    var selected by remember { mutableStateOf<String?>(null) }
+    var selected by remember { mutableStateOf(state.nbaGame?.first) }
     var focusedCard by remember { mutableStateOf<String?>(null) }
     // Bumped to move focus into the details once their watch button exists.
     var toPane by remember { mutableIntStateOf(0) }
@@ -179,7 +179,8 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
     val paneFocus = remember { FocusRequester() }
     val cards = remember { mutableMapOf<String, FocusRequester>() }
     fun cardFocus(id: String) = cards.getOrPut(id) { FocusRequester() }
-    val initialFocus = remember { booleanArrayOf(false) }
+    // Set until the selected card has been focused (on opening, or when asked to show a game).
+    var focusPending by remember { mutableStateOf(true) }
     val inPane = remember { booleanArrayOf(false) }
     val focusManager = LocalFocusManager.current
     fun backToCard() { selected?.let { runCatching { cardFocus(it).requestFocus() } } }
@@ -206,15 +207,26 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
     val main = shown.firstOrNull { it.involves(fav) }
     // Followed teams lead the grid (ringed); the rest keep ESPN's order (live first).
     val grid = shown.filter { it != main }.sortedByDescending { ours(it) }
-    // The main team's game, else the first live one, else the first; focused when the panel opens.
-    LaunchedEffect(day, list == null) {
+    // Asked to show a game (from the Home card, the drawer, the schedule): its day, selected.
+    LaunchedEffect(state.nbaGame) {
+        val (id, d) = state.nbaGame ?: return@LaunchedEffect
+        day = d
+        selected = id
+        filter = GameFilter.ALL
+        focusPending = true
+        state.nbaGame = null
+    }
+    // Otherwise the main team's game, else the first live one, else the first; focused on opening.
+    LaunchedEffect(day, list == null, focusPending) {
         if (list == null) return@LaunchedEffect
         if (selected == null || list.none { it.espnId == selected }) {
             selected = (main ?: list.firstOrNull { it.state == GameState.LIVE } ?: list.firstOrNull())?.espnId
         }
-        if (!initialFocus[0]) {
-            initialFocus[0] = true
+        if (focusPending) {
+            focusPending = false
             val id = selected
+            // The card is composed in this frame; give it a moment before asking for focus.
+            delay(50)
             runCatching { if (id != null) cardFocus(id).requestFocus() else first.requestFocus() }
         }
     }
@@ -474,7 +486,7 @@ fun LivePanel(state: HavenState, colors: ThemeColors) {
         val liveGames = if (state.settingsStore.settings.watchNba) w.games[w.today()]?.filter { it.state == GameState.LIVE }.orEmpty() else emptyList()
         if (liveGames.isNotEmpty()) {
             Text("Live games", color = colors.ink, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            liveGames.forEach { g -> GameRow(g, state.settingsStore.settings.favoriteTeam, colors) { state.detailGameId = g.espnId } }
+            liveGames.forEach { g -> GameRow(g, state.settingsStore.settings.favoriteTeam, colors) { state.openGame(g) } }
         }
         LiveGrid(state, colors, first)
     }

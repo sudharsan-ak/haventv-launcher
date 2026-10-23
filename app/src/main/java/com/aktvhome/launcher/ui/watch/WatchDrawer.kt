@@ -103,7 +103,7 @@ fun WatchDrawer(state: HavenState, colors: ThemeColors) {
                     list == null -> Note("Loading games…", colors)
                     list.isEmpty() -> Note("No NBA games on ${if (day == w.today()) "today" else day.format(DateTimeFormatter.ofPattern("EEEE, MMM d"))}.", colors)
                     else -> list.forEachIndexed { i, g ->
-                        GameRow(g, fav, colors, modifier = if (i == 0) upTo(days.of(day)) else Modifier) { state.detailGameId = g.espnId }
+                        GameRow(g, fav, colors, modifier = if (i == 0) upTo(days.of(day)) else Modifier) { state.openGame(g) }
                     }
                 }
             }

@@ -27,7 +27,6 @@ import com.aktvhome.launcher.ui.settings.Personalize
 import com.aktvhome.launcher.ui.settings.QuickSettings
 import com.aktvhome.launcher.ui.settings.RestorePrompt
 import com.aktvhome.launcher.ui.watch.ContinuePanel
-import com.aktvhome.launcher.ui.watch.GameDetail
 import com.aktvhome.launcher.ui.watch.LivePanel
 import com.aktvhome.launcher.ui.watch.NbaPanel
 import com.aktvhome.launcher.ui.watch.TeamSchedule
@@ -98,9 +97,8 @@ class MainActivity : ComponentActivity() {
                 Overlay.CONTINUE -> ContinuePanel(state, colors)
                 Overlay.NONE -> Unit
             }
-            // Schedule and game detail stack on top of the drawer (or the home, from the strip).
+            // The schedule stacks on top of the drawer or the NBA panel.
             if (state.scheduleOpen) TeamSchedule(state, colors)
-            state.detailGameId?.let { GameDetail(state, colors, it) }
             if (state.backup.offerRestore) RestorePrompt(state, colors)
         }
     }
@@ -111,7 +109,7 @@ class MainActivity : ComponentActivity() {
         if (!intent.hasCategory(Intent.CATEGORY_HOME)) return
         state.isHome = true
         state.overlay = Overlay.NONE
-        state.detailGameId = null
+        state.nbaGame = null
         state.scheduleOpen = false
         state.menuFor = null
         state.moving = null

@@ -97,27 +97,12 @@ private class SummaryFeed {
     var failingSince by mutableLongStateOf(0L)
 }
 
-/** Game details on their own, centred over the screen (from the drawer, Live TV and the schedule). */
-@Composable
-fun GameDetail(state: HavenState, colors: ThemeColors, id: String) {
-    val close = { state.detailGameId = null }
-    val watchFocus = remember { FocusRequester() }
-    HavenOverlay(dim = 0.35f, onDismiss = close, blur = 30) {
-        Box(
-            Modifier.align(Alignment.Center).width(600.dp).fillMaxHeight(0.88f)
-                .glassPanel(colors, RoundedCornerShape(24.dp)).padding(horizontal = 18.dp, vertical = 16.dp),
-        ) {
-            GameDetailPane(state, colors, id, watchFocus, close, focusOnLoad = true)
-        }
-    }
-}
-
 /**
  * Game details for [id], always from the latest data: the summary (refreshed every 10 s while the
  * game is live, once more when it ends) or the scoreboard, whichever is newer. Title with every
  * broadcaster, score block, Watch on <app> ([watchFocus]) and Set alert, then Summary, Box score,
  * Play-by-play and Team stats. Refreshes update everything in place; the tab, scroll positions
- * and focus stay. [focusOnLoad] moves focus to the watch button once the game is known.
+ * and focus stay.
  */
 @Composable
 fun GameDetailPane(
@@ -127,7 +112,6 @@ fun GameDetailPane(
     watchFocus: FocusRequester,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
-    focusOnLoad: Boolean = false,
 ) {
     val w = state.watchNow
     val close = onClose
@@ -229,8 +213,6 @@ fun GameDetailPane(
     val shown = game
     val pid = playerId
     if (shown != null && pid != null) PlayerCard(state, colors, shown, feed.summary, pid) { playerId = null }
-    // The watch button exists once the game is known (straight away, or after the first fetch).
-    LaunchedEffect(game == null) { if (focusOnLoad && game != null) runCatching { watchFocus.requestFocus() } }
 }
 
 /** Every broadcaster ESPN lists, each with its app's icon when that app is installed. */
@@ -536,7 +518,7 @@ fun TeamSchedule(state: HavenState, colors: ThemeColors) {
             if (games.isEmpty()) Text("Loading schedule…", color = colors.inkSoft, fontSize = 13.sp)
             LazyColumn(state = list, verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 itemsIndexed(games, key = { _, g -> g.espnId }) { i, g ->
-                    GlassCard(colors, Modifier.fillMaxWidth(), selected = i == nextIndex, focusRequester = if (i == nextIndex) nextFocus else null, onClick = { state.detailGameId = g.espnId }) { ink ->
+                    GlassCard(colors, Modifier.fillMaxWidth(), selected = i == nextIndex, focusRequester = if (i == nextIndex) nextFocus else null, onClick = { state.openGame(g) }) { ink ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(shortDate(g), color = ink.copy(alpha = 0.75f), fontSize = 13.sp, modifier = Modifier.width(110.dp))
                             Text(opponent(g, fav) + " · " + Nba.teamName(if (g.home.abbr == fav) g.away.abbr else g.home.abbr), color = ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1)

@@ -66,7 +66,7 @@ fun SmartStrip(state: HavenState, colors: ThemeColors, first: FocusRequester, mo
                     if (g.involves(fav)) Nba.teamName(fav).substringAfterLast(' ').uppercase() + " · TODAY" else "TONIGHT",
                     matchup(g), g.status + (g.network?.let { " · $it" } ?: ""), g.state == GameState.LIVE,
                     colors, claim().weight(1.25f), nbaLogo,
-                ) { state.overlay = Overlay.NBA }
+                ) { state.openGame(g) }
                 w.games[w.today()] == null && !w.nbaError -> StripCard("TONIGHT", "Loading games…", "ESPN", false, colors, claim().weight(1.25f), nbaLogo) {
                     state.overlay = Overlay.NBA
                 }

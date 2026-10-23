@@ -61,11 +61,15 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
         private set
 
     var overlay by mutableStateOf(Overlay.NONE)
-    /**
-     * ESPN id of the game shown in the game details (from the games list, the drawer or the
-     * schedule). Only the id: the details always show the latest data for it.
-     */
-    var detailGameId by mutableStateOf<String?>(null)
+    /** A game for the NBA panel to open on (its ESPN id and day), set by [openGame]; the panel clears it. */
+    var nbaGame by mutableStateOf<Pair<String, java.time.LocalDate>?>(null)
+
+    /** Opens the NBA panel on [game]'s day with it selected (from the Home card, the drawer, Live TV, the schedule). */
+    fun openGame(game: com.aktvhome.launcher.data.Game) {
+        nbaGame = game.espnId to game.start.atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+        scheduleOpen = false
+        overlay = Overlay.NBA
+    }
     /** Whether the favorite team's full schedule is open. */
     var scheduleOpen by mutableStateOf(false)
     /** Bumped each time the home screen comes back into view; themes key their welcome on it. */
