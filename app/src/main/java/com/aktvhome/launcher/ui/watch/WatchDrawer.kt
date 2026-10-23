@@ -139,7 +139,7 @@ fun WatchDrawer(state: HavenState, colors: ThemeColors) {
                 Section("Live channels", colors)
                 if (w.live.isEmpty()) Note("No live channels. Live TV apps that share their channels show up here.", colors)
                 w.live.forEach { group ->
-                    Text(group.provider, color = colors.inkSoft, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(state.apps[group.pkg]?.label ?: group.provider, color = colors.inkSoft, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         group.items.forEach { item ->
                             Pill((if (item.live) "● " else "") + item.title, colors, focusRequester = claim()) { w.open(item) }

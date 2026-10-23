@@ -68,10 +68,20 @@ mode and network debugging on.
    ```bash
    ./gradlew assembleRelease
    adb connect <tv-ip>:5555
-   adb install -r app/build/outputs/apk/release/app-release.apk
+   adb install -r -f app/build/outputs/apk/release/app-release.apk
    ```
 
-   `install -r` updates in place and keeps your layout and settings. Keep your signing key
+   `install -r` updates in place and keeps your layout and settings. `-f` keeps Haven on the
+   TV's own storage: if your TV uses a USB drive as storage, apps there load after boot and
+   Android drops their accessibility services, which breaks the Home button. (The manifest's
+   `internalOnly` isn't enough, since Android counts such a drive as internal.)
+
+   Haven also backs up your setup automatically to `Download/Haven/haven-backup.json`; restore
+   it from **All settings › About & data › Backup & reset**. Reading it after a reinstall needs:
+
+   ```bash
+   adb shell appops set com.aktvhome.launcher MANAGE_EXTERNAL_STORAGE allow
+   ``` Keep your signing key
    safe: updates must be signed with the same key.
 
 ## One-time permissions (over ADB)

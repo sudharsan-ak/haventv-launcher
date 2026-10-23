@@ -4,6 +4,14 @@ import android.accessibilityservice.AccessibilityService
 import android.content.Intent
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
+import com.aktvhome.launcher.data.AccessibilityGuard
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 /**
  * Home button override. Google TV always opens its own launcher on Home, whatever the default is
@@ -18,10 +26,25 @@ class HomeOverrideService : AccessibilityService() {
 
     private var lastRedirect = 0L
 
+    private val guard = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         connected = true
         if (rootInActiveWindow?.packageName == GOOGLE_TV_LAUNCHER) openHaven()
+        // This service runs from internal storage for as long as the TV is on, so it also restores
+        // other apps' accessibility services once their USB-stored apps load: every 20 s for the
+        // first 10 minutes, then every 2 minutes.
+        guard.launch {
+            val start = System.currentTimeMillis()
+            while (isActive) {
+                runCatching {
+                    AccessibilityGuard.check(applicationContext)
+                    AccessibilityGuard.settle(applicationContext)
+                }
+                delay(if (System.currentTimeMillis() - start < 10 * 60_000L) 20_000L else 120_000L)
+            }
+        }
     }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
@@ -56,6 +79,7 @@ class HomeOverrideService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        guard.cancel()
         connected = false
         super.onDestroy()
     }

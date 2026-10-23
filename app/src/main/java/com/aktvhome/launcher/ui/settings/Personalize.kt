@@ -134,7 +134,7 @@ private enum class Page(val label: String, val group: SettingsGroup, val availab
     LIVE_CHANNELS("Live channels", SettingsGroup.WATCHING, available = false),
     HOME_BUTTON("Home button", SettingsGroup.SYSTEM),
     DNS("Private DNS", SettingsGroup.SYSTEM),
-    BACKUP("Backup & reset", SettingsGroup.ABOUT, available = false),
+    BACKUP("Backup & reset", SettingsGroup.ABOUT),
     ABOUT("About Haven", SettingsGroup.ABOUT),
 }
 
@@ -186,6 +186,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
     var editingDns by remember { mutableStateOf(false) }
     var editingKey by remember { mutableStateOf(false) }
     var pickingTeam by remember { mutableStateOf(false) }
+    var confirmReset by remember { mutableStateOf(false) }
     var pickingStation by remember { mutableStateOf<String?>(null) }
     var collectionMenu by remember { mutableStateOf<AppCollection?>(null) }
     var renaming by remember { mutableStateOf<AppCollection?>(null) }
@@ -617,7 +618,25 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                                 colors,
                             )
                         }
-                        Page.NBA_ALERTS, Page.LIVE_CHANNELS, Page.BACKUP -> Unit
+                        Page.BACKUP -> {
+                            val b = state.backup
+                            SettingsRow("Automatic backup", "Saved to Download/Haven on this TV whenever you change something. Last saved: ${backupTimeText(b.lastSaved)}.", colors) {
+                                Pill("Back up now", colors, focusRequester = pageFirst) { b.backupNow() }
+                            }
+                            SettingsRow("Restore", if (b.backupExists()) "Bring back the setup saved ${backupTimeText(b.backupTime())}." else "No backup found yet.", colors) {
+                                Pill("Restore", colors) { b.restore() }
+                            }
+                            SettingsRow("Reset Haven", "Back to first-run settings. Your backup is kept, so you can restore it.", colors) {
+                                Pill(if (confirmReset) "Press again to reset" else "Reset", colors, selected = confirmReset) {
+                                    if (confirmReset) { b.reset(); confirmReset = false } else confirmReset = true
+                                }
+                            }
+                            if (!b.canAccessFiles()) {
+                                InfoStrip("One-time setup", "So Haven can read its backup after a reinstall: adb shell appops set com.aktvhome.launcher MANAGE_EXTERNAL_STORAGE allow", colors)
+                            }
+                            if (b.problem.isNotBlank()) InfoStrip("Backup problem", b.problem, colors)
+                        }
+                        Page.NBA_ALERTS, Page.LIVE_CHANNELS -> Unit
                     }
                 }
             }
@@ -632,7 +651,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
     }
     pickingStation?.let { net ->
         // Every channel the live TV apps share, so the right local station can be picked.
-        val channels = state.watchNow.live.flatMap { g -> g.items.map { it.title to "${it.title} · ${g.provider}" } }.distinctBy { it.first }
+        val channels = state.watchNow.live.flatMap { g -> g.items.map { it.title to "${it.title} · ${state.apps[g.pkg]?.label ?: g.provider}" } }.distinctBy { it.first }
         LaunchedEffect(Unit) { state.watchNow.tick(force = true) }
         CollectionPickerDialog(
             colors,

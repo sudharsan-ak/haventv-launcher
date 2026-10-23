@@ -39,6 +39,11 @@ class LayoutStore(context: Context) {
     var layout by mutableStateOf(load())
         private set
 
+    /** Re-reads the layout from storage (after a restore or reset). */
+    fun reload() {
+        layout = load()
+    }
+
     /** Places apps Haven has never seen, and nothing else. */
     fun reconcile(installed: Collection<String>) {
         // Seeded apps go in the order listed in Defaults; the rest keep the given order.

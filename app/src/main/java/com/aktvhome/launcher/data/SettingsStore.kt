@@ -99,6 +99,11 @@ class SettingsStore(context: Context) {
     var settings by mutableStateOf(load())
         private set
 
+    /** Re-reads everything from storage (after a restore or reset). */
+    fun reload() {
+        settings = load()
+    }
+
     fun update(change: (Settings) -> Settings) {
         val next = change(settings)
         settings = next

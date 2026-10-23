@@ -15,6 +15,7 @@ import com.aktvhome.launcher.data.InputRepository
 import com.aktvhome.launcher.data.LayoutStore
 import com.aktvhome.launcher.data.SettingsStore
 import com.aktvhome.launcher.data.TvInput
+import com.aktvhome.launcher.data.Backup
 import com.aktvhome.launcher.data.Wallpapers
 import com.aktvhome.launcher.data.WatchNow
 import kotlinx.coroutines.CoroutineScope
@@ -36,6 +37,12 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
     private val inputRepo = InputRepository(context)
     val layoutStore = LayoutStore(context)
     val settingsStore = SettingsStore(context)
+    // Created before anything saves, so it can tell a fresh start from an existing setup.
+    val backup = Backup(context) {
+        settingsStore.reload()
+        layoutStore.reload()
+        refresh()
+    }
     val wallpapers = Wallpapers(context, scope, settingsStore)
     val watchNow = WatchNow(
         context, scope, settingsStore,

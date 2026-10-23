@@ -48,7 +48,7 @@ fun HavenState.watchOptions(game: Game): List<WatchOption> {
         val hit = watchNow.live.flatMap { g -> g.items.map { g to it } }.firstOrNull { (_, item) ->
             sameChannel(item.title, net) || (station != null && item.title.equals(station, ignoreCase = true))
         }
-        if (hit != null) options += WatchOption("Watch on ${hit.first.provider} · ${hit.second.title}") { watchNow.open(hit.second) }
+        if (hit != null) options += WatchOption("Watch on ${apps[hit.first.pkg]?.label ?: hit.first.provider} · ${hit.second.title}") { watchNow.open(hit.second) }
     }
     // ESPN app: the exact stream if its Live row lists this game, otherwise the app.
     if (upper.any { it.startsWith("ESPN") || it == "ABC" } && ESPN_APP in apps) {

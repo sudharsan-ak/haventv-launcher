@@ -23,6 +23,7 @@ import com.aktvhome.launcher.ui.Overlay
 import com.aktvhome.launcher.ui.kingdom.KingdomHome
 import com.aktvhome.launcher.ui.settings.Personalize
 import com.aktvhome.launcher.ui.settings.QuickSettings
+import com.aktvhome.launcher.ui.settings.RestorePrompt
 import com.aktvhome.launcher.ui.watch.GameDetail
 import com.aktvhome.launcher.ui.watch.TeamSchedule
 import com.aktvhome.launcher.ui.watch.WatchDrawer
@@ -57,6 +58,7 @@ class MainActivity : ComponentActivity() {
                     state.now = LocalTime.now()
                     state.wallpapers.tick()
                     state.watchNow.tick()
+                    state.backup.tick()
                     delay(15_000)
                 }
             }
@@ -81,6 +83,7 @@ class MainActivity : ComponentActivity() {
             // Schedule and game detail stack on top of the drawer (or the home, from the strip).
             if (state.scheduleOpen) TeamSchedule(state, colors)
             state.detailGame?.let { GameDetail(state, colors, it) }
+            if (state.backup.offerRestore) RestorePrompt(state, colors)
         }
     }
 

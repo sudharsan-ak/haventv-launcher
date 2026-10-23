@@ -21,6 +21,10 @@
         tools:ignore="ProtectedPermissions" />
     <!-- Wallpapers (Bing, Earth View, Wikimedia, Unsplash). -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Backup file in Download/Haven that survives reinstalls. Granted once over ADB (appops). -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
     <!-- Reads whether Private DNS is verified or a VPN is overriding it (status line). -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Lets "Keep enforced" restore Private DNS after a restart. -->

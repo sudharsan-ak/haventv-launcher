@@ -91,7 +91,7 @@ fun SmartStrip(state: HavenState, colors: ThemeColors, first: FocusRequester, mo
         "live" -> if (s.watchLive) {
             val groups = w.live
             StripCard(
-                "LIVE TV", groups.take(2).joinToString(" + ") { it.provider }.ifBlank { "No live channels" },
+                "LIVE TV", groups.take(2).joinToString(" + ") { state.apps[it.pkg]?.label ?: it.provider }.ifBlank { "No live channels" },
                 groups.firstOrNull()?.items?.take(3)?.joinToString(", ") { it.title } ?: "Live TV apps that share channels show up here",
                 groups.any { g -> g.items.any { it.live } }, colors, claim().weight(1f),
             ) { state.overlay = Overlay.WATCH }
