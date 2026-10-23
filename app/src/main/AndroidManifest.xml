@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  internalOnly: on TVs that use a USB drive as storage, apps there load after boot, and Android
+  drops their accessibility services (Haven's Home button) because they look missing. Internal
+  storage loads first, so the Home button survives restarts.
+-->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+    xmlns:tools="http://schemas.android.com/tools"
+    android:installLocation="internalOnly">
 
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
