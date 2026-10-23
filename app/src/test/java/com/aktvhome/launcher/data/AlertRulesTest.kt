@@ -91,27 +91,39 @@ class AlertRulesTest {
 
     // ---- Dedupe ----
 
+    /** Your team's game, so the other-team cooldown stays out of the way. */
+    private fun mine(clock: String = "4:00", awayScore: Int = 100) = game(home = "GS", clock = clock, awayScore = awayScore)
+
     @Test fun closeGameOnceThenOnlyOnEscalation() {
         val m = AlertMemory()
-        m.poll(t0, game())
-        assertEquals(1, m.poll(t0 + poll, game()).size)
-        assertTrue(m.poll(t0 + 2 * poll, game(clock = "3:00")).isEmpty())
+        m.poll(t0, mine())
+        assertEquals(1, m.poll(t0 + poll, mine()).size)
+        assertTrue(m.poll(t0 + 2 * poll, mine(clock = "3:00")).isEmpty())
         // Escalation: within 2 with a minute left, confirmed over two polls, once.
-        assertTrue(m.poll(t0 + 3 * poll, game(clock = "1:00", awayScore = 101)).isEmpty())
-        val again = m.poll(t0 + 4 * poll, game(clock = "58.0", awayScore = 101))
+        assertTrue(m.poll(t0 + 3 * poll, mine(clock = "1:00", awayScore = 101)).isEmpty())
+        val again = m.poll(t0 + 4 * poll, mine(clock = "58.0", awayScore = 101))
         assertEquals(listOf(AlertEvent.CLOSE_GAME), again.events())
-        assertTrue(m.poll(t0 + 5 * poll, game(clock = "30.0", awayScore = 101)).isEmpty())
-        assertTrue(m.poll(t0 + 6 * poll, game(clock = "10.0", awayScore = 101)).isEmpty())
+        assertTrue(m.poll(t0 + 5 * poll, mine(clock = "30.0", awayScore = 101)).isEmpty())
+        assertTrue(m.poll(t0 + 6 * poll, mine(clock = "10.0", awayScore = 101)).isEmpty())
     }
 
     @Test fun escalationAloneDoesNotFireTwiceAtOnce() {
         val m = AlertMemory()
         // Already very close when first seen: one alert, then nothing more.
-        m.poll(t0, game(clock = "40.0"))
-        assertEquals(1, m.poll(t0 + poll, game(clock = "30.0")).size)
-        assertTrue(m.poll(t0 + 2 * poll, game(clock = "20.0")).isEmpty())
+        m.poll(t0, mine(clock = "40.0"))
+        assertEquals(1, m.poll(t0 + poll, mine(clock = "30.0")).size)
+        assertTrue(m.poll(t0 + 2 * poll, mine(clock = "20.0")).isEmpty())
         // The escalation still needs its own two polls after the first alert went out.
-        assertEquals(1, m.poll(t0 + 3 * poll, game(clock = "10.0")).size)
+        assertEquals(1, m.poll(t0 + 3 * poll, mine(clock = "10.0")).size)
+    }
+
+    @Test fun otherTeamEscalationWaitsForTheCooldown() {
+        val m = AlertMemory()
+        m.poll(t0, game())
+        assertEquals(1, m.poll(t0 + poll, game()).size)
+        // Two minutes later it's tighter, but the cooldown from the first alert still holds.
+        m.poll(t0 + 4 * poll, game(clock = "1:00", awayScore = 101))
+        assertTrue(m.poll(t0 + 5 * poll, game(clock = "50.0", awayScore = 101)).isEmpty())
     }
 
     @Test fun favoriteOnceOnlyEvents() {
