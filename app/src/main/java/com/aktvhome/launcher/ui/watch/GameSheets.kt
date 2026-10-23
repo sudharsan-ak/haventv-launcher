@@ -197,7 +197,7 @@ fun GameDetailPane(
             // Scrolls sideways when the pane is too narrow for every tab, so none gets squeezed
             // (a squeezed tab wrapped its label letter by letter and pushed the content off screen).
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                DetailTab.entries.forEach { t -> Pill(t.label, colors, selected = t == tab) { tab = t } }
+                DetailTab.entries.forEach { t -> TabChip(t.label, t == tab, colors) { tab = t } }
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.edge))
             val scroll = scrolls.getOrPut(tab) { ScrollState(0) }
@@ -219,6 +219,33 @@ fun GameDetailPane(
     val shown = game
     val pid = playerId
     if (shown != null && pid != null) PlayerCard(state, colors, shown, feed.summary, pid) { playerId = null }
+}
+
+/** A compact tab: smaller than a Pill so all four fit the details pane; the open tab is ringed. */
+@Composable
+private fun TabChip(text: String, selected: Boolean, colors: ThemeColors, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(50)
+    Box(
+        Modifier
+            .clip(shape)
+            .background(
+                when {
+                    focused -> colors.pill
+                    selected -> colors.pill.copy(alpha = 0.22f)
+                    else -> colors.glass
+                },
+            )
+            .border(if (selected) 2.dp else 1.dp, if (selected) colors.accent else colors.edge, shape)
+            .onFocusChanged { focused = it.isFocused }
+            .tvClickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Text(
+            text, color = if (focused) colors.pillInk else colors.ink, fontSize = 12.sp,
+            fontWeight = if (selected || focused) FontWeight.Bold else FontWeight.Medium, maxLines = 1, softWrap = false,
+        )
+    }
 }
 
 /** Every broadcaster ESPN lists, each with its app's icon when that app is installed. */

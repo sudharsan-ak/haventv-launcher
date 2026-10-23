@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalLayoutApi::class) // FlowRow for channel grids
+@file:OptIn(ExperimentalLayoutApi::class, ExperimentalComposeUiApi::class) // FlowRow for channel grids; focus exit for the details pane
 
 package com.aktvhome.launcher.ui.watch
 
@@ -6,7 +6,10 @@ import android.view.KeyEvent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -338,17 +341,19 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
                                 if (e.type == KeyEventType.KeyUp) backToCard()
                                 true
                             }
-                            // Left moves within the details; off their left edge, back to the card.
-                            KeyEvent.KEYCODE_DPAD_LEFT -> {
-                                if (e.type == KeyEventType.KeyDown) {
-                                    focusManager.moveFocus(FocusDirection.Left)
-                                    if (!inPane[0]) backToCard()
-                                }
-                                true
-                            }
                             else -> false
                         }
                     }
+                    // Left moves normally within the details (Set alert to Watch, between tabs). Only
+                    // when it would leave the details does it go back to the selected card, not
+                    // whichever card happens to sit nearest.
+                    .focusProperties {
+                        exit = { dir ->
+                            val id = selected
+                            if (dir == FocusDirection.Left && id != null) cardFocus(id) else FocusRequester.Default
+                        }
+                    }
+                    .focusGroup()
                     .padding(horizontal = 14.dp, vertical = 12.dp),
             ) {
                 val id = selected
