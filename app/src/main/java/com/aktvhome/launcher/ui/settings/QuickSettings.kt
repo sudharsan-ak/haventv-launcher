@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -232,10 +233,11 @@ private fun PowerArea(
     var message by remember { mutableStateOf<String?>(null) }
     val stepFocus = remember { FocusRequester() }
     val powerFocus = remember { FocusRequester() }
-    var moved by remember { mutableStateOf(false) }
+    // Set when the bar swaps rows; focus moves in the same frame (see SideEffect below).
+    val focusPending = remember { booleanArrayOf(false) }
 
     fun go(next: PowerStep) {
-        moved = true
+        focusPending[0] = true
         step = next
     }
 
@@ -330,10 +332,13 @@ private fun PowerArea(
     }
 
     // Each step starts with focus on its first button; back on the bar, focus returns to power.
-    LaunchedEffect(step) {
-        if (!moved) return@LaunchedEffect
-        delay(60)
-        runCatching { (if (step == PowerStep.BAR) powerFocus else stepFocus).requestFocus() }
+    // The button you pressed is gone in the new row, so focus moves in the same frame the row
+    // changes; any later and Android parks it on the panel's first tile for a moment.
+    SideEffect {
+        if (focusPending[0]) {
+            focusPending[0] = false
+            runCatching { (if (step == PowerStep.BAR) powerFocus else stepFocus).requestFocus() }
+        }
     }
 }
 
