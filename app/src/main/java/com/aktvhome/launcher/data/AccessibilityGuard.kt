@@ -3,6 +3,7 @@ package com.aktvhome.launcher.data
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.SystemClock
 import android.provider.Settings
 
 /**
@@ -12,8 +13,10 @@ import android.provider.Settings
  * so Android removes their services from the enabled list. Haven runs from internal storage, so it
  * remembers the list you had and re-adds any service whose app is installed again.
  *
- * Removal you do yourself is respected: a service that disappears while its app is installed and
- * loaded counts as switched off on purpose, and is not brought back.
+ * Removal you do yourself is respected, but only when it's clearly yours: an earlier check this
+ * boot saw the service on, its app is loaded now, and the first 10 minutes after boot are over.
+ * Anything missing at the first check after a boot, or during those 10 minutes, was dropped by the
+ * boot and comes back. (The decisions are in [GuardRules].)
  */
 object AccessibilityGuard {
 
@@ -24,43 +27,33 @@ object AccessibilityGuard {
         if (!PrivateDns.canWrite(context)) return 0
         val prefs = context.getSharedPreferences("a11y_guard", Context.MODE_PRIVATE)
         val current = read(context)
-        val wanted = prefs.getString("wanted", null)?.split(':')?.filter { it.isNotBlank() }?.map(::normal)?.toSet()
-
-        if (wanted == null) {
-            // First run: whatever is on now is what you want.
-            prefs.edit().putString("wanted", current.joinToString(":")).apply()
-            return 0
+        val boot = bootCount(context)
+        val state = prefs.getString("wanted", null)?.let { w ->
+            // What the last check saw only counts within the same boot.
+            val seen = if (prefs.getInt("seenBoot", -1) == boot) split(prefs.getString("seen", null)) else emptySet()
+            GuardState(split(w), seen)
         }
+        // Just booted: by the clock since boot, not only the boot flag, which can come late.
+        val booting = SystemClock.elapsedRealtime() < GuardRules.BOOT_WINDOW_MS || prefs.getBoolean("bootPending", false)
+        val r = GuardRules.decide(state, current, { available(context, it) }, booting)
 
-        val missing = wanted - current
-        // Missing while its app is loaded = you switched it off; forget it. Missing while its app
-        // isn't loaded yet (USB drive not mounted) = keep wanting it.
-        val switchedOff = missing.filter { available(context, it) && !justLoaded(prefs, it) }.toSet()
-        val toRestore = missing.filter { available(context, it) && justLoaded(prefs, it) }
-        // New services you turned on join the wanted list.
-        var nextWanted = (wanted - switchedOff) + current
-
-        if (toRestore.isNotEmpty()) {
-            val restored = current + toRestore
-            Settings.Secure.putString(context.contentResolver, KEY, restored.joinToString(":"))
+        if (r.restore.isNotEmpty()) {
+            Settings.Secure.putString(context.contentResolver, KEY, (current + r.restore).joinToString(":"))
             Settings.Secure.putString(context.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, "1")
-            nextWanted = nextWanted + toRestore
         }
-        // Remember which wanted services' apps were unavailable this round.
-        val unavailable = nextWanted.filter { !available(context, it) }
         prefs.edit()
-            .putString("wanted", nextWanted.joinToString(":"))
-            .putString("unavailable", unavailable.joinToString(":"))
+            .putString("wanted", r.state.wanted.joinToString(":"))
+            .putString("seen", r.state.seen.joinToString(":"))
+            .putInt("seenBoot", boot)
             .apply()
-        return toRestore.size
+        return r.restore.size
     }
 
-    /**
-     * True if [entry]'s app was unavailable on an earlier check (or since boot), i.e. it was dropped
-     * because its storage wasn't ready rather than switched off by you.
-     */
-    private fun justLoaded(prefs: android.content.SharedPreferences, entry: String): Boolean =
-        entry in (prefs.getString("unavailable", "") ?: "").split(':') || prefs.getBoolean("bootPending", false)
+    private fun split(saved: String?): Set<String> = saved.orEmpty().split(':').filter { it.isNotBlank() }.toSet()
+
+    /** Android's boot counter; changes on every boot. */
+    private fun bootCount(context: Context): Int =
+        Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT, -1)
 
     /** Called at boot: until the drive's apps are back, missing services were dropped by the boot. */
     fun onBoot(context: Context) {
@@ -79,10 +72,7 @@ object AccessibilityGuard {
     }
 
     private fun read(context: Context): Set<String> =
-        (Settings.Secure.getString(context.contentResolver, KEY) ?: "").split(':').filter { it.isNotBlank() }.map(::normal).toSet()
-
-    /** "pkg/.Svc" and "pkg/pkg.Svc" name the same service; compare them in one form. */
-    private fun normal(entry: String): String = ComponentName.unflattenFromString(entry)?.flattenToString() ?: entry
+        (Settings.Secure.getString(context.contentResolver, KEY) ?: "").split(':').filter { it.isNotBlank() }.map(GuardRules::normal).toSet()
 
     /** True if the service's app is installed and loaded (its storage is mounted). */
     private fun available(context: Context, entry: String): Boolean {
