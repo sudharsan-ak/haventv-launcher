@@ -485,8 +485,8 @@ private fun WifiPage(state: HavenState, colors: ThemeColors, top: Modifier) {
 private fun NetworkPage(state: HavenState, colors: ThemeColors, top: Modifier) {
     var tab by remember { mutableStateOf(TvPage.WIFI) }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Chip("Wi-Fi", tab == TvPage.WIFI, colors, top) { tab = TvPage.WIFI }
-        Chip("Bluetooth", tab == TvPage.BLUETOOTH, colors) { tab = TvPage.BLUETOOTH }
+        Chip("Wi-Fi", tab == TvPage.WIFI, colors, if (tab == TvPage.WIFI) top else Modifier) { tab = TvPage.WIFI }
+        Chip("Bluetooth", tab == TvPage.BLUETOOTH, colors, if (tab == TvPage.BLUETOOTH) top else Modifier) { tab = TvPage.BLUETOOTH }
     }
     Box(Modifier.fillMaxWidth().height(1.dp).background(colors.edge))
     if (tab == TvPage.WIFI) WifiPage(state, colors, Modifier) else BluetoothPage(colors, Modifier)
@@ -509,9 +509,9 @@ private fun BluetoothPage(colors: ThemeColors, top: Modifier) {
     }
 
     LinkRow("Bluetooth", if (bt.adapter?.isEnabled == true) "On" else "Off", "Pair a new device ›", colors, top, pairNew)
-    // This TV has no direct way into Remotes & accessories, so this opens Android settings.
-    LinkRow("Bluetooth settings ›", "", "Remotes & accessories is in Android settings", colors, Modifier) {
-        openSystemPage(context, Intent(Settings.ACTION_SETTINGS))
+    // Remotes & Accessories: the Bluetooth switch, Pair accessory and every paired device.
+    LinkRow("Bluetooth settings ›", "", "Remotes & Accessories", colors, Modifier) {
+        openSystemPage(context, slicePage("general"))
     }
     if (!bt.allowed) {
         Chip("Show paired devices", false, colors) { ask.launch(Manifest.permission.BLUETOOTH_CONNECT) }
@@ -582,11 +582,14 @@ private fun rememberBluetooth(profiles: List<Int>): Bluetooth {
     return bt
 }
 
-/** The TV's own page for a paired device, with its Connect / Disconnect actions. */
-private fun devicePage(d: BtDevice): Intent =
-    Intent().setClassName("com.android.tv.settings", "com.android.tv.settings.accessories.BluetoothAccessoryActivity")
-        .putExtra("accessory_address", d.address)
-        .putExtra("accessory_name", d.name)
+/** A page of the TV's Settings by its slice (the way the TV's own menus open them). */
+private fun slicePage(path: String): Intent =
+    Intent("android.settings.SLICE_SETTINGS")
+        .setClassName("com.android.tv.settings", "com.android.tv.settings.slice.SliceActivity")
+        .putExtra("slice_uri", "content://com.android.tv.settings.accessories.sliceprovider/$path")
+
+/** The TV's own page for a paired device: its name, then Connect (or Disconnect), Rename, Forget. */
+private fun devicePage(d: BtDevice): Intent = slicePage("device/${d.address}")
 
 /**
  * Opens [d]'s page and has Haven's Home button service press [action] there, then go Back to
