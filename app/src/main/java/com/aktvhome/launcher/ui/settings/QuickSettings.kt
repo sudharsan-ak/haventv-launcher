@@ -126,7 +126,7 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
         ) {
             val current = page
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (current != null) BarButton("‹ Back", colors, Modifier.width(96.dp)) { show(null) }
+                if (current != null) BackButton(colors) { show(null) }
                 Column(Modifier.weight(1f)) {
                     Eyebrow(if (current == null) "Haven · Preferences" else "Quick settings · TV", colors)
                     Text(current?.title ?: "Quick settings", color = colors.ink, fontSize = 20.sp, fontWeight = FontWeight.Bold)
@@ -175,7 +175,7 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
                 }
                 TileRow {
                     QuickTile("Screen", "Wide mode & more", Icons.Rounded.AspectRatio, colors) {
-                        open(sony("com.sony.dtv.configsettings", "ScreenSettingActivity", "com.sony.dtv.base.screensettings"))
+                        open(screenSettings())
                     }
                     QuickTile("Wi-Fi", wifiText(context), Icons.Rounded.Wifi, colors, tileFocus[TvPage.WIFI]) {
                         show(TvPage.WIFI)
@@ -422,8 +422,11 @@ private fun BarButton(
 private fun sony(pkg: String, activity: String, action: String): Intent =
     Intent(action).setClassName(pkg, "$pkg.$activity")
 
+/** Sony's Screen page (wide mode, display area); its control service doesn't offer these. */
+fun screenSettings(): Intent = sony("com.sony.dtv.configsettings", "ScreenSettingActivity", "com.sony.dtv.base.screensettings")
+
 /** Opens a TV settings page; falls back to the TV's main Settings if that page isn't there. */
-private fun openSystemPage(context: Context, intent: Intent) {
+fun openSystemPage(context: Context, intent: Intent) {
     val flags = Intent.FLAG_ACTIVITY_NEW_TASK
     runCatching { context.startActivity(intent.addFlags(flags)) }
         .onFailure { runCatching { context.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(flags)) } }

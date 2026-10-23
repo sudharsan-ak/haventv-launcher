@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -178,7 +179,16 @@ fun InfoStrip(title: String, body: String, colors: ThemeColors) {
 
 /** Round close button for an overlay's corner. */
 @Composable
-fun CloseButton(colors: ThemeColors, modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun CloseButton(colors: ThemeColors, modifier: Modifier = Modifier, onClick: () -> Unit) =
+    RoundIconButton(Icons.Rounded.Close, "Close", colors, modifier, onClick)
+
+/** Round back button, the close button's twin, for pages inside an overlay. */
+@Composable
+fun BackButton(colors: ThemeColors, modifier: Modifier = Modifier, onClick: () -> Unit) =
+    RoundIconButton(Icons.Rounded.ChevronLeft, "Back", colors, modifier, onClick)
+
+@Composable
+private fun RoundIconButton(icon: ImageVector, description: String, colors: ThemeColors, modifier: Modifier, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     Box(
         modifier
@@ -190,7 +200,7 @@ fun CloseButton(colors: ThemeColors, modifier: Modifier = Modifier, onClick: () 
             .tvClickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(Icons.Rounded.Close, "Close", tint = if (focused) colors.pillInk else colors.ink, modifier = Modifier.size(18.dp))
+        Icon(icon, description, tint = if (focused) colors.pillInk else colors.ink, modifier = Modifier.size(20.dp))
     }
 }
 
