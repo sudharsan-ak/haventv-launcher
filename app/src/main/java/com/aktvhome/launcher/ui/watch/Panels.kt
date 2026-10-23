@@ -125,22 +125,22 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
     val w = state.watchNow
     val fav = state.settingsStore.settings.favoriteTeam
     var day by remember { mutableStateOf(w.today()) }
-    var picked by remember { mutableStateOf<Game?>(null) }
     val first = remember { FocusRequester() }
     val days = remember { DayFocus() }
     LaunchedEffect(day) { w.loadDay(day) }
-    val top = picked ?: if (day == w.today()) w.featured() else w.games[day]?.firstOrNull()
+    val top = if (day == w.today()) w.featured() else w.games[day]?.firstOrNull()
     Panel(colors, "NBA", "Scores from ESPN · games open where they air", { state.overlay = Overlay.NONE }) {
         if (top != null) FeaturedGame(state, colors, top, first)
-        WeekStrip(state, colors, day, if (top == null) first else null, days) { day = it; picked = null }
+        WeekStrip(state, colors, day, if (top == null) first else null, days) { day = it }
         val list = w.games[day]
         when {
             list == null && w.nbaError -> Text("Couldn't reach ESPN. Check the connection and try again.", color = colors.inkSoft, fontSize = 12.sp)
             list == null -> Text("Loading games…", color = colors.inkSoft, fontSize = 12.sp)
             list.isEmpty() -> Text("No NBA games on ${day.format(DateTimeFormatter.ofPattern("EEEE, MMM d"))}.", color = colors.inkSoft, fontSize = 12.sp)
             // Up from the first game goes back to the selected day, not the nearest chip above.
+            // OK opens the game's popup (watch buttons, Dismiss) right where you are.
             else -> list.forEachIndexed { i, g ->
-                GameRow(g, fav, colors, modifier = if (i == 0) upTo(days.of(day)) else Modifier) { picked = g }
+                GameRow(g, fav, colors, modifier = if (i == 0) upTo(days.of(day)) else Modifier) { state.detailGame = g }
             }
         }
         if (fav.isNotBlank()) {
