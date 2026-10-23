@@ -234,7 +234,7 @@ fun Pill(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (icon != null) Icon(icon, null, tint = ink, modifier = Modifier.size(18.dp))
-        Text(text, color = ink, fontSize = 14.sp, fontWeight = if (selected || focused) FontWeight.SemiBold else FontWeight.Medium)
+        Text(text, color = ink, fontSize = 14.sp, fontWeight = if (selected || focused) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1, softWrap = false)
     }
 }
 

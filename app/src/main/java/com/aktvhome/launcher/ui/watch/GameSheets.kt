@@ -25,6 +25,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -192,7 +194,9 @@ fun GameDetailPane(
                     }
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            // Scrolls sideways when the pane is too narrow for every tab, so none gets squeezed
+            // (a squeezed tab wrapped its label letter by letter and pushed the content off screen).
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 DetailTab.entries.forEach { t -> Pill(t.label, colors, selected = t == tab) { tab = t } }
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.edge))
