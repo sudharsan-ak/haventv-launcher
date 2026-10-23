@@ -144,7 +144,7 @@ private fun dayWord(day: LocalDate, today: LocalDate): String = when (day) {
 
 /**
  * NBA card: a day's games, your teams' first. Filter chips (All games, My team, My alerts) and a
- * date pill; live rows refresh every 30 s in place, focus staying on its row. OK opens a game's
+ * date pill; live rows refresh every 10 s in place, focus staying on its row. OK opens a game's
  * details.
  */
 @Composable
@@ -165,7 +165,7 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
     val anyLive = list?.any { it.state == GameState.LIVE } == true
     LaunchedEffect(day, anyLive) {
         while (anyLive) {
-            delay(30_000)
+            delay(10_000)
             w.loadDay(day, force = true)
         }
     }

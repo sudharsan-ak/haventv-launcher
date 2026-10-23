@@ -92,7 +92,7 @@ private class SummaryFeed {
 }
 
 /**
- * Game details for [id], always from the latest data: the summary (refreshed every 20 s while the
+ * Game details for [id], always from the latest data: the summary (refreshed every 10 s while the
  * game is live, once more when it ends) or the scoreboard, whichever is newer. Score block,
  * watch / Game stats / Set alert, then Summary, Box score, Play-by-play and Team stats.
  * Refreshes update everything in place; the tab, scroll positions and focus stay.
@@ -124,7 +124,8 @@ fun GameDetail(state: HavenState, colors: ThemeColors, id: String) {
             feed.loaded = true
             // Not live (yet, or any more): this was the one fetch; going live or final restarts it.
             if (!live) break
-            delay(20_000)
+            // ESPN caches summaries for 10 s, so this is as fresh as it gets.
+            delay(10_000)
         }
     }
     var tab by remember(id) { mutableStateOf(DetailTab.SUMMARY) }

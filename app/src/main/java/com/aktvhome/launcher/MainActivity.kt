@@ -11,6 +11,8 @@ import androidx.activity.compose.setContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.aktvhome.launcher.data.Background
 import com.aktvhome.launcher.data.HomeOverride
@@ -64,6 +66,15 @@ class MainActivity : ComponentActivity() {
                     state.backup.tick()
                     state.sony.refreshIfDue()
                     delay(15_000)
+                }
+            }
+
+            // Live games: today's scores every 10 s, only while Haven is in front.
+            val lifecycle = LocalLifecycleOwner.current.lifecycle
+            LaunchedEffect(Unit) {
+                while (true) {
+                    delay(10_000)
+                    if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) state.watchNow.liveTick()
                 }
             }
 

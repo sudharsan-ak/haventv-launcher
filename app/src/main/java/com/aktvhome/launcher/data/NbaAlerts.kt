@@ -19,7 +19,8 @@ import java.time.LocalDate
 /**
  * NBA alerts over any app. Runs in the Home button service, which stays up while the TV is on:
  * polls ESPN's scoreboard, runs [AlertRules] and hands each alert to [show]. ESPN is asked every
- * 30 s while a game is live or about to tip off, every 5 minutes on a game day, hourly otherwise;
+ * 10 s while a game is live, every 30 s when one is about to tip off, every 5 minutes on a game
+ * day, hourly otherwise;
  * yesterday's games too until they're all over (late games run past midnight).
  */
 class NbaAlerts(
@@ -96,7 +97,9 @@ class NbaAlerts(
 
     private fun nextPoll(games: List<Game>, today: List<Game>, now: Long): Long {
         val untilTip = today.filter { it.state == GameState.PRE && !it.calledOff }.map { it.start.toEpochMilli() - now }
-        if (games.any { it.state == GameState.LIVE } || untilTip.any { it <= 15 * 60_000L }) return 30_000L
+        // ESPN caches the scoreboard for only 2 s, so live games get a 10 s poll.
+        if (games.any { it.state == GameState.LIVE }) return 10_000L
+        if (untilTip.any { it <= 15 * 60_000L }) return 30_000L
         // Game day: every 5 minutes, waking in time for the 15 minutes before the next tip-off.
         if (untilTip.isNotEmpty()) return minOf(5 * 60_000L, untilTip.min() - 15 * 60_000L).coerceAtLeast(30_000L)
         return 3_600_000L

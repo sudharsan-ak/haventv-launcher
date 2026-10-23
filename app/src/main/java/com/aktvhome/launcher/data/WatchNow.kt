@@ -69,10 +69,8 @@ class WatchNow(
         }
         // Today's games also feed Kingdom's headline when it follows your team.
         if (!s.watchNba && !(s.headlineChanging && s.favoriteTeam.isNotBlank())) return
-        // Today: every 30 s while a game is live, every 5 minutes otherwise.
-        val todayGames = games[today()]
-        val liveNow = todayGames?.any { it.state == GameState.LIVE } == true
-        loadDay(today(), maxAgeMs = if (liveNow) 30_000 else 5 * 60_000, force = force)
+        // Today: every 10 s while a game is live (see [liveTick]), every 5 minutes otherwise.
+        loadDay(today(), maxAgeMs = if (liveToday()) 10_000 else 5 * 60_000, force = force)
         val fav = s.favoriteTeam
         if (fav.isNotBlank() && (fav != scheduleTeam || now - scheduleAt > 6 * 3_600_000L || (force && schedule.isEmpty()))) {
             scheduleTeam = fav
@@ -82,6 +80,18 @@ class WatchNow(
                 if (list != null) withContext(Dispatchers.Main) { schedule = list } else scheduleAt = 0L
             }
         }
+    }
+
+    fun liveToday(): Boolean = games[today()]?.any { it.state == GameState.LIVE } == true
+
+    /**
+     * Called every 10 s while Haven is in front: refreshes today's scoreboard when a game is live,
+     * so the NBA card, the headline and its rotation keep up (ESPN caches it for only 2 s).
+     */
+    fun liveTick() {
+        val s = settingsStore.settings
+        if (!s.watchNba && !s.headlineChanging) return
+        if (liveToday()) loadDay(today(), maxAgeMs = 9_000)
     }
 
     /** Reads Continue watching and the apps' shared rows now. The alert banners call it directly. */
