@@ -20,15 +20,21 @@ val OTHER_EVENTS = setOf(AlertEvent.CLOSE_GAME, AlertEvent.OVERTIME, AlertEvent.
 
 data class AlertPrefs(
     val on: Boolean = true,
-    /** ESPN abbreviation of the favorite team, "" for none. */
-    val favorite: String = "",
+    /** ESPN abbreviations of the teams you follow. */
+    val followed: Set<String> = emptySet(),
+    /** ESPN ids of single games you asked to be alerted about ("Set alert"); they count as followed. */
+    val alertGames: Set<String> = emptySet(),
+    /** Events for followed games. */
     val favoriteEvents: Set<AlertEvent> = AlertEvent.entries.toSet(),
     val otherEvents: Set<AlertEvent> = OTHER_EVENTS,
-    /** Least time between two other-team alerts (overtime excepted). */
+    /** Least time between two other-game alerts (overtime and the close-game escalation excepted). */
     val cooldownMs: Long = 10 * 60_000L,
-)
+) {
+    fun follows(g: Game) = g.espnId in alertGames || g.away.abbr in followed || g.home.abbr in followed
+}
 
-data class Alert(val game: Game, val event: AlertEvent, val favorite: Boolean)
+/** [followed]: a followed team's game, or one with Set alert. */
+data class Alert(val game: Game, val event: AlertEvent, val followed: Boolean)
 
 /**
  * What the rules remember between polls. [sent] (alerts already raised, and games seen live),
@@ -70,7 +76,7 @@ object AlertRules {
     const val TIP_OFF_MS = 10 * 60_000L
 
     /**
-     * Alerts for one poll of [games] fetched at [fetchedAt], favorite team first. Updates
+     * Alerts for one poll of [games] fetched at [fetchedAt], followed games first. Updates
      * [memory]; skips (and uses up) alerts for games you're [watching].
      */
     fun evaluate(
@@ -90,7 +96,7 @@ object AlertRules {
         val held = mutableSetOf<String>()
         for (g in games) {
             if (g.calledOff) continue
-            val fav = g.involves(prefs.favorite)
+            val fav = prefs.follows(g)
             val allowed = if (fav) prefs.favoriteEvents else prefs.otherEvents intersect OTHER_EVENTS
             val id = g.espnId
             fun offer(event: AlertEvent, key: String, confirm: Boolean = false) {
@@ -118,7 +124,8 @@ object AlertRules {
                     val home = g.home.score.toIntOrNull() ?: continue
                     val margin = abs(away - home)
                     val left = clockSeconds(g.clock)
-                    if (g.period == 4 && left != null && left <= 300 && margin <= 5) {
+                    // The NBA's clutch time: the last 5 minutes of the 4th quarter or overtime, within 5.
+                    if (g.period >= 4 && left != null && left <= 300 && margin <= 5) {
                         offer(AlertEvent.CLOSE_GAME, "$id:CLOSE_GAME", confirm = true)
                         // One more, only once the first is out and it's tighter still.
                         if (left <= 60 && margin <= 2 && "$id:CLOSE_GAME" in memory.sent) {
@@ -136,14 +143,16 @@ object AlertRules {
         memory.confirm.keys.retainAll(held)
 
         val out = mutableListOf<Alert>()
-        for ((alert, key) in found.sortedByDescending { it.first.favorite }) {
+        for ((alert, key) in found.sortedByDescending { it.first.followed }) {
             if (watching(alert.game)) {
                 memory.sent += key
                 continue
             }
-            // Other games share one alert per cooldown; overtime always gets through. A held
-            // alert isn't used up, so it can still come once the cooldown ends (if it still holds).
-            if (!alert.favorite && alert.event != AlertEvent.OVERTIME) {
+            // Other games share one alert per cooldown; overtime and the close-game escalation always
+            // get through. A held alert isn't used up, so it can still come once the cooldown ends
+            // (if it still holds).
+            val exempt = alert.event == AlertEvent.OVERTIME || key.endsWith(":CLOSE_GAME:2")
+            if (!alert.followed && !exempt) {
                 if (memory.lastOtherAt != 0L && now - memory.lastOtherAt < prefs.cooldownMs) continue
                 memory.lastOtherAt = now
             }
@@ -165,8 +174,8 @@ object AlertRules {
     /**
      * True when you're watching [game] right now:
      * - YouTube TV is on one of its networks (its subtitle is the channel);
-     * - the NBA app is playing a live stream of either team ("Bulls (In-Arena)"; highlights
-     *   have a position and no feed in brackets);
+     * - the NBA app is playing a live stream of either team, by nickname or city ("Bulls
+     *   (In-Arena)", "Portland (Home)"); highlights have a position and no feed in brackets;
      * - the app in front carries the game (ESPN, Peacock, Prime Video) and is playing.
      */
     fun isWatching(game: Game, sessions: List<NowPlaying>, foreground: String?, localStations: Map<String, String>): Boolean {
@@ -180,7 +189,8 @@ object AlertRules {
                 NBA_APP -> {
                     val title = s.title ?: continue
                     val live = s.position == -1L || Regex("\\(.+\\)").containsMatchIn(title)
-                    val team = listOf(game.away.name, game.home.name).any { it.isNotBlank() && title.startsWith(it, ignoreCase = true) }
+                    val names = listOf(game.away.name, game.home.name, game.away.location, game.home.location)
+                    val team = names.any { it.isNotBlank() && title.startsWith(it, ignoreCase = true) }
                     if (live && team) return true
                 }
             }

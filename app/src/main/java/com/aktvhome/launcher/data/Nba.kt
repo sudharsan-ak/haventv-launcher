@@ -151,6 +151,7 @@ object Nba {
                 team.optString("abbreviation"), team.optString("shortDisplayName", team.optString("displayName")),
                 score, team.optString("color", "5b7bff"), leader,
                 logo = team.optString("logo").ifBlank { null },
+                location = team.optString("location"),
             )
             if (c.optString("homeAway") == "home") home = t else away = t
         }

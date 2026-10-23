@@ -61,7 +61,7 @@ class NbaAlerts(
                 "test", Instant.now(), team(other, "101"), team(fav, "104"), GameState.LIVE, "", "ESPN",
                 period = 4, clock = "2:31",
             )
-            show(Alert(game, AlertEvent.CLOSE_GAME, favorite = true))
+            show(Alert(game, AlertEvent.CLOSE_GAME, followed = true))
         }
     }
 
@@ -133,6 +133,6 @@ class NbaAlerts(
             context.packageName in NotificationManagerCompat.getEnabledListenerPackages(context)
 
         const val GRANT_COMMAND =
-            "adb shell cmd notification allow_listener com.aktvhome.launcher/com.aktvhome.launcher.HavenMediaListener"
+            "adb shell cmd notification allow_listener com.aktvhome.launcher/com.aktvhome.launcher.HavenMediaListener 0"
     }
 }

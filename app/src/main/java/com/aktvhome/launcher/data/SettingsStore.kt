@@ -104,10 +104,16 @@ data class Settings(
     val alertCooldown: Int = 10,
     /** Seconds a banner stays up without a key press. */
     val bannerSeconds: Int = 5,
+    /**
+     * Single games with "Set alert" on: ESPN event id to tip-off (epoch ms). They get the "Your
+     * team" alerts, and drop off a day after the game.
+     */
+    val alertGames: Map<String, Long> = emptyMap(),
 ) {
     fun alertPrefs() = AlertPrefs(
         on = alertsMine || alertsOthers,
-        favorite = favoriteTeam,
+        followed = followedTeams,
+        alertGames = alertGames.keys,
         favoriteEvents = if (alertsMine) alertsFavorite else emptySet(),
         otherEvents = if (alertsOthers) alertsOther else emptySet(),
         cooldownMs = alertCooldown * 60_000L,
@@ -168,6 +174,7 @@ class SettingsStore(context: Context) {
             .putBoolean("hideScores", next.hideScores)
             .putInt("alertCooldown", next.alertCooldown)
             .putInt("bannerSeconds", next.bannerSeconds)
+            .putString("alertGames", next.alertGames.entries.joinToString("\n") { "${it.key}=${it.value}" })
             .apply()
     }
 
@@ -225,6 +232,10 @@ class SettingsStore(context: Context) {
         hideScores = prefs.getBoolean("hideScores", false),
         alertCooldown = prefs.getInt("alertCooldown", 10),
         bannerSeconds = prefs.getInt("bannerSeconds", 5),
+        // A game's alert ends a day after it (30 h after tip-off covers any late finish).
+        alertGames = (prefs.getString("alertGames", null) ?: "").lines().mapNotNull { line ->
+            line.split('=', limit = 2).takeIf { it.size == 2 }?.let { (id, at) -> at.toLongOrNull()?.let { id to it } }
+        }.filter { System.currentTimeMillis() - it.second < 30 * 3_600_000L }.toMap(),
     )
 
     private fun events(saved: String?): Set<AlertEvent>? =

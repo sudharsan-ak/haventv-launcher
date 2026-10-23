@@ -17,6 +17,8 @@ data class Team(
     val leader: String?,
     /** Logo URL from ESPN, when the feed includes one. */
     val logo: String? = null,
+    /** City or region, e.g. "Portland", "Golden State". */
+    val location: String = "",
 )
 
 data class Game(

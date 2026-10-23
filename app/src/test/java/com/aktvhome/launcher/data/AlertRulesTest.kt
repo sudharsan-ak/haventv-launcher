@@ -10,7 +10,7 @@ class AlertRulesTest {
 
     private val t0 = 1_800_000_000_000L
     private val poll = 30_000L
-    private val fav = AlertPrefs(favorite = "GS")
+    private val fav = AlertPrefs(followed = setOf("GS"))
 
     private fun game(
         id: String = "1",
@@ -25,10 +25,12 @@ class AlertRulesTest {
         network: String? = "ESPN",
         awayName: String = "Lakers",
         homeName: String = "Celtics",
+        awayCity: String = "Los Angeles",
+        homeCity: String = "Boston",
     ) = Game(
         id, Instant.ofEpochMilli(start),
-        Team(away, awayName, awayScore?.toString() ?: "", "000000", null),
-        Team(home, homeName, homeScore?.toString() ?: "", "000000", null),
+        Team(away, awayName, awayScore?.toString() ?: "", "000000", null, location = awayCity),
+        Team(home, homeName, homeScore?.toString() ?: "", "000000", null, location = homeCity),
         state, "", network, period, clock, halftime, calledOff,
     )
 
@@ -117,13 +119,59 @@ class AlertRulesTest {
         assertEquals(1, m.poll(t0 + 3 * poll, mine(clock = "10.0")).size)
     }
 
-    @Test fun otherTeamEscalationWaitsForTheCooldown() {
+    @Test fun otherTeamEscalationSkipsTheCooldown() {
         val m = AlertMemory()
         m.poll(t0, game())
         assertEquals(1, m.poll(t0 + poll, game()).size)
-        // Two minutes later it's tighter, but the cooldown from the first alert still holds.
+        // Two minutes later it's tighter: the escalation shows even though the cooldown still runs.
         m.poll(t0 + 4 * poll, game(clock = "1:00", awayScore = 101))
-        assertTrue(m.poll(t0 + 5 * poll, game(clock = "50.0", awayScore = 101)).isEmpty())
+        assertEquals(listOf(AlertEvent.CLOSE_GAME), m.poll(t0 + 5 * poll, game(clock = "50.0", awayScore = 101)).events())
+    }
+
+    @Test fun closeGameInOvertimeToo() {
+        val m = AlertMemory()
+        m.poll(t0, game(period = 5, clock = "3:00", awayScore = 110, homeScore = 108))
+        assertEquals(listOf(AlertEvent.CLOSE_GAME), m.poll(t0 + poll, game(period = 5, clock = "2:30", awayScore = 110, homeScore = 108)).events())
+    }
+
+    @Test fun closeGameOncePerGameAcrossOvertime() {
+        val m = AlertMemory()
+        m.poll(t0, game(clock = "2:00"))
+        assertEquals(1, m.poll(t0 + poll, game(clock = "1:30")).size)
+        m.poll(t0 + 2 * poll, game(period = 5, clock = "4:00", awayScore = 110, homeScore = 108))
+        assertTrue(m.poll(t0 + 3 * poll, game(period = 5, clock = "3:30", awayScore = 110, homeScore = 108)).none { it.event == AlertEvent.CLOSE_GAME })
+    }
+
+    // ---- Followed teams and single games ----
+
+    @Test fun everyFollowedTeamGetsYourTeamAlerts() {
+        val prefs = AlertPrefs(followed = setOf("GS", "CHI"))
+        val m = AlertMemory()
+        val half = game(away = "CHI", period = 2, clock = "0.0", halftime = true)
+        val out = m.poll(t0, half, prefs = prefs)
+        assertEquals(listOf(AlertEvent.HALFTIME), out.events())
+        assertTrue(out.single().followed)
+    }
+
+    @Test fun setAlertGameCountsAsFollowed() {
+        val half = game(id = "401", period = 2, clock = "0.0", halftime = true)
+        assertTrue(AlertMemory().poll(t0, half).isEmpty())
+        val out = AlertMemory().poll(t0, half, prefs = fav.copy(alertGames = setOf("401")))
+        assertEquals(listOf(AlertEvent.HALFTIME), out.events())
+        assertTrue(out.single().followed)
+    }
+
+    @Test fun setAlertGameIgnoresTheCooldown() {
+        val m = AlertMemory(lastOtherAt = t0)
+        val prefs = fav.copy(alertGames = setOf("401"))
+        m.poll(t0 + poll, game(id = "401"), prefs = prefs)
+        assertEquals(1, m.poll(t0 + 2 * poll, game(id = "401"), prefs = prefs).size)
+    }
+
+    @Test fun yourTeamSwitchOffMeansNoAlertsForIt() {
+        val prefs = fav.copy(favoriteEvents = emptySet())
+        val m = AlertMemory()
+        assertTrue(m.poll(t0, game(home = "GS", period = 5), prefs = prefs).isEmpty())
     }
 
     @Test fun favoriteOnceOnlyEvents() {
@@ -207,7 +255,7 @@ class AlertRulesTest {
         m.poll(t0 + poll, ot, favClose)
         val out = m.poll(t0 + 2 * poll, favClose)
         assertEquals(listOf(AlertEvent.CLOSE_GAME), out.events())
-        assertTrue(out.single().favorite)
+        assertTrue(out.single().followed)
         assertEquals(listOf(AlertEvent.OVERTIME), AlertMemory(lastOtherAt = t0).poll(t0 + poll, ot).events())
     }
 
@@ -216,7 +264,7 @@ class AlertRulesTest {
         val other = game(id = "1")
         val mine = game(id = "2", away = "GS")
         m.poll(t0, other, mine)
-        assertEquals(listOf(true, false), m.poll(t0 + poll, other, mine).map { it.favorite })
+        assertEquals(listOf(true, false), m.poll(t0 + poll, other, mine).map { it.followed })
     }
 
     // ---- Comeback ----
@@ -279,6 +327,13 @@ class AlertRulesTest {
         // Highlights: a real position and no feed.
         assertFalse(AlertRules.isWatching(g, listOf(NowPlaying(NBA_APP, "Bucks", null, 5971, true)), NBA_APP, emptyMap()))
         assertFalse(AlertRules.isWatching(g, listOf(NowPlaying(NBA_APP, "Heat (In-Arena)", null, -1, true)), NBA_APP, emptyMap()))
+    }
+
+    @Test fun watchingMatchesNbaAppByCity() {
+        val g = game(away = "POR", awayName = "Trail Blazers", awayCity = "Portland", home = "PHI", homeName = "76ers", homeCity = "Philadelphia")
+        assertTrue(AlertRules.isWatching(g, listOf(NowPlaying(NBA_APP, "Portland (Home)", null, -1, true)), NBA_APP, emptyMap()))
+        assertTrue(AlertRules.isWatching(g, listOf(NowPlaying(NBA_APP, "philadelphia (Away)", null, -1, true)), NBA_APP, emptyMap()))
+        assertFalse(AlertRules.isWatching(g, listOf(NowPlaying(NBA_APP, "Boston (Home)", null, -1, true)), NBA_APP, emptyMap()))
     }
 
     @Test fun watchingInStreamingAppNeedsItInFrontAndPlaying() {
