@@ -60,6 +60,8 @@ data class Settings(
     /** Name used in the greeting. Empty means "Good evening" with no name. */
     val name: String = "",
     val showGreeting: Boolean = true,
+    /** Kingdom's headline follows your team's game and the time of day; off keeps it fixed. */
+    val headlineChanging: Boolean = true,
     val cardSize: CardSize = CardSize.MEDIUM,
     /** The Private DNS the user picked (what "Keep enforced" restores). */
     val dnsChoice: DnsChoice = DnsChoice.AUTO,
@@ -114,6 +116,7 @@ class SettingsStore(context: Context) {
             .putBoolean("clock24", next.clock24)
             .putString("name", next.name)
             .putBoolean("showGreeting", next.showGreeting)
+            .putBoolean("headlineChanging", next.headlineChanging)
             .putString("cardSize", next.cardSize.name)
             .putString("dnsChoice", next.dnsChoice.name)
             .putString("dnsProvider", next.dnsProvider.name)
@@ -154,6 +157,7 @@ class SettingsStore(context: Context) {
         clock24 = prefs.getBoolean("clock24", false),
         name = prefs.getString("name", null) ?: "",
         showGreeting = prefs.getBoolean("showGreeting", true),
+        headlineChanging = prefs.getBoolean("headlineChanging", true),
         cardSize = enumOr(prefs.getString("cardSize", null), CardSize.MEDIUM),
         dnsChoice = enumOr(prefs.getString("dnsChoice", null), DnsChoice.AUTO),
         dnsProvider = enumOr(prefs.getString("dnsProvider", null), DnsChoice.ADGUARD),

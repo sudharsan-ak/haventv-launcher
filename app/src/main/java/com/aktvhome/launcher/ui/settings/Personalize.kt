@@ -362,6 +362,12 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                                     store.update { it.copy(showGreeting = !it.showGreeting) }
                                 }
                             }
+                            SettingsRow("Headline", "Kingdom's big line: follows your team's game and the time of day, or stays fixed.", colors) {
+                                ChoicePills(
+                                    values = listOf("Changing", "Fixed"),
+                                    selected = if (s.headlineChanging) "Changing" else "Fixed", colors = colors,
+                                ) { value -> store.update { it.copy(headlineChanging = value == "Changing") } }
+                            }
                             SettingsRow("Your name", "Used in the home screen greeting.", colors) {
                                 Pill(s.name.ifBlank { "Not set" }, colors) { editingName = true }
                             }

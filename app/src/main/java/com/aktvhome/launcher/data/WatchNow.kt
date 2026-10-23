@@ -76,7 +76,8 @@ class WatchNow(
                 }
             }
         }
-        if (!s.watchNba) return
+        // Today's games also feed Kingdom's headline when it follows your team.
+        if (!s.watchNba && !(s.headlineChanging && s.favoriteTeam.isNotBlank())) return
         // Today: every 30 s while a game is live, every 5 minutes otherwise.
         val todayGames = games[today()]
         val liveNow = todayGames?.any { it.state == GameState.LIVE } == true
