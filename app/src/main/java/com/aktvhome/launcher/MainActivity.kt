@@ -62,6 +62,7 @@ class MainActivity : ComponentActivity() {
                     state.wallpapers.tick()
                     state.watchNow.tick()
                     state.backup.tick()
+                    state.sony.refreshIfDue()
                     delay(15_000)
                 }
             }

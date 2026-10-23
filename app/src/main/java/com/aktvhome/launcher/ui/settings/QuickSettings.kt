@@ -25,6 +25,15 @@ import androidx.compose.material.icons.rounded.BrightnessAuto
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.PowerSettingsNew
+import androidx.compose.material.icons.rounded.RestartAlt
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import com.aktvhome.launcher.data.SonyControl
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Speaker
@@ -71,6 +80,7 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
     val first = remember { FocusRequester() }
     val close = { state.overlay = Overlay.NONE }
     val open = { intent: Intent -> openSystemPage(context, intent) }
+    var pinShowing by remember { mutableStateOf(false) }
 
     HavenOverlay(dim = 0.12f, onDismiss = close) {
         val panelShape = RoundedCornerShape(26.dp)
@@ -93,60 +103,66 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
 
             val dns by rememberDnsView(state)
             val dnsOn = dns.active?.host != null || dns.active == DnsChoice.CUSTOM
-            TileRow {
-                QuickTile("Theme", s.theme.label, Icons.Rounded.Palette, colors, first) {
-                    store.update { it.copy(theme = it.theme.next()) }
+            // The PIN pad needs the room, so the tiles step aside while pairing.
+            if (!pinShowing) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                TileRow {
+                    QuickTile("Theme", s.theme.label, Icons.Rounded.Palette, colors, first) {
+                        store.update { it.copy(theme = it.theme.next()) }
+                    }
+                    QuickTile("Day & night", s.dayMode.label, Icons.Rounded.BrightnessAuto, colors) {
+                        store.update { it.copy(dayMode = it.dayMode.next()) }
+                    }
+                    QuickTile("Motion", s.motion.label, Icons.Rounded.Animation, colors) {
+                        store.update { it.copy(motion = it.motion.next()) }
+                    }
                 }
-                QuickTile("Day & night", s.dayMode.label, Icons.Rounded.BrightnessAuto, colors) {
-                    store.update { it.copy(dayMode = it.dayMode.next()) }
+                TileRow {
+                    QuickTile("Clock", if (s.clock24) "24-hour" else "12-hour", Icons.Rounded.Schedule, colors) {
+                        store.update { it.copy(clock24 = !it.clock24) }
+                    }
+                    QuickTile("DNS", if (dnsOn) dns.label else "Off", Icons.Rounded.Shield, colors) { state.toggleDns() }
+                    QuickTile(
+                        "Wallpaper", state.wallpapers.credit.ifBlank { "Photo is off" }, Icons.Rounded.Wallpaper, colors,
+                    ) { state.wallpapers.tick(force = true) }
                 }
-                QuickTile("Motion", s.motion.label, Icons.Rounded.Animation, colors) {
-                    store.update { it.copy(motion = it.motion.next()) }
+
+                Spacer(Modifier.height(2.dp))
+                Eyebrow("TV", colors)
+                TileRow {
+                    QuickTile("Picture", brightnessText(context), Icons.Rounded.Image, colors) {
+                        open(sony("com.sony.dtv.configsettings", "PictureSettingActivity", "com.sony.dtv.base.picturesettings"))
+                    }
+                    QuickTile("Sound", "Sound settings", Icons.Rounded.MusicNote, colors) {
+                        open(sony("com.sony.dtv.configsettings", "SoundSettingActivity", "com.sony.dtv.base.soundsettings"))
+                    }
+                    QuickTile("Audio system", "Speakers & soundbar", Icons.Rounded.Speaker, colors) {
+                        open(sony("com.sony.dtv.configsettings", "AudioSystemSettingsActivity", "com.sony.dtv.base.audiosystemsettings"))
+                    }
                 }
-            }
-            TileRow {
-                QuickTile("Clock", if (s.clock24) "24-hour" else "12-hour", Icons.Rounded.Schedule, colors) {
-                    store.update { it.copy(clock24 = !it.clock24) }
+                TileRow {
+                    QuickTile("Screen", "Wide mode & more", Icons.Rounded.AspectRatio, colors) {
+                        open(sony("com.sony.dtv.configsettings", "ScreenSettingActivity", "com.sony.dtv.base.screensettings"))
+                    }
+                    QuickTile("Wi-Fi", wifiText(context), Icons.Rounded.Wifi, colors) {
+                        open(Intent(Settings.ACTION_WIFI_SETTINGS))
+                    }
+                    QuickTile("Sleep timer", "Sony timers", Icons.Rounded.Bedtime, colors) {
+                        open(
+                            Intent("com.sony.dtv.timers.intent.action.SLEEP_TIMER")
+                                .setClassName("com.sony.dtv.timers", "com.sony.dtv.activity.TimersMainActivity"),
+                        )
+                    }
                 }
-                QuickTile("DNS", if (dnsOn) dns.label else "Off", Icons.Rounded.Shield, colors) { state.toggleDns() }
-                QuickTile(
-                    "Wallpaper", state.wallpapers.credit.ifBlank { "Photo is off" }, Icons.Rounded.Wallpaper, colors,
-                ) { state.wallpapers.tick(force = true) }
             }
 
             Spacer(Modifier.height(2.dp))
-            Eyebrow("TV", colors)
-            TileRow {
-                QuickTile("Picture", brightnessText(context), Icons.Rounded.Image, colors) {
-                    open(sony("com.sony.dtv.configsettings", "PictureSettingActivity", "com.sony.dtv.base.picturesettings"))
-                }
-                QuickTile("Sound", "Sound settings", Icons.Rounded.MusicNote, colors) {
-                    open(sony("com.sony.dtv.configsettings", "SoundSettingActivity", "com.sony.dtv.base.soundsettings"))
-                }
-                QuickTile("Audio system", "Speakers & soundbar", Icons.Rounded.Speaker, colors) {
-                    open(sony("com.sony.dtv.configsettings", "AudioSystemSettingsActivity", "com.sony.dtv.base.audiosystemsettings"))
-                }
-            }
-            TileRow {
-                QuickTile("Screen", "Wide mode & more", Icons.Rounded.AspectRatio, colors) {
-                    open(sony("com.sony.dtv.configsettings", "ScreenSettingActivity", "com.sony.dtv.base.screensettings"))
-                }
-                QuickTile("Wi-Fi", wifiText(context), Icons.Rounded.Wifi, colors) {
-                    open(Intent(Settings.ACTION_WIFI_SETTINGS))
-                }
-                QuickTile("Sleep timer", "Sony timers", Icons.Rounded.Bedtime, colors) {
-                    open(
-                        Intent("com.sony.dtv.timers.intent.action.SLEEP_TIMER")
-                            .setClassName("com.sony.dtv.timers", "com.sony.dtv.activity.TimersMainActivity"),
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(2.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                BarButton("All settings", colors, Modifier.weight(1f)) { state.overlay = Overlay.PERSONALIZE }
-                BarButton("Android settings", colors, Modifier.weight(1f)) { open(Intent(Settings.ACTION_SETTINGS)) }
-            }
+            PowerArea(
+                state, colors,
+                onAllSettings = { state.overlay = Overlay.PERSONALIZE },
+                onAndroidSettings = { open(Intent(Settings.ACTION_SETTINGS)) },
+                onPoweringOff = close,
+                onPinShowing = { pinShowing = it },
+            )
         }
     }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
@@ -193,12 +209,196 @@ private fun RowScope.QuickTile(
     }
 }
 
+private enum class PowerStep { BAR, CHOOSE, CONFIRM_RESTART, PIN }
+
+/**
+ * The bottom bar: All settings, Android settings and a power button. Power swaps the bar in place
+ * for Power off / Restart / Cancel (Restart asks once more). The first time, it pairs Haven with
+ * the TV instead: the TV shows a PIN and a number pad appears here.
+ */
 @Composable
-private fun BarButton(label: String, colors: ThemeColors, modifier: Modifier, onClick: () -> Unit) {
-    GlassCard(colors, modifier.height(48.dp), onClick = onClick) { ink ->
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(label, color = ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1)
-            Text("→", color = ink, fontSize = 15.sp)
+private fun PowerArea(
+    state: HavenState,
+    colors: ThemeColors,
+    onAllSettings: () -> Unit,
+    onAndroidSettings: () -> Unit,
+    onPoweringOff: () -> Unit,
+    onPinShowing: (Boolean) -> Unit,
+) {
+    val sony = state.sony
+    val scope = rememberCoroutineScope()
+    var step by remember { mutableStateOf(PowerStep.BAR) }
+    var busy by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var pin by remember { mutableStateOf("") }
+    val stepFocus = remember { FocusRequester() }
+    val powerFocus = remember { FocusRequester() }
+    var moved by remember { mutableStateOf(false) }
+
+    fun go(next: PowerStep) {
+        moved = true
+        step = next
+    }
+
+    val unreachable = "Couldn't reach the TV's control service. Check Settings › Remote device settings › Control remotely is on."
+
+    fun pair() {
+        scope.launch {
+            busy = true
+            message = null
+            val r = sony.startPairing()
+            busy = false
+            when (r) {
+                SonyControl.Result.DONE -> go(PowerStep.CHOOSE)
+                SonyControl.Result.NEEDS_PAIRING -> {
+                    pin = ""
+                    message = "Enter the PIN shown on the TV."
+                    go(PowerStep.PIN)
+                }
+                SonyControl.Result.FAILED -> message = unreachable
+            }
+        }
+    }
+
+    fun send(action: suspend () -> SonyControl.Result, done: () -> Unit) {
+        scope.launch {
+            busy = true
+            message = null
+            val r = action()
+            busy = false
+            when (r) {
+                SonyControl.Result.DONE -> done()
+                SonyControl.Result.NEEDS_PAIRING -> pair()
+                SonyControl.Result.FAILED -> message = "The TV didn't accept that. Try again."
+            }
+        }
+    }
+
+    fun submit() {
+        if (pin.length < 4) return
+        scope.launch {
+            busy = true
+            val r = sony.submitPin(pin)
+            busy = false
+            when (r) {
+                SonyControl.Result.DONE -> {
+                    message = "Paired. Haven now shows in Remote device settings."
+                    go(PowerStep.CHOOSE)
+                }
+                SonyControl.Result.NEEDS_PAIRING -> {
+                    // A wrong PIN closes the TV's prompt; ask for a new one.
+                    pin = ""
+                    sony.startPairing()
+                    message = "That PIN didn't match. Enter the new one on the TV."
+                }
+                SonyControl.Result.FAILED -> message = unreachable
+            }
+        }
+    }
+
+    Column(
+        Modifier.onPreviewKeyEvent { e ->
+            // Back steps out of the power choices instead of closing Quick settings.
+            if (e.nativeKeyEvent.keyCode != android.view.KeyEvent.KEYCODE_BACK || step == PowerStep.BAR) return@onPreviewKeyEvent false
+            if (e.type == KeyEventType.KeyUp) {
+                message = null
+                go(PowerStep.BAR)
+            }
+            true
+        },
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        message?.let { Text(it, color = colors.ink, fontSize = 11.sp) }
+        if (busy) Text("Talking to the TV…", color = colors.inkSoft, fontSize = 11.sp)
+        when (step) {
+            PowerStep.BAR -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                BarButton("All settings", colors, Modifier.weight(1f), onClick = onAllSettings)
+                BarButton("Android settings", colors, Modifier.weight(1f), onClick = onAndroidSettings)
+                BarButton(null, colors, Modifier.width(48.dp), Icons.Rounded.PowerSettingsNew, powerFocus) {
+                    if (sony.paired) go(PowerStep.CHOOSE) else pair()
+                }
+            }
+            PowerStep.CHOOSE -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                BarButton("Power off", colors, Modifier.weight(1f), Icons.Rounded.PowerSettingsNew, stepFocus) {
+                    send({ sony.powerOff() }) { onPoweringOff() }
+                }
+                BarButton("Restart", colors, Modifier.weight(1f), Icons.Rounded.RestartAlt) { go(PowerStep.CONFIRM_RESTART) }
+                BarButton("Cancel", colors, Modifier.weight(1f)) { message = null; go(PowerStep.BAR) }
+            }
+            PowerStep.CONFIRM_RESTART -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Restart now?", color = colors.ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                BarButton("Yes", colors, Modifier.width(96.dp), focusRequester = stepFocus) {
+                    send({ sony.restart() }) { message = "Restarting…" }
+                }
+                BarButton("No", colors, Modifier.width(96.dp)) { go(PowerStep.CHOOSE) }
+            }
+            PowerStep.PIN -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    if (pin.isEmpty()) "PIN: ____" else "PIN: $pin",
+                    color = colors.ink, fontSize = 16.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp,
+                )
+                listOf(listOf("1", "2", "3", "4", "5"), listOf("6", "7", "8", "9", "0"), listOf("⌫", "Cancel", "OK")).forEachIndexed { r, keys ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        keys.forEachIndexed { c, k ->
+                            BarButton(k, colors, Modifier.weight(1f), focusRequester = if (r == 0 && c == 0) stepFocus else null) {
+                                when (k) {
+                                    "⌫" -> pin = pin.dropLast(1)
+                                    "Cancel" -> { message = null; go(PowerStep.BAR) }
+                                    "OK" -> submit()
+                                    else -> if (pin.length < 8) pin += k
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Each step starts with focus on its first button; back on the bar, focus returns to power.
+    LaunchedEffect(step) {
+        onPinShowing(step == PowerStep.PIN)
+        if (!moved) return@LaunchedEffect
+        delay(60)
+        runCatching { (if (step == PowerStep.BAR) powerFocus else stepFocus).requestFocus() }
+    }
+}
+
+/** Bar button: a label with an arrow, an icon with a label, or just an icon (the power button). */
+@Composable
+private fun BarButton(
+    label: String?,
+    colors: ThemeColors,
+    modifier: Modifier,
+    icon: ImageVector? = null,
+    focusRequester: FocusRequester? = null,
+    onClick: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(14.dp)
+    val ink = if (focused) colors.pillInk else colors.ink
+    // "All settings →" style for the settings links; everything else is centered.
+    val arrow = icon == null && label != null && label.endsWith("settings")
+    Row(
+        modifier
+            .height(48.dp)
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .clip(shape)
+            .background(if (focused) colors.pill else colors.glass)
+            .border(if (focused) 2.dp else 1.dp, if (focused) colors.accent else colors.edge, shape)
+            .onFocusChanged { focused = it.isFocused }
+            .tvClickable(onClick = onClick)
+            .padding(horizontal = if (label == null) 0.dp else 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = if (arrow) Arrangement.Start else Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+    ) {
+        if (icon != null) Icon(icon, null, tint = ink, modifier = Modifier.size(18.dp))
+        if (label != null) {
+            Text(
+                label, color = ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                modifier = if (arrow) Modifier.weight(1f) else Modifier,
+            )
+            if (arrow) Text("→", color = ink, fontSize = 15.sp)
         }
     }
 }
