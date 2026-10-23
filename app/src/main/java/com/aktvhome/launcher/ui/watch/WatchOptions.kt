@@ -4,8 +4,6 @@ import com.aktvhome.launcher.data.Game
 import com.aktvhome.launcher.data.GameState
 import com.aktvhome.launcher.data.TvItem
 import com.aktvhome.launcher.ui.HavenState
-import java.time.Duration
-import java.time.Instant
 
 /** One way to watch a game, best first. */
 data class WatchOption(val label: String, val open: () -> Unit)
@@ -27,13 +25,12 @@ val LOCAL_NETWORKS = listOf("ABC", "NBC", "CBS", "FOX")
  * - Peacock for NBC/Peacock games, Prime Video for Prime games (these open the app; neither
  *   shares per-game links);
  * - the NBA app last, always, for League Pass, local channels and game info.
- * Watch options only appear from an hour before tip-off until the game ends.
+ * Finished games offer only the NBA app (replays).
  */
 fun HavenState.watchOptions(game: Game): List<WatchOption> {
     val nbaApp = WatchOption("NBA app") { watchNow.openGame(game) }
-    val soon = game.state == GameState.LIVE ||
-        (game.state == GameState.PRE && Duration.between(Instant.now(), game.start).toMinutes() <= 60)
-    if (!soon) return listOf(nbaApp)
+    // Finished games: replays and recaps live in the NBA app. Upcoming games show where they'll air.
+    if (game.state == GameState.FINAL) return listOf(nbaApp)
 
     val networks = game.network.orEmpty().split(",").map { it.trim() }.filter { it.isNotEmpty() }
     val upper = networks.map { it.uppercase() }
@@ -63,11 +60,15 @@ fun HavenState.watchOptions(game: Game): List<WatchOption> {
     return options.distinctBy { it.label }
 }
 
-/** "ESPN" matches "ESPN" but not "ESPN2"; "NBA TV" matches "NBATV". */
+/**
+ * "ESPN" matches "ESPN" but not "ESPN2"; "NBA TV" matches "NBATV". Broadcast networks also match
+ * their local station when it's named network + number, e.g. NBC = "NBC 5", FOX = "FOX 4".
+ */
 private fun sameChannel(title: String, network: String): Boolean {
     val t = title.uppercase().replace(" ", "")
     val n = network.replace(" ", "")
-    return t == n || t == "$n HD".replace(" ", "")
+    if (t == n || t == "${n}HD") return true
+    return network in LOCAL_NETWORKS && Regex("^${Regex.escape(network)}\\s*\\d+$").matches(title.uppercase().trim())
 }
 
 /** True when an ESPN Live item names both teams (by nickname or abbreviation). */

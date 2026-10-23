@@ -48,6 +48,7 @@ import com.aktvhome.launcher.data.TvItem
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.Overlay
 import com.aktvhome.launcher.ui.Pill
+import com.aktvhome.launcher.ui.onKeyDown
 import com.aktvhome.launcher.ui.settings.CloseButton
 import com.aktvhome.launcher.ui.settings.Eyebrow
 import com.aktvhome.launcher.ui.settings.GlassCard
@@ -61,12 +62,18 @@ import java.time.format.DateTimeFormatter
 private const val YOUTUBE_TV = "com.google.android.youtube.tvunplugged"
 private val weekDayFmt = DateTimeFormatter.ofPattern("EEE d")
 
+/** Focus handles for the week strip's day chips, so the games list can return Up to the selected day. */
+class DayFocus {
+    private val map = mutableMapOf<LocalDate, FocusRequester>()
+    fun of(d: LocalDate): FocusRequester = map.getOrPut(d) { FocusRequester() }
+}
+
 /**
  * Today · ‹ seven days › · Calendar. The arrows move the week; picking a date in the calendar
  * moves the week to it, so a picked date always sits in its place among its neighbors.
  */
 @Composable
-fun WeekStrip(state: HavenState, colors: ThemeColors, day: LocalDate, focus: FocusRequester?, onDay: (LocalDate) -> Unit) {
+fun WeekStrip(state: HavenState, colors: ThemeColors, day: LocalDate, focus: FocusRequester?, days: DayFocus, onDay: (LocalDate) -> Unit) {
     val today = state.watchNow.today()
     var weekStart by remember { mutableStateOf(if (day < today || day > today.plusDays(6)) day else today) }
     var picking by remember { mutableStateOf(false) }
@@ -74,18 +81,19 @@ fun WeekStrip(state: HavenState, colors: ThemeColors, day: LocalDate, focus: Foc
         Pill("Today", colors, selected = day == today, focusRequester = focus) { weekStart = today; onDay(today) }
         Pill("‹", colors) { weekStart = weekStart.minusDays(7) }
         (0L..6L).map { weekStart.plusDays(it) }.forEach { d ->
-            val label = when (d) {
-                today -> "Today"
-                today.plusDays(1) -> "Tomorrow"
-                else -> d.format(weekDayFmt)
-            }
-            Pill(label, colors, selected = d == day, onFocused = { onDay(d) }) { onDay(d) }
+            // Dates only; the Today chip in front already says "Today".
+            val label = if (d == today.plusDays(1)) "Tomorrow" else d.format(weekDayFmt)
+            Pill(label, colors, selected = d == day, focusRequester = days.of(d), onFocused = { onDay(d) }) { onDay(d) }
         }
         Pill("›", colors) { weekStart = weekStart.plusDays(7) }
         Pill("Calendar", colors) { picking = true }
     }
     if (picking) DatePickerDialog(colors, day, onPick = { weekStart = it; onDay(it); picking = false }, onDismiss = { picking = false })
 }
+
+/** Up arrow goes to [target] instead of the geometrically nearest item. */
+fun upTo(target: FocusRequester): Modifier =
+    Modifier.onKeyDown(android.view.KeyEvent.KEYCODE_DPAD_UP) { runCatching { target.requestFocus() } }
 
 /** Centered glass panel used by the single-card views. */
 @Composable
@@ -119,17 +127,21 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
     var day by remember { mutableStateOf(w.today()) }
     var picked by remember { mutableStateOf<Game?>(null) }
     val first = remember { FocusRequester() }
+    val days = remember { DayFocus() }
     LaunchedEffect(day) { w.loadDay(day) }
     val top = picked ?: if (day == w.today()) w.featured() else w.games[day]?.firstOrNull()
     Panel(colors, "NBA", "Scores from ESPN · games open where they air", { state.overlay = Overlay.NONE }) {
         if (top != null) FeaturedGame(state, colors, top, first)
-        WeekStrip(state, colors, day, if (top == null) first else null) { day = it; picked = null }
+        WeekStrip(state, colors, day, if (top == null) first else null, days) { day = it; picked = null }
         val list = w.games[day]
         when {
             list == null && w.nbaError -> Text("Couldn't reach ESPN. Check the connection and try again.", color = colors.inkSoft, fontSize = 12.sp)
             list == null -> Text("Loading games…", color = colors.inkSoft, fontSize = 12.sp)
             list.isEmpty() -> Text("No NBA games on ${day.format(DateTimeFormatter.ofPattern("EEEE, MMM d"))}.", color = colors.inkSoft, fontSize = 12.sp)
-            else -> list.forEach { g -> GameRow(g, fav, colors) { picked = g } }
+            // Up from the first game goes back to the selected day, not the nearest chip above.
+            else -> list.forEachIndexed { i, g ->
+                GameRow(g, fav, colors, modifier = if (i == 0) upTo(days.of(day)) else Modifier) { picked = g }
+            }
         }
         if (fav.isNotBlank()) {
             val next = w.nextFavorite()

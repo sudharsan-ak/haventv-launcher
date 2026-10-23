@@ -61,6 +61,7 @@ fun WatchDrawer(state: HavenState, colors: ThemeColors) {
     val close = { state.overlay = Overlay.NONE }
     val first = remember { FocusRequester() }
     var day by remember { mutableStateOf(w.today()) }
+    val days = remember { DayFocus() }
     var picking by remember { mutableStateOf(false) }
     var firstUsed = false
     fun claim(): FocusRequester? = if (!firstUsed) { firstUsed = true; first } else null
@@ -95,13 +96,15 @@ fun WatchDrawer(state: HavenState, colors: ThemeColors) {
                     TeamCard(state, colors, fav, claim())
                 }
                 Section("NBA", colors)
-                WeekStrip(state, colors, day, claim()) { day = it }
+                WeekStrip(state, colors, day, claim(), days) { day = it }
                 val list = w.games[day]
                 when {
                     list == null && w.nbaError -> Note("Couldn't reach ESPN. Check the connection and try again.", colors)
                     list == null -> Note("Loading games…", colors)
                     list.isEmpty() -> Note("No NBA games on ${if (day == w.today()) "today" else day.format(DateTimeFormatter.ofPattern("EEEE, MMM d"))}.", colors)
-                    else -> list.forEach { g -> GameRow(g, fav, colors) { state.detailGame = g } }
+                    else -> list.forEachIndexed { i, g ->
+                        GameRow(g, fav, colors, modifier = if (i == 0) upTo(days.of(day)) else Modifier) { state.detailGame = g }
+                    }
                 }
             }
 
@@ -150,8 +153,8 @@ private fun TeamCard(state: HavenState, colors: ThemeColors, fav: String, focus:
 }
 
 @Composable
-fun GameRow(g: Game, fav: String, colors: ThemeColors, focus: FocusRequester? = null, onClick: () -> Unit) {
-    GlassCard(colors, Modifier.fillMaxWidth(), selected = g.involves(fav), focusRequester = focus, onClick = onClick) { ink ->
+fun GameRow(g: Game, fav: String, colors: ThemeColors, focus: FocusRequester? = null, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    GlassCard(colors, modifier.fillMaxWidth(), selected = g.involves(fav), focusRequester = focus, onClick = onClick) { ink ->
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 TeamLine(g.away.abbr, g.away.name, if (g.state == GameState.PRE) "" else g.away.score, g.away.color, ink)
