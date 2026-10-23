@@ -178,7 +178,8 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
                     QuickTile("Screen", "Wide mode & more", Icons.Rounded.AspectRatio, colors) {
                         open(screenSettings())
                     }
-                    QuickTile("Wi-Fi & Bluetooth", "${wifiText(context)} · ${bluetoothText(context)}", Icons.Rounded.Wifi, colors, tileFocus[TvPage.NETWORK]) {
+                    // "Wi-Fi & Bluetooth" doesn't fit a one-third tile; the page itself keeps the full name.
+                    QuickTile("Wi-Fi & BT", "${wifiText(context)} · ${bluetoothText(context)}", Icons.Rounded.Wifi, colors, tileFocus[TvPage.NETWORK]) {
                         show(TvPage.NETWORK)
                     }
                     QuickTile("Sleep timer", sleepEnds?.let { "Off at ${timeText(it)}" } ?: "Off", Icons.Rounded.Bedtime, colors, tileFocus[TvPage.SLEEP]) {
