@@ -9,8 +9,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.lifecycleScope
@@ -80,10 +87,16 @@ class MainActivity : ComponentActivity() {
             // As the home screen there's nothing to go back to, so Back only ends a move.
             BackHandler(enabled = state.moving != null || state.isHome) { state.moving = null }
 
-            Crossfade(targetState = s.theme, animationSpec = tween(350), label = "theme") { theme ->
-                when (theme) {
-                    ThemeId.TIDE -> TideHome(state, colors)
-                    ThemeId.KINGDOM -> KingdomHome(state, colors)
+            // This TV can't blur across windows (the overlays' blur-behind does nothing), so the home
+            // blurs itself while anything floats over it; the overlays stay sharp.
+            val covered = state.overlay != Overlay.NONE || state.scheduleOpen || state.backup.offerRestore
+            val homeBlur by animateDpAsState(if (covered) 18.dp else 0.dp, tween(200), label = "homeBlur")
+            Box(Modifier.fillMaxSize().then(if (homeBlur > 0.dp) Modifier.blur(homeBlur) else Modifier)) {
+                Crossfade(targetState = s.theme, animationSpec = tween(350), label = "theme") { theme ->
+                    when (theme) {
+                        ThemeId.TIDE -> TideHome(state, colors)
+                        ThemeId.KINGDOM -> KingdomHome(state, colors)
+                    }
                 }
             }
 

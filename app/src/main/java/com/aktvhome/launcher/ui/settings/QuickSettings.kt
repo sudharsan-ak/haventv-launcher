@@ -113,7 +113,7 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
                 .align(Alignment.TopEnd)
                 .padding(top = 60.dp, end = 40.dp)
                 .width(460.dp)
-                .glassPanel(colors, panelShape, alpha = 0.66f)
+                .glassPanel(colors, panelShape)
                 .onPreviewKeyEvent { e ->
                     // Back on a page returns to the tiles instead of closing Quick settings.
                     if (page == null || e.nativeKeyEvent.keyCode != android.view.KeyEvent.KEYCODE_BACK) return@onPreviewKeyEvent false

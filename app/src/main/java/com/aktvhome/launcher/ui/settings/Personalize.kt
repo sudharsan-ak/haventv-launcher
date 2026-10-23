@@ -222,7 +222,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                 .align(Alignment.Center)
                 .width(860.dp)
                 .height(468.dp)
-                .glassPanel(colors, panelShape, alpha = 0.64f),
+                .glassPanel(colors, panelShape),
         ) {
             // Menu.
             Column(

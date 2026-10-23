@@ -61,6 +61,8 @@ import com.aktvhome.launcher.ui.settings.CloseButton
 import com.aktvhome.launcher.ui.settings.Eyebrow
 import com.aktvhome.launcher.ui.settings.GlassCard
 import com.aktvhome.launcher.ui.settings.HavenOverlay
+import com.aktvhome.launcher.ui.settings.STACKED_DIM
+import com.aktvhome.launcher.ui.settings.STACKED_GLASS
 import com.aktvhome.launcher.ui.settings.glassPanel
 import com.aktvhome.launcher.ui.theme.ThemeColors
 import com.aktvhome.launcher.ui.tvClickable
@@ -504,10 +506,11 @@ fun TeamSchedule(state: HavenState, colors: ThemeColors) {
     val nextIndex = games.indexOfFirst { it.state != GameState.FINAL }.let { if (it < 0) (games.size - 1).coerceAtLeast(0) else it }
     val list = rememberLazyListState(initialFirstVisibleItemIndex = (nextIndex - 2).coerceAtLeast(0))
     val nextFocus = remember { FocusRequester() }
-    HavenOverlay(dim = 0.45f, onDismiss = close) {
+    // Opens over the drawer or the NBA panel.
+    HavenOverlay(dim = STACKED_DIM, onDismiss = close) {
         Column(
             Modifier.align(Alignment.Center).width(640.dp).fillMaxHeight(0.86f)
-                .glassPanel(colors, RoundedCornerShape(26.dp), alpha = 0.95f).padding(24.dp),
+                .glassPanel(colors, RoundedCornerShape(26.dp), alpha = STACKED_GLASS).padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Eyebrow("Haven / Watch now / Schedule", colors)
