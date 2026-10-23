@@ -363,17 +363,8 @@ private fun SmallClose(colors: ThemeColors, onClick: () -> Unit) {
 }
 
 /** "Q4 2:31", "2OT 0:45", "Halftime", "Final", or "Tip-off 7:30 PM". */
-private fun statusText(game: Game): String = when {
-    game.state == GameState.PRE -> "Tip-off " + game.start.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("h:mm a"))
-    game.state == GameState.FINAL -> "Final"
-    game.halftime -> "Halftime"
-    else -> {
-        val p = game.period
-        val name = when {
-            p <= 4 -> "Q$p"
-            p == 5 -> "OT"
-            else -> "${p - 4}OT"
-        }
-        "$name ${game.clock}".trim()
-    }
+private fun statusText(game: Game): String = when (game.state) {
+    GameState.PRE -> "Tip-off " + game.start.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("h:mm a"))
+    GameState.FINAL -> "Final"
+    GameState.LIVE -> game.clockLine()
 }

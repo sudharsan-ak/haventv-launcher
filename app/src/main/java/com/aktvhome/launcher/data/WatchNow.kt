@@ -99,6 +99,9 @@ class WatchNow(
         }
     }
 
+    /** True when [date]'s games were fetched in the last 3 minutes (the alerts' rule for fresh). */
+    fun fresh(date: LocalDate): Boolean = System.currentTimeMillis() - (loadedAt[date] ?: 0L) <= 3 * 60_000L
+
     /** Loads a day's games if missing or older than [maxAgeMs]. */
     fun loadDay(date: LocalDate, maxAgeMs: Long = 10 * 60_000, force: Boolean = false) {
         val age = System.currentTimeMillis() - (loadedAt[date] ?: 0L)

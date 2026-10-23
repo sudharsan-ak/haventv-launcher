@@ -40,6 +40,18 @@ data class Game(
 ) {
     fun involves(abbr: String) = abbr.isNotBlank() && (away.abbr == abbr || home.abbr == abbr)
 
+    /** "Q4 1:42", "OT 2:10", "2OT 0:45" or "Halftime" while live; [status] otherwise. */
+    fun clockLine(): String {
+        if (state != GameState.LIVE || period == 0) return status
+        if (halftime) return "Halftime"
+        val name = when {
+            period <= 4 -> "Q$period"
+            period == 5 -> "OT"
+            else -> "${period - 4}OT"
+        }
+        return "$name $clock".trim()
+    }
+
     /** Networks ESPN lists for the game, upper case: "ESPN", "ABC", "PRIME VIDEO". */
     val networks: List<String> get() = network.orEmpty().split(",").map { it.trim().uppercase() }.filter { it.isNotEmpty() }
 }
