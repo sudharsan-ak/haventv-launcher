@@ -1,5 +1,6 @@
 package com.aktvhome.launcher.ui.settings
 
+import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
@@ -177,8 +178,8 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
                     QuickTile("Screen", "Wide mode & more", Icons.Rounded.AspectRatio, colors) {
                         open(screenSettings())
                     }
-                    QuickTile("Wi-Fi", wifiText(context), Icons.Rounded.Wifi, colors, tileFocus[TvPage.WIFI]) {
-                        show(TvPage.WIFI)
+                    QuickTile("Wi-Fi & Bluetooth", "${wifiText(context)} · ${bluetoothText(context)}", Icons.Rounded.Wifi, colors, tileFocus[TvPage.NETWORK]) {
+                        show(TvPage.NETWORK)
                     }
                     QuickTile("Sleep timer", sleepEnds?.let { "Off at ${timeText(it)}" } ?: "Off", Icons.Rounded.Bedtime, colors, tileFocus[TvPage.SLEEP]) {
                         show(TvPage.SLEEP)
@@ -431,6 +432,9 @@ fun openSystemPage(context: Context, intent: Intent) {
     runCatching { context.startActivity(intent.addFlags(flags)) }
         .onFailure { runCatching { context.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(flags)) } }
 }
+
+private fun bluetoothText(context: Context): String =
+    if (context.getSystemService(BluetoothManager::class.java)?.adapter?.isEnabled == true) "BT on" else "BT off"
 
 private fun wifiText(context: Context): String {
     val on = Settings.Global.getInt(context.contentResolver, Settings.Global.WIFI_ON, 0) != 0

@@ -21,9 +21,13 @@ import kotlinx.coroutines.launch
  *   already on screen, where no window change happens);
  * - swaps Google TV's home page for Haven whenever it comes up some other way (Back out of an app);
  * - opens Haven when the service starts and Google TV's home is already showing (boot, updates).
- * It only looks at which app is in front, not at what's on screen. The one exception is pairing
- * with the TV: Sony's registration popup covers Haven and cancels the PIN when it closes, so Haven
- * reads the PIN from that popup ([readSonyPin]), only while it's waiting for one.
+ * It only looks at which app is in front, not at what's on screen. Two exceptions, each only while
+ * Haven is waiting for it:
+ * - pairing with the TV: Sony's registration popup covers Haven and cancels the PIN when it closes,
+ *   so Haven reads the PIN from that popup ([readSonyPin]);
+ * - one-press Bluetooth speakers: after Haven opens the TV's page for a speaker, it presses that
+ *   page's Connect or Disconnect ([pressInTvSettings]), then goes Back to Haven. Only in the TV's
+ *   Settings app, only that one button, and only for 10 s after Haven asks.
  */
 class HomeOverrideService : AccessibilityService() {
 
@@ -98,6 +102,55 @@ class HomeOverrideService : AccessibilityService() {
         return null
     }
 
+    /**
+     * Waits for the TV's Settings page for the armed device, presses its [Armed.action] button, then
+     * goes Back to Haven. Gives up after 5 s on that page (or when the request expires), leaving the
+     * page open so you can press the button yourself.
+     */
+    private suspend fun pressArmed(armed: Armed) {
+        var seenAt = 0L
+        while (System.currentTimeMillis() < armed.expiresAt) {
+            val now = System.currentTimeMillis()
+            if (seenAt != 0L && now - seenAt > 5_000) break
+            val roots = runCatching { windows.mapNotNull { it.root } }.getOrDefault(emptyList()) + listOfNotNull(rootInActiveWindow)
+            val pages = roots.filter { it.packageName == TV_SETTINGS && showsText(it, armed.device) }
+            if (pages.isNotEmpty() && seenAt == 0L) seenAt = now
+            val button = pages.firstNotNullOfOrNull { findText(it, armed.action, depth = 0) }
+            if (button != null && clickable(button)?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true) {
+                delay(1_500)
+                performGlobalAction(GLOBAL_ACTION_BACK)
+                break
+            }
+            delay(300)
+        }
+        if (pending === armed) pending = null
+    }
+
+    private fun showsText(root: AccessibilityNodeInfo, text: String): Boolean {
+        if (text.isBlank()) return true
+        val texts = mutableListOf<String>()
+        collectText(root, texts, depth = 0)
+        return texts.any { it.contains(text.trim(), ignoreCase = true) }
+    }
+
+    private fun findText(node: AccessibilityNodeInfo, text: String, depth: Int): AccessibilityNodeInfo? {
+        if (depth > 30) return null
+        if (node.text?.toString()?.trim()?.equals(text, ignoreCase = true) == true) return node
+        for (i in 0 until node.childCount) node.getChild(i)?.let { c -> findText(c, text, depth + 1)?.let { return it } }
+        return null
+    }
+
+    /** [node] itself if it's clickable, otherwise its nearest clickable parent. */
+    private fun clickable(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var n: AccessibilityNodeInfo? = node
+        var hops = 0
+        while (n != null && hops++ < 8) {
+            if (n.isClickable) return n
+            n = n.parent
+        }
+        return null
+    }
+
     private fun collectText(node: AccessibilityNodeInfo, out: MutableList<String>, depth: Int) {
         if (depth > 30 || out.size > 200) return
         node.text?.toString()?.takeIf { it.isNotBlank() }?.let(out::add)
@@ -108,13 +161,18 @@ class HomeOverrideService : AccessibilityService() {
         guard.cancel()
         connected = false
         instance = null
+        pending = null
         super.onDestroy()
     }
 
     override fun onInterrupt() = Unit
 
+    /** A button Haven wants pressed on the TV's page for [device], until [expiresAt]. */
+    private class Armed(val action: String, val device: String, val expiresAt: Long)
+
     companion object {
         const val GOOGLE_TV_LAUNCHER = "com.google.android.apps.tv.launcherx"
+        private const val TV_SETTINGS = "com.android.tv.settings"
 
         /**
          * True once Android has actually connected this service in the current process. After an
@@ -131,5 +189,20 @@ class HomeOverrideService : AccessibilityService() {
 
         /** Reads the PIN from Sony's registration popup, if it's on screen. */
         fun readSonyPin(): String? = instance?.findSonyPin()
+
+        @Volatile private var pending: Armed? = null
+
+        /**
+         * Presses [action] ("Connect" or "Disconnect") on the TV's Settings page for [device] once
+         * Haven opens it, then goes Back. Call just before opening the page. Returns false if the
+         * service isn't running, so you press it yourself.
+         */
+        fun pressInTvSettings(action: String, device: String): Boolean {
+            val service = instance ?: return false
+            val armed = Armed(action, device, System.currentTimeMillis() + 10_000)
+            pending = armed
+            service.guard.launch { service.pressArmed(armed) }
+            return true
+        }
     }
 }
