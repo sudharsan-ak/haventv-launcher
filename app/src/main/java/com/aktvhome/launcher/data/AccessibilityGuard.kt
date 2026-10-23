@@ -24,7 +24,7 @@ object AccessibilityGuard {
         if (!PrivateDns.canWrite(context)) return 0
         val prefs = context.getSharedPreferences("a11y_guard", Context.MODE_PRIVATE)
         val current = read(context)
-        val wanted = prefs.getString("wanted", null)?.split(':')?.filter { it.isNotBlank() }?.toSet()
+        val wanted = prefs.getString("wanted", null)?.split(':')?.filter { it.isNotBlank() }?.map(::normal)?.toSet()
 
         if (wanted == null) {
             // First run: whatever is on now is what you want.
@@ -79,7 +79,10 @@ object AccessibilityGuard {
     }
 
     private fun read(context: Context): Set<String> =
-        (Settings.Secure.getString(context.contentResolver, KEY) ?: "").split(':').filter { it.isNotBlank() }.toSet()
+        (Settings.Secure.getString(context.contentResolver, KEY) ?: "").split(':').filter { it.isNotBlank() }.map(::normal).toSet()
+
+    /** "pkg/.Svc" and "pkg/pkg.Svc" name the same service; compare them in one form. */
+    private fun normal(entry: String): String = ComponentName.unflattenFromString(entry)?.flattenToString() ?: entry
 
     /** True if the service's app is installed and loaded (its storage is mounted). */
     private fun available(context: Context, entry: String): Boolean {
