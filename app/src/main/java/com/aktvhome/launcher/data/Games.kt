@@ -15,6 +15,8 @@ data class Team(
     val color: String,
     /** "P. Banchero 35", when ESPN reports it. */
     val leader: String?,
+    /** Logo URL from ESPN, when the feed includes one. */
+    val logo: String? = null,
 )
 
 data class Game(

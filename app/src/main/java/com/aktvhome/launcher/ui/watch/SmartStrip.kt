@@ -54,6 +54,7 @@ fun SmartStrip(state: HavenState, colors: ThemeColors, first: FocusRequester, mo
     val w = state.watchNow
     var firstUsed = false
     fun claim(): Modifier = if (!firstUsed) { firstUsed = true; Modifier.focusRequester(first) } else Modifier
+    val nbaLogo: @Composable () -> Unit = { NetImage(w, Nba.LEAGUE_LOGO, 11.dp) }
 
     Row(modifier.height(68.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
       for (section in s.watchOrder) when (section) {
@@ -64,9 +65,9 @@ fun SmartStrip(state: HavenState, colors: ThemeColors, first: FocusRequester, mo
                 g != null -> StripCard(
                     if (g.involves(fav)) Nba.teamName(fav).substringAfterLast(' ').uppercase() + " · TODAY" else "TONIGHT",
                     matchup(g), g.status + (g.network?.let { " · $it" } ?: ""), g.state == GameState.LIVE,
-                    colors, claim().weight(1.25f),
+                    colors, claim().weight(1.25f), nbaLogo,
                 ) { state.overlay = Overlay.NBA }
-                w.games[w.today()] == null && !w.nbaError -> StripCard("TONIGHT", "Loading games…", "ESPN", false, colors, claim().weight(1.25f)) {
+                w.games[w.today()] == null && !w.nbaError -> StripCard("TONIGHT", "Loading games…", "ESPN", false, colors, claim().weight(1.25f), nbaLogo) {
                     state.overlay = Overlay.NBA
                 }
                 else -> {
@@ -74,7 +75,7 @@ fun SmartStrip(state: HavenState, colors: ThemeColors, first: FocusRequester, mo
                     StripCard(
                         "TONIGHT", if (w.nbaError) "Scores unavailable" else "No NBA games today",
                         next?.let { "Next: ${shortDate(it)} · ${matchup(it)}" } ?: "Check other days in Watch Now",
-                        false, colors, claim().weight(1.25f),
+                        false, colors, claim().weight(1.25f), nbaLogo,
                     ) { state.overlay = Overlay.NBA }
                 }
             }
@@ -109,6 +110,8 @@ private fun RowScope.StripCard(
     live: Boolean,
     colors: ThemeColors,
     modifier: Modifier,
+    /** Small mark before the kicker (the NBA logo). */
+    badge: (@Composable () -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -125,7 +128,10 @@ private fun RowScope.StripCard(
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.Center,
     ) {
-        Text(kicker, color = ink.copy(alpha = 0.7f), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp, maxLines = 1)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            badge?.invoke()
+            Text(kicker, color = ink.copy(alpha = 0.7f), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp, maxLines = 1)
+        }
         Text(main, color = ink, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             if (live) Box(Modifier.size(6.dp).clip(CircleShape).background(Color(0xFFE53935)))

@@ -148,8 +148,8 @@ class WatchNow(
         return group.copy(items = byTitle.values.sortedBy { it.title.lowercase() })
     }
 
-    /** Loads [url]'s image into [art] (once), scaled down for tiles. */
-    fun loadArt(url: String?) {
+    /** Loads [url]'s image into [art] (once), scaled down to [width] px for tiles (logos ask for less). */
+    fun loadArt(url: String?, width: Int = 320) {
         if (url == null || url in art || url in artLoading) return
         artLoading += url
         scope.launch(Dispatchers.IO) {
@@ -159,7 +159,7 @@ class WatchNow(
                 conn.readTimeout = 15_000
                 conn.inputStream.use { stream ->
                     val raw = android.graphics.BitmapFactory.decodeStream(stream)
-                    val w = 320
+                    val w = width
                     android.graphics.Bitmap.createScaledBitmap(raw, w, (raw.height * w / raw.width).coerceAtLeast(1), true)
                 }.asImageBitmap()
             }.getOrNull()

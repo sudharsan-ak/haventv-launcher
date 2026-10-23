@@ -57,6 +57,7 @@ import com.aktvhome.launcher.data.AlertEvent
 import com.aktvhome.launcher.data.Game
 import com.aktvhome.launcher.data.GameState
 import com.aktvhome.launcher.data.LayoutStore
+import com.aktvhome.launcher.data.Nba
 import com.aktvhome.launcher.data.SettingsStore
 import com.aktvhome.launcher.data.Team
 import com.aktvhome.launcher.data.WatchNow
@@ -65,6 +66,7 @@ import com.aktvhome.launcher.ui.settings.glassPanel
 import com.aktvhome.launcher.ui.theme.Palettes
 import com.aktvhome.launcher.ui.theme.ThemeColors
 import com.aktvhome.launcher.ui.theme.dayness
+import com.aktvhome.launcher.ui.watch.NetImage
 import com.aktvhome.launcher.ui.watch.WatchOption
 import com.aktvhome.launcher.ui.watch.WatchSources
 import com.aktvhome.launcher.ui.watch.watchOptions
@@ -167,7 +169,7 @@ class AlertBanner(private val service: AccessibilityService, private val store: 
         root.setViewTreeSavedStateRegistryOwner(o)
         root.addView(ComposeView(service).apply {
             setContent {
-                Banner(alert, option, hideScores, colors, onOpen = { option.open(); close() }, onDismiss = { close() })
+                Banner(alert, option, hideScores, colors, watchNow, onOpen = { option.open(); close() }, onDismiss = { close() })
             }
         })
         val params = WindowManager.LayoutParams(
@@ -257,6 +259,7 @@ private fun Banner(
     option: WatchOption,
     hideScores: Boolean,
     colors: ThemeColors,
+    watchNow: WatchNow,
     onOpen: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -272,6 +275,7 @@ private fun Banner(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            NetImage(watchNow, Nba.LEAGUE_LOGO, 14.dp)
             Box(Modifier.weight(1f)) { Eyebrow("Haven · NBA", colors) }
             SmallClose(colors, onDismiss)
         }

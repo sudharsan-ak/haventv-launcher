@@ -40,6 +40,15 @@ object Nba {
 
     fun teamName(abbr: String) = TEAMS.firstOrNull { it.first == abbr }?.second ?: abbr
 
+    /** The league's logo; loaded at runtime like all logos (never shipped with the app). */
+    const val LEAGUE_LOGO = "https://a.espncdn.com/i/teamlogos/leagues/500/nba.png"
+
+    /** A team's logo: the one ESPN sent with the game, or its standard address by abbreviation. */
+    fun logo(abbr: String, fromFeed: String? = null): String =
+        fromFeed ?: "https://a.espncdn.com/i/teamlogos/nba/500/${abbr.lowercase()}.png"
+
+    fun logo(team: Team): String = logo(team.abbr, team.logo)
+
     /** ESPN abbreviations that differ from NBA.com's tricodes. */
     private val NBA_CODE = mapOf("GS" to "gsw", "NY" to "nyk", "SA" to "sas", "NO" to "nop", "UTAH" to "uta", "WSH" to "was")
     private fun nbaCode(espn: String) = NBA_CODE[espn] ?: espn.lowercase()
@@ -141,6 +150,7 @@ object Nba {
             val t = Team(
                 team.optString("abbreviation"), team.optString("shortDisplayName", team.optString("displayName")),
                 score, team.optString("color", "5b7bff"), leader,
+                logo = team.optString("logo").ifBlank { null },
             )
             if (c.optString("homeAway") == "home") home = t else away = t
         }
