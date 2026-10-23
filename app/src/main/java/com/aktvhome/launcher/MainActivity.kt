@@ -13,7 +13,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.lifecycleScope
 import com.aktvhome.launcher.data.Background
+import com.aktvhome.launcher.data.HomeOverride
 import com.aktvhome.launcher.data.PrivateDns
+import kotlinx.coroutines.launch
 import com.aktvhome.launcher.data.SettingsStore
 import com.aktvhome.launcher.data.ThemeId
 import com.aktvhome.launcher.ui.HavenState
@@ -110,6 +112,11 @@ class MainActivity : ComponentActivity() {
         state.refresh()
         // "Keep enforced": put the chosen Private DNS back if something changed it.
         PrivateDns.enforce(this, SettingsStore.readDns(this))
+        // Give the Home service a few seconds to connect (e.g. at boot) before treating it as stale.
+        lifecycleScope.launch {
+            delay(5_000)
+            HomeOverride.reconnectIfStale(applicationContext)
+        }
     }
 
     override fun onStop() {

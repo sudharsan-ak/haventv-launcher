@@ -23,6 +23,25 @@ object HomeOverride {
         return entries(context).any { it == me || it == short }
     }
 
+    /**
+     * After Haven is updated, Android may keep the Home service listed as on but never reconnect
+     * it, so Home stops opening Haven. If it's on but hasn't connected, switch it off and on.
+     */
+    suspend fun reconnectIfStale(context: Context) {
+        if (!isOn(context)) return
+        // Updates are the known trigger, and the service can look connected while getting no events,
+        // so reconnect once per install rather than trusting the connected flag alone.
+        val prefs = context.getSharedPreferences("home_override", Context.MODE_PRIVATE)
+        val installed = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime }.getOrDefault(0L)
+        val stale = prefs.getLong("reconnectedFor", -1L) != installed || !com.aktvhome.launcher.HomeOverrideService.connected
+        if (!stale) return
+        if (!set(context, false)) return
+        // Android ignores an off/on that happens too quickly; give it time to unbind first.
+        kotlinx.coroutines.delay(2_000)
+        set(context, true)
+        prefs.edit().putLong("reconnectedFor", installed).apply()
+    }
+
     /** Returns false when Haven doesn't have the one-time ADB permission. */
     fun set(context: Context, on: Boolean): Boolean {
         if (!PrivateDns.canWrite(context)) return false

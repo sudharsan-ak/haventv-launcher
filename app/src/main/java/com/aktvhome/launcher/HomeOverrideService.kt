@@ -29,9 +29,26 @@ class HomeOverrideService : AccessibilityService() {
         )
     }
 
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        connected = true
+    }
+
+    override fun onDestroy() {
+        connected = false
+        super.onDestroy()
+    }
+
     override fun onInterrupt() = Unit
 
     companion object {
+        /**
+         * True once Android has actually connected this service in the current process. After an
+         * app update Android can keep the service listed as enabled without reconnecting it, so
+         * Haven checks this and reconnects (see [com.aktvhome.launcher.data.HomeOverride.reconnectIfStale]).
+         */
+        @Volatile var connected = false
+
         const val GOOGLE_TV_LAUNCHER = "com.google.android.apps.tv.launcherx"
     }
 }
