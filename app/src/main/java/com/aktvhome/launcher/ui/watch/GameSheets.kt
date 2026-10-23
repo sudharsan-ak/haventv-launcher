@@ -131,7 +131,14 @@ fun GameDetailPane(
 ) {
     val w = state.watchNow
     val close = onClose
-    val feed = remember(id) { SummaryFeed() }
+    // Starts from this session's copy, if any, so a game seen before shows at once.
+    val feed = remember(id) {
+        SummaryFeed().apply {
+            summary = w.summaries[id]
+            updatedAt = w.summaryTime(id)
+            loaded = summary != null
+        }
+    }
     val known = w.findGame(id)
     val fresh = feed.summary?.game
     // Whichever was fetched last wins for score and clock; names and logos come from the scoreboard.
@@ -143,6 +150,8 @@ fun GameDetailPane(
     }
     val live = game?.state == GameState.LIVE
     LaunchedEffect(id, live) {
+        // A finished or upcoming game already fetched in that state needs nothing new.
+        if (!live && feed.summary?.game?.state == game?.state && feed.summary != null) return@LaunchedEffect
         while (true) {
             val got = w.summary(id)
             val now = System.currentTimeMillis()

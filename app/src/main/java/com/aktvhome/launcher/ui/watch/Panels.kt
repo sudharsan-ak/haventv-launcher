@@ -2,6 +2,7 @@
 
 package com.aktvhome.launcher.ui.watch
 
+import android.view.KeyEvent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -31,16 +32,22 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
@@ -148,6 +155,10 @@ private fun dayWord(day: LocalDate, today: LocalDate): String = when (day) {
  * The NBA panel, master and detail side by side. Left: the day's games (the main team's as a wide
  * card, the rest in two columns), filter chips (All games, My team, My alerts) and a date menu;
  * live cards refresh every 10 s in place. Right: the selected game's details.
+ *
+ * Focusing a card selects it after a short pause (so scrolling past cards fetches nothing). OK on
+ * a card, or Right from the right-hand column, moves into the details; Left or Back there returns
+ * to the card. Back on the left closes the panel.
  */
 @Composable
 fun NbaPanel(state: HavenState, colors: ThemeColors) {
@@ -161,8 +172,21 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
     var choosingDay by remember { mutableStateOf(false) }
     var picking by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<String?>(null) }
+    var focusedCard by remember { mutableStateOf<String?>(null) }
+    // Bumped to move focus into the details once their watch button exists.
+    var toPane by remember { mutableIntStateOf(0) }
     val first = remember { FocusRequester() }
     val paneFocus = remember { FocusRequester() }
+    val cards = remember { mutableMapOf<String, FocusRequester>() }
+    fun cardFocus(id: String) = cards.getOrPut(id) { FocusRequester() }
+    val initialFocus = remember { booleanArrayOf(false) }
+    val inPane = remember { booleanArrayOf(false) }
+    val focusManager = LocalFocusManager.current
+    fun backToCard() { selected?.let { runCatching { cardFocus(it).requestFocus() } } }
+    fun openPane(id: String) {
+        selected = id
+        toPane++
+    }
     val close = { state.overlay = Overlay.NONE }
     LaunchedEffect(day) { w.loadDay(day) }
     val list = w.games[day]
@@ -182,10 +206,30 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
     val main = shown.firstOrNull { it.involves(fav) }
     // Followed teams lead the grid (ringed); the rest keep ESPN's order (live first).
     val grid = shown.filter { it != main }.sortedByDescending { ours(it) }
-    // The main team's game, else the first live one, else the first.
+    // The main team's game, else the first live one, else the first; focused when the panel opens.
     LaunchedEffect(day, list == null) {
-        if (selected == null || list?.none { it.espnId == selected } == true) {
-            selected = (main ?: list?.firstOrNull { it.state == GameState.LIVE } ?: list?.firstOrNull())?.espnId
+        if (list == null) return@LaunchedEffect
+        if (selected == null || list.none { it.espnId == selected }) {
+            selected = (main ?: list.firstOrNull { it.state == GameState.LIVE } ?: list.firstOrNull())?.espnId
+        }
+        if (!initialFocus[0]) {
+            initialFocus[0] = true
+            val id = selected
+            runCatching { if (id != null) cardFocus(id).requestFocus() else first.requestFocus() }
+        }
+    }
+    // A card in focus becomes the selection after 300 ms; moving on sooner cancels it.
+    LaunchedEffect(focusedCard) {
+        val id = focusedCard ?: return@LaunchedEffect
+        delay(300)
+        selected = id
+    }
+    LaunchedEffect(toPane) {
+        if (toPane == 0) return@LaunchedEffect
+        // The details may still be loading; try for a moment until the watch button is there.
+        repeat(40) {
+            if (runCatching { paneFocus.requestFocus() }.isSuccess) return@LaunchedEffect
+            delay(50)
         }
     }
 
@@ -229,18 +273,26 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
                         if (main != null) {
                             SectionLabel("My team", colors)
                             key(main.espnId) {
-                                MainGameCard(state, main, colors, chosen = main.espnId == selected) { selected = main.espnId }
+                                MainGameCard(
+                                    state, main, colors, chosen = main.espnId == selected, focus = cardFocus(main.espnId),
+                                    modifier = Modifier.onKeyDown(KeyEvent.KEYCODE_DPAD_RIGHT) { openPane(main.espnId) },
+                                    onFocused = { focusedCard = main.espnId },
+                                ) { openPane(main.espnId) }
                             }
                         }
                         if (grid.isNotEmpty()) {
                             SectionLabel("Other games", colors)
                             grid.chunked(2).forEach { pair ->
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    pair.forEach { g ->
+                                    pair.forEachIndexed { col, g ->
                                         key(g.espnId) {
-                                            GameCard(state, g, colors, chosen = g.espnId == selected, followed = ours(g), modifier = Modifier.weight(1f)) {
-                                                selected = g.espnId
-                                            }
+                                            // Right from the right-hand column goes into the details.
+                                            val right = if (col == 1) Modifier.onKeyDown(KeyEvent.KEYCODE_DPAD_RIGHT) { openPane(g.espnId) } else Modifier
+                                            GameCard(
+                                                state, g, colors, chosen = g.espnId == selected, followed = ours(g),
+                                                modifier = Modifier.weight(1f).then(right), focus = cardFocus(g.espnId),
+                                                onFocused = { focusedCard = g.espnId },
+                                            ) { openPane(g.espnId) }
                                         }
                                     }
                                     if (pair.size == 1) Spacer(Modifier.weight(1f))
@@ -266,6 +318,25 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
             val shape = RoundedCornerShape(20.dp)
             Box(
                 Modifier.weight(0.45f).fillMaxHeight().clip(shape).background(colors.glass).border(1.dp, colors.edge, shape)
+                    .onFocusChanged { inPane[0] = it.hasFocus }
+                    .onPreviewKeyEvent { e ->
+                        when (e.nativeKeyEvent.keyCode) {
+                            // Back in the details returns to the card instead of closing the panel.
+                            KeyEvent.KEYCODE_BACK -> {
+                                if (e.type == KeyEventType.KeyUp) backToCard()
+                                true
+                            }
+                            // Left moves within the details; off their left edge, back to the card.
+                            KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                if (e.type == KeyEventType.KeyDown) {
+                                    focusManager.moveFocus(FocusDirection.Left)
+                                    if (!inPane[0]) backToCard()
+                                }
+                                true
+                            }
+                            else -> false
+                        }
+                    }
                     .padding(horizontal = 14.dp, vertical = 12.dp),
             ) {
                 val id = selected
@@ -286,7 +357,6 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
         DayMenu(colors, today, day, onPick = { day = it; choosingDay = false }, onPickDate = { choosingDay = false; picking = true }, onDismiss = { choosingDay = false })
     }
     if (picking) DatePickerDialog(colors, day, onPick = { day = it; picking = false }, onDismiss = { picking = false })
-    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
 }
 
 @Composable
@@ -315,9 +385,15 @@ private fun DayMenu(colors: ThemeColors, today: LocalDate, current: LocalDate, o
 
 /** The main team's game, full width: logos, abbreviations and records, with time or score between. */
 @Composable
-private fun MainGameCard(state: HavenState, g: Game, colors: ThemeColors, chosen: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun MainGameCard(
+    state: HavenState, g: Game, colors: ThemeColors, chosen: Boolean, focus: FocusRequester,
+    modifier: Modifier = Modifier, onFocused: () -> Unit, onClick: () -> Unit,
+) {
     val w = state.watchNow
-    GlassCard(colors, modifier.fillMaxWidth(), selected = chosen, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp), onClick = onClick) { ink ->
+    GlassCard(
+        colors, modifier.fillMaxWidth(), selected = chosen, focusRequester = focus, onFocused = onFocused,
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp), onClick = onClick,
+    ) { ink ->
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             NetImage(w, Nba.logo(g.away), 36.dp)
             TeamMark(g.away, ink, 15.sp, Alignment.Start)
@@ -330,10 +406,13 @@ private fun MainGameCard(state: HavenState, g: Game, colors: ThemeColors, chosen
 
 /** A game in the two-column grid: each side's logo, abbreviation and record around the centre. */
 @Composable
-private fun GameCard(state: HavenState, g: Game, colors: ThemeColors, chosen: Boolean, followed: Boolean, modifier: Modifier, onClick: () -> Unit) {
+private fun GameCard(
+    state: HavenState, g: Game, colors: ThemeColors, chosen: Boolean, followed: Boolean, modifier: Modifier,
+    focus: FocusRequester, onFocused: () -> Unit, onClick: () -> Unit,
+) {
     val w = state.watchNow
     GlassCard(
-        colors, modifier, selected = chosen || followed,
+        colors, modifier, selected = chosen || followed, focusRequester = focus, onFocused = onFocused,
         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 7.dp), onClick = onClick,
     ) { ink ->
         Row(verticalAlignment = Alignment.CenterVertically) {
