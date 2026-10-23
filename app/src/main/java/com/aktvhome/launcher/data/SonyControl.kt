@@ -36,6 +36,69 @@ class SonyControl(context: Context) {
 
     suspend fun restart(): Result = command("system", """{"method":"requestReboot","id":1,"params":[],"version":"1.0"}""")
 
+    /**
+     * One-time, read-only look at what the TV's control service reports (picture, sound, screen,
+     * power saving, network), saved to Download/Haven/sony-report.json for designing the Quick
+     * settings pages. Only "get" calls; nothing on the TV changes.
+     */
+    suspend fun writeReport(file: java.io.File) {
+        if (!paired) return
+        val calls = listOf(
+            "video" to """{"method":"getPictureQualitySettings","id":1,"params":[{"target":""}],"version":"1.0"}""",
+            "video" to """{"method":"getScreenRotation","id":1,"params":[],"version":"1.0"}""",
+            "video" to """{"method":"getMethodTypes","id":1,"params":[""],"version":"1.0"}""",
+            "audio" to """{"method":"getSoundSettings","id":1,"params":[{"target":""}],"version":"1.1"}""",
+            "audio" to """{"method":"getSpeakerSettings","id":1,"params":[{"target":""}],"version":"1.0"}""",
+            "audio" to """{"method":"getVolumeInformation","id":1,"params":[],"version":"1.0"}""",
+            "audio" to """{"method":"getMethodTypes","id":1,"params":[""],"version":"1.0"}""",
+            "videoScreen" to """{"method":"getSceneSetting","id":1,"params":[],"version":"1.0"}""",
+            "videoScreen" to """{"method":"getBannerMode","id":1,"params":[],"version":"1.0"}""",
+            "videoScreen" to """{"method":"getAudioSourceScreen","id":1,"params":[],"version":"1.0"}""",
+            "videoScreen" to """{"method":"getMultiScreenMode","id":1,"params":[],"version":"1.1"}""",
+            "videoScreen" to """{"method":"getMethodTypes","id":1,"params":[""],"version":"1.0"}""",
+            "system" to """{"method":"getPowerSavingMode","id":1,"params":[],"version":"1.0"}""",
+            "system" to """{"method":"getNetworkSettings","id":1,"params":[{"netif":""}],"version":"1.0"}""",
+            "system" to """{"method":"getLEDIndicatorStatus","id":1,"params":[],"version":"1.0"}""",
+            "system" to """{"method":"getSystemSupportedFunction","id":1,"params":[],"version":"1.0"}""",
+            "system" to """{"method":"getMethodTypes","id":1,"params":[""],"version":"1.0"}""",
+            "avContent" to """{"method":"getPlayingContentInfo","id":1,"params":[],"version":"1.0"}""",
+            "avContent" to """{"method":"getCurrentExternalInputsStatus","id":1,"params":[],"version":"1.1"}""",
+        )
+        val out = StringBuilder("{\n")
+        calls.forEachIndexed { i, (service, body) ->
+            var reply = read(service, body)
+            if (reply.first == 401 || reply.first == 403) {
+                register(pin = null)
+                reply = read(service, body)
+            }
+            val method = Regex("\"method\":\"(\\w+)\"").find(body)?.groupValues?.get(1)
+            val json = reply.second.ifBlank { "null" }.takeIf { it.trimStart().startsWith("{") } ?: org.json.JSONObject.quote(reply.second)
+            out.append("  \"$service.$method\": {\"http\": ${reply.first}, \"reply\": $json}")
+            out.append(if (i < calls.lastIndex) ",\n" else "\n")
+        }
+        out.append("}\n")
+        withContext(Dispatchers.IO) {
+            file.parentFile?.mkdirs()
+            file.writeText(out.toString())
+        }
+    }
+
+    /** POSTs a read-only call and returns (HTTP status, body). */
+    private suspend fun read(service: String, body: String): Pair<Int, String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val conn = open(service)
+            cookie()?.let { conn.setRequestProperty("Cookie", it) }
+            try {
+                conn.outputStream.use { it.write(body.toByteArray()) }
+                val code = conn.responseCode
+                val text = runCatching { (if (code < 400) conn.inputStream else conn.errorStream)?.bufferedReader()?.readText() }.getOrNull()
+                code to (text ?: "")
+            } finally {
+                conn.disconnect()
+            }
+        }.getOrElse { -1 to (it.message ?: "no answer") }
+    }
+
     /** Renews the login once a day while the TV is on (no PIN needed once paired). */
     suspend fun refreshIfDue() {
         if (!paired) return
