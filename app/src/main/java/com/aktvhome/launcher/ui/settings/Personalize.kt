@@ -25,26 +25,17 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Animation
-import androidx.compose.material.icons.rounded.AspectRatio
-import androidx.compose.material.icons.rounded.BrightnessAuto
-import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
-import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Palette
-import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Wallpaper
-import androidx.compose.material.icons.rounded.SlowMotionVideo
-import androidx.compose.material.icons.rounded.StopCircle
 import androidx.compose.material.icons.rounded.ViewModule
-import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -100,20 +91,53 @@ import com.aktvhome.launcher.ui.theme.ThemeColors
 import com.aktvhome.launcher.ui.tide.TideBackdrop
 import com.aktvhome.launcher.ui.tvClickable
 
-private enum class Page(val label: String, val icon: ImageVector, val subtitle: String) {
-    THEME("Theme", Icons.Rounded.Palette, "Choose the world you want to come home to."),
-    DAY_NIGHT("Day & night", Icons.Rounded.BrightnessAuto, "Set how Haven moves between day and night."),
-    MOTION("Motion", Icons.Rounded.Animation, "How much life the scenes have."),
-    CLOCK("Clock", Icons.Rounded.Schedule, "How the time reads on every theme."),
-    CARDS("Card size", Icons.Rounded.AspectRatio, "How big app cards and dock icons are."),
-    WALLPAPER("Wallpaper", Icons.Rounded.Wallpaper, "Rotating photos behind your theme."),
-    DNS("Private DNS", Icons.Rounded.Shield, "Encrypted DNS for the whole TV, with ad and tracker blocking."),
-    HOME_BUTTON("Home button", Icons.Rounded.Home, "Make the remote's Home button open Haven."),
-    GREETING("Greeting", Icons.Rounded.Person, "The hello at the top of your home."),
-    COLLECTIONS("Collections", Icons.Rounded.ViewModule, "Arrange the rows of your home."),
-    HIDDEN("Hidden apps", Icons.Rounded.VisibilityOff, "Choose what stays out of sight."),
-    ABOUT("About", Icons.Rounded.Info, "A personal TV launcher, designed around what matters."),
+private enum class SettingsGroup(
+    val label: String,
+    val icon: ImageVector,
+    val note: String,
+    val subtitle: String,
+) {
+    APPEARANCE(
+        "Appearance", Icons.Rounded.Palette, "Theme, motion, wallpaper",
+        "Choose how Haven looks and feels.",
+    ),
+    HOME(
+        "Home & layout", Icons.Rounded.ViewModule, "Cards, greeting, collections",
+        "Organize your home and control what appears.",
+    ),
+    WATCHING(
+        "Watching & alerts", Icons.Rounded.Schedule, "NBA, Watch Now, live TV",
+        "Stay close to games and pick up where you left off.",
+    ),
+    SYSTEM(
+        "TV & network", Icons.Rounded.Home, "Home button, Private DNS",
+        "Connect Haven with the rest of your TV.",
+    ),
+    ABOUT(
+        "About & data", Icons.Rounded.Info, "Version and app information",
+        "See app information and future data tools.",
+    ),
 }
+
+/** Phase 2 pages stay defined here but do not appear until their feature is implemented. */
+private enum class Page(val label: String, val group: SettingsGroup, val available: Boolean = true) {
+    STYLE("Theme & motion", SettingsGroup.APPEARANCE),
+    WALLPAPER("Wallpaper", SettingsGroup.APPEARANCE),
+    DISPLAY("Display", SettingsGroup.HOME),
+    COLLECTIONS("Collections", SettingsGroup.HOME),
+    HIDDEN("Hidden apps", SettingsGroup.HOME),
+    NBA_ALERTS("NBA alerts", SettingsGroup.WATCHING, available = false),
+    WATCH_NOW("Watch Now", SettingsGroup.WATCHING, available = false),
+    LIVE_CHANNELS("Live channels", SettingsGroup.WATCHING, available = false),
+    HOME_BUTTON("Home button", SettingsGroup.SYSTEM),
+    DNS("Private DNS", SettingsGroup.SYSTEM),
+    BACKUP("Backup & reset", SettingsGroup.ABOUT, available = false),
+    ABOUT("About Haven", SettingsGroup.ABOUT),
+}
+
+private fun SettingsGroup.pages(): List<Page> = Page.entries.filter { it.group == this && it.available }
+
+private val visibleGroups = SettingsGroup.entries.filter { it.pages().isNotEmpty() }
 
 /**
  * All settings, in a glass panel floating over the live home screen. Every change applies
@@ -126,13 +150,18 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
     val layout = state.layoutStore
     val close = { state.overlay = Overlay.NONE }
 
-    var page by remember { mutableStateOf(Page.THEME) }
+    var group by remember { mutableStateOf(SettingsGroup.APPEARANCE) }
+    var page by remember { mutableStateOf(Page.STYLE) }
     var contentFocused by remember { mutableStateOf(false) }
     var openId by remember { mutableStateOf<String?>(null) }
-    val navFocus = remember { Page.entries.associateWith { FocusRequester() } }
-    // Right/OK from the menu always lands on the page's first item.
+    val navFocus = remember { visibleGroups.associateWith { FocusRequester() } }
+    // Right/OK from the menu lands on the selected tab. Content has its own first target.
     val contentFirst = remember { FocusRequester() }
-    val first = Modifier.focusRequester(contentFirst)
+    val pageFirst = remember { FocusRequester() }
+    val first = Modifier.focusRequester(pageFirst)
+    val contentScroll = rememberScrollState()
+
+    LaunchedEffect(page, openId) { contentScroll.scrollTo(0) }
 
     // Named focus targets for things that move (collections and their arrows), so focus can follow them.
     val targets = remember { mutableMapOf<String, FocusRequester>() }
@@ -145,7 +174,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
     fun park() = runCatching { closeFocus.requestFocus() }
     LaunchedEffect(pendingFocus, layout.layout) {
         val k = pendingFocus ?: return@LaunchedEffect
-        runCatching { if (k == FIRST) contentFirst.requestFocus() else target(k).requestFocus() }
+        runCatching { if (k == FIRST) pageFirst.requestFocus() else target(k).requestFocus() }
         pendingFocus = null
     }
 
@@ -170,7 +199,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                 openId = null
                 pendingFocus = "col:$open"
             }
-            contentFocused -> { runCatching { navFocus.getValue(page).requestFocus() } }
+            contentFocused -> { runCatching { navFocus.getValue(group).requestFocus() } }
             else -> close()
         }
     }
@@ -179,39 +208,50 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
     val opened = cols.firstOrNull { it.id == openId }
     fun countOf(c: AppCollection) = c.apps.count { it in state.apps && it !in layout.layout.hidden }
 
-    HavenOverlay(dim = 0.45f, onDismiss = onBack) {
+    HavenOverlay(dim = 0.18f, onDismiss = onBack) {
+        val panelShape = RoundedCornerShape(28.dp)
         Row(
             Modifier
                 .align(Alignment.Center)
-                .width(800.dp)
-                .height(452.dp)
-                .clip(RoundedCornerShape(28.dp))
-                // Solid enough that the home's own text doesn't show through and fight the panel's.
-                .background(colors.surface.copy(alpha = 0.97f))
-                .border(1.dp, colors.edge, RoundedCornerShape(28.dp)),
+                .width(860.dp)
+                .height(468.dp)
+                .glassPanel(colors, panelShape, alpha = 0.64f),
         ) {
             // Menu.
             Column(
-                Modifier.width(228.dp).fillMaxHeight().verticalScroll(rememberScrollState())
+                Modifier.width(232.dp).fillMaxHeight()
+                    .background(Color.White.copy(alpha = 0.025f))
+                    .verticalScroll(rememberScrollState())
                     .padding(start = 22.dp, end = 14.dp, top = 24.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Eyebrow("Haven · Settings", colors)
                 Text("Personalize", color = colors.ink, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                Text("Fine-tune your home without losing sight of it.", color = colors.inkSoft, fontSize = 10.sp)
-                Spacer(Modifier.height(10.dp))
-                Page.entries.forEach { p ->
+                Text("Everything in its place. A cleaner way to make Haven yours.", color = colors.inkSoft, fontSize = 10.sp)
+                Spacer(Modifier.height(14.dp))
+                visibleGroups.forEach { g ->
                     NavItem(
-                        p, colors, selected = p == page,
+                        g, colors, selected = g == group,
                         modifier = Modifier
-                            .focusRequester(navFocus.getValue(p))
+                            .focusRequester(navFocus.getValue(g))
                             .focusProperties { right = contentFirst },
-                        onFocused = { if (p != page) openId = null; page = p },
+                        onFocused = {
+                            if (g != group) {
+                                group = g
+                                page = g.pages().first()
+                                openId = null
+                            }
+                        },
                         onClick = { runCatching { contentFirst.requestFocus() } },
                     )
                 }
+                Spacer(Modifier.height(12.dp))
+                Box(Modifier.fillMaxWidth().height(1.dp).background(colors.edge))
+                Spacer(Modifier.height(10.dp))
+                Text("Quick Settings stays as it is.", color = colors.ink, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text("Use the gear for instant changes.", color = colors.inkSoft, fontSize = 9.sp)
             }
-            Box(Modifier.width(1.dp).fillMaxHeight().background(colors.edge))
+            Box(Modifier.width(1.dp).fillMaxHeight().background(colors.ink.copy(alpha = 0.14f)))
 
             // Page.
             Column(
@@ -223,29 +263,41 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
             ) {
                 Row(verticalAlignment = Alignment.Top) {
                     Column(Modifier.weight(1f)) {
-                        Eyebrow(
-                            if (page == Page.COLLECTIONS && opened != null) "Collections / ${opened.name}" else "${page.label} / live preview",
-                            colors,
-                        )
+                        Eyebrow(if (page == Page.COLLECTIONS && opened != null) "Home & layout / Collections / ${opened.name}" else "Haven / ${group.label}", colors)
                         Text(
-                            if (page == Page.COLLECTIONS && opened != null) opened.name else page.label,
+                            if (page == Page.COLLECTIONS && opened != null) opened.name else group.label,
                             color = colors.ink, fontSize = 22.sp, fontWeight = FontWeight.Bold,
                         )
                         Text(
                             if (page == Page.COLLECTIONS && opened != null) openedSubtitle(opened, countOf(opened), state.inputs.size)
-                            else page.subtitle,
+                            else group.subtitle,
                             color = colors.inkSoft, fontSize = 11.sp,
                         )
                     }
                     CloseButton(colors, Modifier.focusRequester(closeFocus), onClick = close)
                 }
-                Spacer(Modifier.height(14.dp))
+                if (opened == null) {
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        group.pages().forEach { p ->
+                            SettingsTab(
+                                p.label, selected = p == page, colors = colors,
+                                modifier = if (p == page) Modifier.focusRequester(contentFirst) else Modifier,
+                                onFocused = { page = p },
+                                onClick = { page = p },
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(colors.edge))
+                }
+                Spacer(Modifier.height(10.dp))
                 Column(
-                    Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+                    Modifier.fillMaxSize().verticalScroll(contentScroll),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     when (page) {
-                        Page.THEME -> {
+                        Page.STYLE -> {
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 ThemeId.entries.forEachIndexed { i, t ->
                                     ThemeCard(
@@ -254,56 +306,60 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                                     ) { store.update { it.copy(theme = t) } }
                                 }
                             }
-                            InfoStrip("See it before you commit", "The home behind this panel switches the moment you pick.", colors)
-                        }
-                        Page.DAY_NIGHT -> {
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                ChoiceCard("Auto", "Day 6 AM to 6 PM, blended", Icons.Rounded.BrightnessAuto, s.dayMode == DayMode.AUTO, colors, Modifier.weight(1f).then(first)) {
-                                    store.update { it.copy(dayMode = DayMode.AUTO) }
-                                }
-                                ChoiceCard("Day", "Bright and clear", Icons.Rounded.LightMode, s.dayMode == DayMode.DAY, colors, Modifier.weight(1f)) {
-                                    store.update { it.copy(dayMode = DayMode.DAY) }
-                                }
-                                ChoiceCard("Night", "Easy on your eyes", Icons.Rounded.DarkMode, s.dayMode == DayMode.NIGHT, colors, Modifier.weight(1f)) {
-                                    store.update { it.copy(dayMode = DayMode.NIGHT) }
-                                }
-                            }
-                            InfoStrip("Automatic switching at 6 AM and 6 PM", "Colors ease over about an hour around each switch instead of flipping.", colors)
-                        }
-                        Page.MOTION -> {
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                ChoiceCard("Full", "Glow, arcs and waves at full life", Icons.Rounded.Animation, s.motion == Motion.FULL, colors, Modifier.weight(1f).then(first)) {
-                                    store.update { it.copy(motion = Motion.FULL) }
-                                }
-                                ChoiceCard("Reduced", "Half speed, calmer", Icons.Rounded.SlowMotionVideo, s.motion == Motion.REDUCED, colors, Modifier.weight(1f)) {
-                                    store.update { it.copy(motion = Motion.REDUCED) }
-                                }
-                                ChoiceCard("Off", "Still scenes", Icons.Rounded.StopCircle, s.motion == Motion.OFF, colors, Modifier.weight(1f)) {
-                                    store.update { it.copy(motion = Motion.OFF) }
+                            Eyebrow("Appearance controls", colors)
+                            SettingsRow("Day & night", "Auto blends around 6 AM and 6 PM.", colors) {
+                                ChoicePills(
+                                    values = listOf("Auto", "Day", "Night"),
+                                    selected = when (s.dayMode) {
+                                        DayMode.AUTO -> "Auto"
+                                        DayMode.DAY -> "Day"
+                                        DayMode.NIGHT -> "Night"
+                                    },
+                                    colors = colors,
+                                ) { value ->
+                                    store.update {
+                                        it.copy(dayMode = when (value) {
+                                            "Day" -> DayMode.DAY
+                                            "Night" -> DayMode.NIGHT
+                                            else -> DayMode.AUTO
+                                        })
+                                    }
                                 }
                             }
-                            InfoStrip("Haven's own motion", "Works even though your TV's system animations are switched off.", colors)
-                        }
-                        Page.CLOCK -> {
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                ChoiceCard("12-hour", clockText(state.now, false), Icons.Rounded.Schedule, !s.clock24, colors, Modifier.weight(1f).then(first)) {
-                                    store.update { it.copy(clock24 = false) }
-                                }
-                                ChoiceCard("24-hour", clockText(state.now, true), Icons.Rounded.Schedule, s.clock24, colors, Modifier.weight(1f)) {
-                                    store.update { it.copy(clock24 = true) }
+                            SettingsRow("Motion", "Controls Haven's waves, glow and theme animations.", colors) {
+                                ChoicePills(
+                                    values = listOf("Full", "Reduced", "Off"),
+                                    selected = s.motion.label,
+                                    colors = colors,
+                                ) { value ->
+                                    store.update { it.copy(motion = Motion.entries.first { motion -> motion.label == value }) }
                                 }
                             }
                         }
-                        Page.CARDS -> {
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                CardSize.entries.forEachIndexed { i, size ->
-                                    SizeCard(
-                                        size, chosen = s.cardSize == size, colors = colors,
-                                        modifier = Modifier.weight(1f).then(if (i == 0) first else Modifier),
-                                    ) { store.update { it.copy(cardSize = size) } }
+                        Page.DISPLAY -> {
+                            SettingsRow("Card size", "Applies to Kingdom cards and Tide dock icons.", colors) {
+                                ChoicePills(
+                                    values = CardSize.entries.map { it.label }, selected = s.cardSize.label,
+                                    colors = colors, focusRequester = pageFirst,
+                                ) { value ->
+                                    store.update { it.copy(cardSize = CardSize.entries.first { size -> size.label == value }) }
                                 }
                             }
-                            InfoStrip("Sized live", "The cards behind this panel resize the moment you pick. Large is the original size.", colors)
+                            SettingsRow("Clock format", "Choose the way time appears.", colors) {
+                                ChoicePills(
+                                    values = listOf("12-hour", "24-hour"),
+                                    selected = if (s.clock24) "24-hour" else "12-hour", colors = colors,
+                                ) { value -> store.update { it.copy(clock24 = value == "24-hour") } }
+                            }
+                            SettingsRow("Show greeting", "Show or hide your welcome message.", colors) {
+                                Pill(if (s.showGreeting) "On" else "Off", colors, selected = s.showGreeting) {
+                                    store.update { it.copy(showGreeting = !it.showGreeting) }
+                                }
+                            }
+                            SettingsRow("Your name", "Used in the home screen greeting.", colors) {
+                                Pill(s.name.ifBlank { "Not set" }, colors) { editingName = true }
+                            }
+                            InfoStrip("Preview", state.greetingLine() ?: "Greeting is off", colors)
                         }
                         Page.WALLPAPER -> {
                             val walls = state.wallpapers
@@ -373,10 +429,14 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                         Page.HOME_BUTTON -> {
                             val ctx = LocalContext.current
                             var on by remember { mutableStateOf(HomeOverride.isOn(ctx)) }
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                ChoiceCard(
-                                    "Haven on Home", if (on) "On: Home opens Haven" else "Off: Home opens Google TV",
-                                    Icons.Rounded.Home, on, colors, Modifier.weight(1f).then(first),
+                            SettingsRow(
+                                "Open Haven with Home",
+                                if (on) "On: Home opens Haven" else "Off: Home opens Google TV",
+                                colors,
+                            ) {
+                                Pill(
+                                    if (on) "On" else "Off", colors, selected = on,
+                                    focusRequester = pageFirst,
                                 ) {
                                     if (HomeOverride.set(ctx, !on)) on = HomeOverride.isOn(ctx)
                                 }
@@ -419,19 +479,6 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                             ) { store.update { it.copy(dnsEnforce = !it.dnsEnforce) } }
                             InfoStrip("Status", dns.status.text, colors)
                         }
-                        Page.GREETING -> {
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                ChoiceCard("Your name", s.name.ifBlank { "Not set" }, Icons.Rounded.Person, false, colors, Modifier.weight(1f).then(first)) {
-                                    editingName = true
-                                }
-                                ChoiceCard(
-                                    "Show greeting", if (s.showGreeting) "On" else "Off",
-                                    if (s.showGreeting) Icons.Rounded.LightMode else Icons.Rounded.VisibilityOff,
-                                    s.showGreeting, colors, Modifier.weight(1f),
-                                ) { store.update { it.copy(showGreeting = !it.showGreeting) } }
-                            }
-                            InfoStrip("Preview", state.greetingLine() ?: "Greeting is off", colors)
-                        }
                         Page.COLLECTIONS -> if (opened == null) {
                             CollectionsGrid(
                                 cols, colors, first, ::target,
@@ -460,7 +507,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                             InfoStrip("Your inputs", state.inputs.joinToString(" · ") { it.label }.ifBlank { "None found" }, colors)
                         } else {
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Pill("Change icon", colors, focusRequester = contentFirst, icon = CollectionIcons.of(opened.icon)) { iconFor = opened }
+                                Pill("Change icon", colors, focusRequester = pageFirst, icon = CollectionIcons.of(opened.icon)) { iconFor = opened }
                                 Pill("Rename", colors) { renaming = opened }
                             }
                             val apps = opened.apps.filter { it !in layout.layout.hidden }.mapNotNull { state.apps[it] }
@@ -516,6 +563,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                             }
                         }
                         Page.ABOUT -> AboutCard(colors, first)
+                        Page.NBA_ALERTS, Page.WATCH_NOW, Page.LIVE_CHANNELS, Page.BACKUP -> Unit
                     }
                 }
             }
@@ -599,7 +647,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
         )
     }
 
-    LaunchedEffect(Unit) { runCatching { navFocus.getValue(Page.THEME).requestFocus() } }
+    LaunchedEffect(Unit) { runCatching { navFocus.getValue(SettingsGroup.APPEARANCE).requestFocus() } }
 }
 
 private const val FIRST = "__first__"
@@ -609,7 +657,7 @@ private fun openedSubtitle(c: AppCollection, count: Int, inputs: Int): String =
     else "$count apps · right arrow to the arrows to reorder, OK for more"
 
 @Composable
-private fun NavItem(p: Page, colors: ThemeColors, selected: Boolean, modifier: Modifier, onFocused: () -> Unit, onClick: () -> Unit) {
+private fun NavItem(group: SettingsGroup, colors: ThemeColors, selected: Boolean, modifier: Modifier, onFocused: () -> Unit, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val ink = if (focused) colors.pillInk else colors.ink
     Row(
@@ -626,13 +674,85 @@ private fun NavItem(p: Page, colors: ThemeColors, selected: Boolean, modifier: M
             .border(1.dp, if (selected && !focused) colors.accent.copy(alpha = 0.6f) else Color.Transparent, RoundedCornerShape(14.dp))
             .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocused() }
             .tvClickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 5.dp),
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Icon(p.icon, null, tint = ink, modifier = Modifier.size(18.dp))
-        Text(p.label, color = ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        Icon(group.icon, null, tint = ink, modifier = Modifier.size(20.dp))
+        Column(Modifier.weight(1f)) {
+            Text(group.label, color = ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text(group.note, color = ink.copy(alpha = 0.65f), fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
         Text(if (selected) "•" else "›", color = ink.copy(alpha = 0.7f), fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun SettingsTab(
+    text: String,
+    selected: Boolean,
+    colors: ThemeColors,
+    modifier: Modifier,
+    onFocused: () -> Unit,
+    onClick: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(12.dp)
+    val ink = if (focused) colors.pillInk else colors.ink
+    Box(
+        modifier
+            .clip(shape)
+            .background(if (focused) colors.pill else if (selected) colors.glass else Color.Transparent)
+            .border(1.dp, if (selected) colors.accent else Color.Transparent, shape)
+            .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocused() }
+            .tvClickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, color = ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun SettingsRow(
+    title: String,
+    note: String,
+    colors: ThemeColors,
+    control: @Composable () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(colors.glass.copy(alpha = colors.glass.alpha * 0.8f))
+            .border(1.dp, colors.edge, RoundedCornerShape(16.dp))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, color = colors.ink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text(note, color = colors.inkSoft, fontSize = 10.sp)
+        }
+        control()
+    }
+}
+
+@Composable
+private fun ChoicePills(
+    values: List<String>,
+    selected: String,
+    colors: ThemeColors,
+    focusRequester: FocusRequester? = null,
+    onChoose: (String) -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        values.forEachIndexed { index, value ->
+            Pill(
+                value, colors, selected = value == selected,
+                focusRequester = if (index == 0) focusRequester else null,
+            ) { onChoose(value) }
+        }
     }
 }
 

@@ -54,15 +54,14 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
     val first = remember { FocusRequester() }
     val close = { state.overlay = Overlay.NONE }
 
-    HavenOverlay(dim = 0.2f, onDismiss = close) {
+    HavenOverlay(dim = 0.12f, onDismiss = close) {
+        val panelShape = RoundedCornerShape(26.dp)
         Column(
             Modifier
                 .align(Alignment.TopEnd)
                 .padding(top = 64.dp, end = 40.dp)
                 .width(380.dp)
-                .clip(RoundedCornerShape(26.dp))
-                .background(colors.surface.copy(alpha = 0.97f))
-                .border(1.dp, colors.edge, RoundedCornerShape(26.dp))
+                .glassPanel(colors, panelShape, alpha = 0.66f)
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {

@@ -1,5 +1,7 @@
 package com.aktvhome.launcher.ui.settings
 
+import android.os.Build
+import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +33,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -57,9 +61,38 @@ fun HavenOverlay(dim: Float, onDismiss: () -> Unit, content: @Composable BoxScop
         SideEffect {
             window?.setDimAmount(dim)
             window?.setWindowAnimations(0)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                window?.let {
+                    it.setBackgroundBlurRadius(20)
+                    it.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                    it.attributes = it.attributes.apply { blurBehindRadius = 20 }
+                }
+            }
         }
         Box(Modifier.fillMaxSize()) { content() }
     }
+}
+
+/** Translucent panel treatment shared by Quick Settings and Personalize. */
+fun Modifier.glassPanel(
+    colors: ThemeColors,
+    shape: RoundedCornerShape,
+    alpha: Float = 0.66f,
+): Modifier {
+    val neutralGlass = if (colors.ink.luminance() > 0.5f) Color(0xFF101419) else Color.White
+    return this
+        .clip(shape)
+        .background(neutralGlass.copy(alpha = alpha))
+        .background(
+            Brush.linearGradient(
+                listOf(
+                    Color.White.copy(alpha = 0.12f),
+                    Color.Transparent,
+                    Color.Black.copy(alpha = 0.08f),
+                ),
+            ),
+        )
+        .border(1.dp, colors.ink.copy(alpha = 0.20f), shape)
 }
 
 /** Small spaced capitals used for eyebrows and breadcrumbs. */
