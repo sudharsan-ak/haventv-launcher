@@ -19,6 +19,8 @@ data class Team(
     val logo: String? = null,
     /** City or region, e.g. "Portland", "Golden State". */
     val location: String = "",
+    /** Season record, e.g. "2-1", when ESPN sends it. */
+    val record: String = "",
 )
 
 data class Game(

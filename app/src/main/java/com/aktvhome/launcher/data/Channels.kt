@@ -31,6 +31,22 @@ fun carries(title: String, network: String, localStations: Map<String, String>):
     return sameChannel(title, network) || (station != null && title.equals(station, ignoreCase = true))
 }
 
+/**
+ * The app a network is watched in, for its icon in the games list: Prime Video, ESPN (also ABC),
+ * Peacock (also NBC), YouTube TV for the other channels, the NBA app for League Pass.
+ */
+fun networkApp(network: String): String? {
+    val n = network.uppercase()
+    return when {
+        n.contains("PRIME") || n.contains("AMAZON") -> PRIME
+        n.startsWith("ESPN") || n == "ABC" -> ESPN_APP
+        n.contains("PEACOCK") || n == "NBC" -> PEACOCK
+        n.contains("LEAGUE PASS") -> NBA_APP
+        n in TV_CHANNELS -> YOUTUBE_TV
+        else -> null
+    }
+}
+
 /** Streaming apps that carry [game], from its networks: ESPN (also for ABC), Peacock, Prime Video. */
 fun streamingApps(game: Game): List<String> {
     val nets = game.networks

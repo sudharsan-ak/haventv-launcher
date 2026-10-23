@@ -152,6 +152,8 @@ object Nba {
                 score, team.optString("color", "5b7bff"), leader,
                 logo = team.optString("logo").ifBlank { null },
                 location = team.optString("location"),
+                // Scoreboards call it "records", game summaries "record".
+                record = (c.optJSONArray("records") ?: c.optJSONArray("record"))?.optJSONObject(0)?.optString("summary").orEmpty(),
             )
             if (c.optString("homeAway") == "home") home = t else away = t
         }
