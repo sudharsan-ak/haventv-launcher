@@ -62,7 +62,7 @@ data class Game(
 data class Play(val period: Int, val clock: String, val text: String, val team: String?, val awayScore: String, val homeScore: String)
 
 /** A player's line in the box score; [stats] by ESPN's labels (MIN, PTS, FG, 3PT, REB, AST…). */
-data class BoxPlayer(val name: String, val position: String, val headshot: String?, val stats: Map<String, String>) {
+data class BoxPlayer(val name: String, val position: String, val headshot: String?, val stats: Map<String, String>, val id: String = "") {
     val points: Int get() = stats["PTS"]?.toIntOrNull() ?: -1
 }
 

@@ -43,6 +43,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aktvhome.launcher.data.BoxPlayer
 import com.aktvhome.launcher.data.Game
 import com.aktvhome.launcher.data.GameState
 import com.aktvhome.launcher.data.GameSummary
@@ -58,6 +59,7 @@ import com.aktvhome.launcher.ui.settings.GlassCard
 import com.aktvhome.launcher.ui.settings.HavenOverlay
 import com.aktvhome.launcher.ui.settings.glassPanel
 import com.aktvhome.launcher.ui.theme.ThemeColors
+import com.aktvhome.launcher.ui.tvClickable
 import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.ZoneId
@@ -131,6 +133,8 @@ fun GameDetail(state: HavenState, colors: ThemeColors, id: String) {
     var tab by remember(id) { mutableStateOf(DetailTab.SUMMARY) }
     val scrolls = remember(id) { mutableMapOf<DetailTab, ScrollState>() }
     val watchFocus = remember { FocusRequester() }
+    // The player card open over the details, by ESPN athlete id.
+    var playerId by remember(id) { mutableStateOf<String?>(null) }
 
     // Compact and frosted like the settings panels, over a home dimmed and blurred a bit more.
     HavenOverlay(dim = 0.35f, onDismiss = close, blur = 30) {
@@ -188,7 +192,7 @@ fun GameDetail(state: HavenState, colors: ThemeColors, id: String) {
                         summary == null -> Note(if (feed.loaded) "Couldn't load the details from ESPN. They'll try again while the game is live." else "Loading…", colors)
                         else -> when (tab) {
                             DetailTab.SUMMARY -> SummaryTab(w, game, summary, colors)
-                            DetailTab.BOX -> BoxTab(game, summary, colors)
+                            DetailTab.BOX -> BoxTab(game, summary, colors) { p -> playerId = p.id }
                             DetailTab.PLAYS -> PlaysTab(w, game, summary, colors)
                             DetailTab.TEAM -> TeamTab(game, summary, colors)
                         }
@@ -197,6 +201,9 @@ fun GameDetail(state: HavenState, colors: ThemeColors, id: String) {
             }
         }
     }
+    val shown = game
+    val pid = playerId
+    if (shown != null && pid != null) PlayerCard(state, colors, shown, feed.summary, pid) { playerId = null }
     // The watch button exists once the game is known (straight away, or after the first fetch).
     LaunchedEffect(game == null) { if (game != null) runCatching { watchFocus.requestFocus() } }
 }
@@ -279,8 +286,8 @@ private fun UpdatedLine(feed: SummaryFeed, colors: ThemeColors) {
 private fun SummaryTab(w: WatchNow, g: Game, s: GameSummary, colors: ThemeColors) {
     if (g.state == GameState.PRE) {
         val records = listOf(g.away, g.home).filter { it.record.isNotBlank() }.joinToString("   ·   ") { "${it.name} ${it.record}" }
-        if (records.isNotBlank()) Line(colors) { Text(records, color = colors.ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
-        s.series?.let { Line(colors) { Text("Season series: $it", color = colors.ink, fontSize = 13.sp) } }
+        if (records.isNotBlank()) DetailLine(colors) { Text(records, color = colors.ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
+        s.series?.let { DetailLine(colors) { Text("Season series: $it", color = colors.ink, fontSize = 13.sp) } }
         if (records.isBlank() && s.series == null) Note("Nothing more until tip-off.", colors)
         return
     }
@@ -290,16 +297,16 @@ private fun SummaryTab(w: WatchNow, g: Game, s: GameSummary, colors: ThemeColors
     val periods = maxOf(away.size, home.size)
     if (periods > 0) {
         val heads = (0 until periods).map { periodName(it + 1) }
-        TableRow(colors, header = true, cells = listOf("") + heads + "T")
-        TableRow(colors, cells = listOf(g.away.abbr) + (0 until periods).map { away.getOrElse(it) { "" } } + g.away.score)
-        TableRow(colors, cells = listOf(g.home.abbr) + (0 until periods).map { home.getOrElse(it) { "" } } + g.home.score)
+        StatTableRow(colors, header = true, cells = listOf("") + heads + "T")
+        StatTableRow(colors, cells = listOf(g.away.abbr) + (0 until periods).map { away.getOrElse(it) { "" } } + g.away.score)
+        StatTableRow(colors, cells = listOf(g.home.abbr) + (0 until periods).map { home.getOrElse(it) { "" } } + g.home.score)
     }
     // Top performers: each team's highest scorer.
     val tops = listOf(g.away, g.home).mapNotNull { t -> s.teams[t.abbr]?.players?.maxByOrNull { it.points }?.let { t to it } }
     if (tops.isNotEmpty()) {
         Eyebrow("Top performers", colors)
         tops.forEach { (t, p) ->
-            Line(colors) {
+            DetailLine(colors) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     NetImage(w, p.headshot, 36.dp, shape = CircleShape)
                     Column(Modifier.weight(1f)) {
@@ -322,7 +329,7 @@ private fun SummaryTab(w: WatchNow, g: Game, s: GameSummary, colors: ThemeColors
 }
 
 @Composable
-private fun BoxTab(g: Game, s: GameSummary, colors: ThemeColors) {
+private fun BoxTab(g: Game, s: GameSummary, colors: ThemeColors, onPlayer: (BoxPlayer) -> Unit) {
     var side by remember { mutableStateOf(g.away.abbr) }
     val box = s.teams[side]
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -332,8 +339,11 @@ private fun BoxTab(g: Game, s: GameSummary, colors: ThemeColors) {
         Note("No box score yet.", colors)
         return
     }
-    TableRow(colors, header = true, cells = listOf("Player") + BOX_COLUMNS, firstWide = true)
-    box.players.forEach { p -> TableRow(colors, cells = listOf(p.name) + BOX_COLUMNS.map { p.stats[it] ?: "-" }, firstWide = true) }
+    StatTableRow(colors, header = true, cells = listOf("Player") + BOX_COLUMNS, firstWide = true)
+    box.players.forEach { p ->
+        StatTableRow(colors, cells = listOf(p.name) + BOX_COLUMNS.map { p.stats[it] ?: "-" }, firstWide = true, onClick = { onPlayer(p) }.takeIf { p.id.isNotBlank() })
+    }
+    Text("OK on a player for player card", color = colors.inkSoft, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
 }
 
 @Composable
@@ -366,14 +376,14 @@ private fun TeamTab(g: Game, s: GameSummary, colors: ThemeColors) {
         Note("No team stats yet.", colors)
         return
     }
-    TableRow(colors, header = true, cells = listOf("", g.away.abbr, g.home.abbr))
-    rows.forEach { (label, a, h) -> TableRow(colors, cells = listOf(label, a, h)) }
+    StatTableRow(colors, header = true, cells = listOf("", g.away.abbr, g.home.abbr))
+    rows.forEach { (label, a, h) -> StatTableRow(colors, cells = listOf(label, a, h)) }
 }
 
 /** Clock, team logo and abbreviation, what happened, and the score after it. */
 @Composable
 private fun PlayLine(w: WatchNow, g: Game, p: Play, colors: ThemeColors) {
-    Line(colors) {
+    DetailLine(colors) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(p.clock, color = colors.inkSoft, fontSize = 11.sp, modifier = Modifier.width(44.dp))
             val team = listOf(g.away, g.home).firstOrNull { it.abbr == p.team }
@@ -391,25 +401,25 @@ private fun PlayLine(w: WatchNow, g: Game, p: Play, colors: ThemeColors) {
 
 /**
  * A row in a details list. It can take focus (a faint highlight) so the remote can move down a
- * long box score or play-by-play, and the list scrolls along.
+ * long box score or play-by-play, and the list scrolls along; with [onClick], OK acts on it.
  */
 @Composable
-private fun Line(colors: ThemeColors, content: @Composable () -> Unit) {
+internal fun DetailLine(colors: ThemeColors, onClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     Box(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
             .background(if (focused) colors.glass else Color.Transparent)
             .border(1.dp, if (focused) colors.accent else Color.Transparent, RoundedCornerShape(10.dp))
             .onFocusChanged { focused = it.isFocused }
-            .focusable()
+            .then(if (onClick != null) Modifier.tvClickable(onClick = onClick) else Modifier.focusable())
             .padding(horizontal = 8.dp, vertical = 5.dp),
     ) { content() }
 }
 
 /** A table row: the first column on the left (wide for player names), the rest even. */
 @Composable
-private fun TableRow(colors: ThemeColors, cells: List<String>, header: Boolean = false, firstWide: Boolean = false) {
-    Line(colors) {
+internal fun StatTableRow(colors: ThemeColors, cells: List<String>, header: Boolean = false, firstWide: Boolean = false, onClick: (() -> Unit)? = null) {
+    DetailLine(colors, onClick) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             cells.forEachIndexed { i, c ->
                 Text(

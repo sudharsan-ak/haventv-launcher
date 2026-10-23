@@ -201,6 +201,27 @@ class WatchNow(
         }
     }
 
+    /** Players looked up this session; their season, splits and log don't change during a game. */
+    private val players = mutableMapOf<String, PlayerInfo>()
+
+    fun cachedPlayer(id: String): PlayerInfo? = players[id]
+
+    /** A player's profile, season, splits and game log (each part may be missing). */
+    suspend fun player(id: String): PlayerInfo {
+        players[id]?.let { return it }
+        val info = withContext(Dispatchers.IO) {
+            PlayerInfo(
+                runCatching { Nba.playerProfile(id) }.getOrNull(),
+                runCatching { Nba.playerSeason(id) }.getOrNull(),
+                runCatching { Nba.playerSplits(id) }.getOrDefault(emptyList()),
+                runCatching { Nba.playerLog(id) }.getOrDefault(emptyList()),
+            )
+        }
+        // Only keep a full answer; a failed part is tried again next time.
+        if (info.profile != null && info.season != null) players[id] = info
+        return info
+    }
+
     /** A game's summary from ESPN, or null if it couldn't be fetched. */
     suspend fun summary(espnId: String): GameSummary? = withContext(Dispatchers.IO) { runCatching { Nba.summary(espnId) }.getOrNull() }
 
