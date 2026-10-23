@@ -70,6 +70,11 @@ import com.aktvhome.launcher.ui.onKeyDown
 import com.aktvhome.launcher.ui.watch.SmartStrip
 import com.aktvhome.launcher.ui.watch.stripVisible
 import com.aktvhome.launcher.ui.rememberWrapRow
+import com.aktvhome.launcher.ui.rememberAppGrid
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.runtime.key
 import android.view.KeyEvent
 import com.aktvhome.launcher.ui.theme.ThemeColors
 import com.aktvhome.launcher.ui.tvClickable
@@ -81,6 +86,7 @@ import kotlin.math.sin
 
 private val SIDE = 48.dp
 
+@OptIn(ExperimentalFoundationApi::class) // bringIntoViewRequester for lower app lines
 @Composable
 fun KingdomHome(state: HavenState, colors: ThemeColors) {
     val settings = state.settingsStore.settings
@@ -90,8 +96,10 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
     val currentIndex = shown.indexOfFirst { it.collection.id == current?.collection?.id }.coerceAtLeast(0)
     val showStrip = state.stripVisible()
     val stripFirst = remember { FocusRequester() }
-    // The row under the tiles (apps, or HDMI inputs). One instance so the tiles can move focus into it.
-    val items = rememberWrapRow(if (current?.isInputs == true) state.inputs.size else current?.apps?.size ?: 0)
+    // Under the tiles: HDMI inputs in one row, or the apps in lines sized by card size.
+    // One instance each so the tiles can move focus into them.
+    val items = rememberWrapRow(if (current?.isInputs == true) state.inputs.size else 0)
+    val grid = rememberAppGrid(if (current?.isInputs == true) 0 else current?.apps?.size ?: 0, settings.cardSize.columns)
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
     // Collections and apps always show with the full header above them.
@@ -163,7 +171,7 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
                         selected = sc.collection.id == current?.collection?.id,
                         // Down enters this collection at the app last opened from it (or the first).
                         modifier = tiles.item(i).onKeyDown(KeyEvent.KEYCODE_DPAD_DOWN) {
-                            items.focus(if (sc.isInputs) 0 else state.entryIndex(sc))
+                            if (sc.isInputs) items.focus(0) else grid.focus(state.entryIndex(sc))
                         },
                         onFocused = {
                             tiles.onItemFocused(i)
@@ -201,25 +209,39 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
                     )
                     else -> {
                         val visible = current.apps.map { it.pkg }
-                        val row = items.also { it.paused = state.moving != null }
-                        LazyRow(
-                            state = row.state,
-                            // Up goes back to this collection's tile (not while moving an app).
-                            modifier = row.keys.onKeyDown(KeyEvent.KEYCODE_DPAD_UP, { state.moving == null }) {
-                                tiles.focus(currentIndex)
-                            },
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            contentPadding = PaddingValues(vertical = 12.dp, horizontal = SIDE),
+                        val cols = settings.cardSize.columns
+                        grid.paused = state.moving != null
+                        Column(
+                            // Up from the first line goes back to this collection's tile (not while moving an app).
+                            side.then(grid.keys)
+                                .onKeyDown(KeyEvent.KEYCODE_DPAD_UP, { state.moving == null && grid.inTopRow }) {
+                                    tiles.focus(currentIndex)
+                                }
+                                .padding(vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
-                            itemsIndexed(current.apps, key = { _, app -> app.pkg }) { i, app ->
-                                AppCard(
-                                    app, colors, width = settings.cardSize.width.dp,
-                                    moving = state.moving == app.pkg,
-                                    modifier = row.item(i).moveKeys(state, app.pkg, visible),
-                                    onFocused = { row.onItemFocused(i); state.focusedApp = app; toTop() },
-                                    onClick = { state.launch(app) },
-                                    onLongClick = { state.menuFor = app },
-                                )
+                            current.apps.chunked(cols).forEachIndexed { r, line ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                                    line.forEachIndexed { c, app ->
+                                        val i = r * cols + c
+                                        key(app.pkg) {
+                                            val bring = remember { BringIntoViewRequester() }
+                                            AppCard(
+                                                app, colors, width = settings.cardSize.width.dp,
+                                                moving = state.moving == app.pkg,
+                                                modifier = grid.item(i).bringIntoViewRequester(bring).moveKeys(state, app.pkg, visible),
+                                                onFocused = {
+                                                    grid.onItemFocused(i)
+                                                    state.focusedApp = app
+                                                    // The first line keeps the header in view; lower lines scroll up to show.
+                                                    if (r == 0) toTop() else scope.launch { bring.bringIntoView() }
+                                                },
+                                                onClick = { state.launch(app) },
+                                                onLongClick = { state.menuFor = app },
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

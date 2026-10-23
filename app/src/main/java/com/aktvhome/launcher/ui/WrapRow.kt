@@ -76,6 +76,65 @@ class WrapRow internal constructor(val state: LazyListState, private val scope: 
 }
 
 /**
+ * Apps laid out in lines of [columns]. Right from the end of a line goes to the start of the next,
+ * Left from the start of a line to the end of the one above; past the very last app a single press
+ * wraps to the first (held keys stop there). Up/down between lines is plain geometry.
+ */
+class AppGrid internal constructor() {
+
+    private val requesters = mutableMapOf<Int, FocusRequester>()
+    private var focused = -1
+    var count = 0
+        internal set
+    var columns = 5
+    /** While true (an app is being moved), left/right belong to the move instead. */
+    var paused = false
+
+    fun requester(index: Int): FocusRequester = requesters.getOrPut(index) { FocusRequester() }
+
+    fun item(index: Int): Modifier = Modifier.focusRequester(requester(index))
+
+    fun onItemFocused(index: Int) {
+        focused = index
+    }
+
+    /** True while focus is on the first line, so Up leaves the grid. */
+    val inTopRow: Boolean get() = focused in 0 until columns
+
+    fun focus(index: Int) {
+        if (count == 0) return
+        runCatching { requester(index.coerceIn(0, count - 1)).requestFocus() }
+    }
+
+    val keys: Modifier = Modifier.onPreviewKeyEvent { e ->
+        val code = e.nativeKeyEvent.keyCode
+        if (paused || count < 2 || focused !in 0 until count) return@onPreviewKeyEvent false
+        val (target, wraps) = when (code) {
+            KeyEvent.KEYCODE_DPAD_RIGHT -> when {
+                focused == count - 1 -> 0 to true
+                (focused + 1) % columns == 0 -> focused + 1 to false
+                else -> return@onPreviewKeyEvent false
+            }
+            KeyEvent.KEYCODE_DPAD_LEFT -> when {
+                focused == 0 -> count - 1 to true
+                focused % columns == 0 -> focused - 1 to false
+                else -> return@onPreviewKeyEvent false
+            }
+            else -> return@onPreviewKeyEvent false
+        }
+        // Held keys run through the lines but stop at the very end instead of looping.
+        if (e.type == KeyEventType.KeyDown && !(wraps && e.nativeKeyEvent.repeatCount > 0)) {
+            runCatching { requester(target).requestFocus() }
+        }
+        true
+    }
+}
+
+@Composable
+fun rememberAppGrid(count: Int, columns: Int): AppGrid =
+    remember { AppGrid() }.also { it.count = count; it.columns = columns }
+
+/**
  * Runs [action] on a single press of [keyCode] and consumes it, instead of letting Android pick
  * whatever sits geometrically nearest. Used to move between a collection and its apps.
  */

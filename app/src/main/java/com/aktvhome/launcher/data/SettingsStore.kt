@@ -12,10 +12,11 @@ enum class DayMode(val label: String) { AUTO("Auto (6 AM / 6 PM)"), DAY("Always 
 enum class Motion(val label: String) { FULL("Full"), REDUCED("Reduced"), OFF("Off") }
 
 /** App card size. [width] is Kingdom's 16:9 card width in dp; [scale] sizes Tide's dock icons. */
-enum class CardSize(val label: String, val width: Int, val scale: Float) {
-    SMALL("Small", 136, 0.8f),
-    MEDIUM("Medium", 156, 0.9f),
-    LARGE("Large", 176, 1f),
+/** [columns]: how many Kingdom app cards fit on one line before wrapping to the next. */
+enum class CardSize(val label: String, val width: Int, val scale: Float, val columns: Int) {
+    SMALL("Small", 136, 0.8f, 6),
+    MEDIUM("Medium", 156, 0.9f, 5),
+    LARGE("Large", 176, 1f, 4),
 }
 
 /** What sits behind a theme's layout: its own animated scene, or a rotating photo. */
