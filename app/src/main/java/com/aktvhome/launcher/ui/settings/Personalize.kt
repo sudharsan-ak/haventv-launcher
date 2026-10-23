@@ -74,6 +74,7 @@ import com.aktvhome.launcher.data.Defaults
 import com.aktvhome.launcher.data.DnsChoice
 import com.aktvhome.launcher.data.HomeOverride
 import com.aktvhome.launcher.data.Nba
+import com.aktvhome.launcher.data.WATCH_SECTIONS
 import com.aktvhome.launcher.ui.watch.LOCAL_NETWORKS
 import com.aktvhome.launcher.data.PrivateDns
 import com.aktvhome.launcher.data.Motion
@@ -585,6 +586,22 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                             SettingsRow("Live channels", "Live rows from TV apps, such as YouTube TV or ESPN.", colors) {
                                 Pill(onOff(s.watchLive), colors, selected = s.watchLive) {
                                     store.update { it.copy(watchLive = !it.watchLive) }
+                                }
+                            }
+                            // Order of the Home strip cards and the drawer sections.
+                            s.watchOrder.forEachIndexed { i, id ->
+                                val label = WATCH_SECTIONS.first { it.first == id }.second
+                                SettingsRow("${i + 1}. $label", if (i == 0) "Card order on Home and in Watch Now." else "", colors) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        fun move(d: Int) = store.update { cur ->
+                                            val o = cur.watchOrder.toMutableList()
+                                            val j = i + d
+                                            if (j in o.indices) o.add(j, o.removeAt(i))
+                                            cur.copy(watchOrder = o)
+                                        }
+                                        Pill("↑", colors, selected = false) { move(-1) }
+                                        Pill("↓", colors, selected = false) { move(+1) }
+                                    }
                                 }
                             }
                             // Live TV apps name local network stations by call sign (ABC = "WFAA 8"),

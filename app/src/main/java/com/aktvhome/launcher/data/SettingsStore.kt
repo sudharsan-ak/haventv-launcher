@@ -35,6 +35,9 @@ enum class WallInterval(val label: String, val millis: Long) {
     DAY("Daily", 24 * 3_600_000L),
 }
 
+/** Watch Now sections, id to label, in their default order. */
+val WATCH_SECTIONS = listOf("nba" to "NBA", "live" to "Live channels", "continue" to "Continue watching")
+
 /** Unsplash topics: label shown, search sent. */
 val WALL_TOPICS = listOf(
     "Nature" to "nature landscape",
@@ -80,6 +83,8 @@ data class Settings(
     val favoriteTeam: String = "",
     /** Local station for each broadcast network, e.g. "ABC" to "WFAA 8", as the live TV app names it. */
     val localStations: Map<String, String> = emptyMap(),
+    /** Order of the Watch Now cards and drawer sections: ids from [WATCH_SECTIONS]. */
+    val watchOrder: List<String> = WATCH_SECTIONS.map { it.first },
 ) {
     fun backgroundFor(theme: ThemeId) = when (theme) {
         ThemeId.KINGDOM -> bgKingdom
@@ -121,6 +126,7 @@ class SettingsStore(context: Context) {
             .putBoolean("watchLive", next.watchLive)
             .putString("favoriteTeam", next.favoriteTeam)
             .putString("localStations", next.localStations.entries.joinToString("\n") { "${it.key}=${it.value}" })
+            .putString("watchOrder", next.watchOrder.joinToString(","))
             .apply()
     }
 
@@ -165,6 +171,9 @@ class SettingsStore(context: Context) {
         localStations = (prefs.getString("localStations", null) ?: "").lines().mapNotNull { line ->
             line.split('=', limit = 2).takeIf { it.size == 2 && it[1].isNotBlank() }?.let { it[0] to it[1] }
         }.toMap(),
+        // Keep any saved order, and add sections that didn't exist when it was saved.
+        watchOrder = (prefs.getString("watchOrder", null)?.split(",").orEmpty().filter { id -> WATCH_SECTIONS.any { it.first == id } } +
+            WATCH_SECTIONS.map { it.first }).distinct(),
     )
 
     private inline fun <reified E : Enum<E>> enumOr(name: String?, fallback: E): E =

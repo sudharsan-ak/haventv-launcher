@@ -88,7 +88,8 @@ fun WatchDrawer(state: HavenState, colors: ThemeColors) {
                 CloseButton(colors, onClick = close)
             }
 
-            if (s.watchNba) {
+          for (section in s.watchOrder) when (section) {
+            "nba" -> if (s.watchNba) {
                 val fav = s.favoriteTeam
                 if (fav.isNotBlank()) {
                     TeamCard(state, colors, fav, claim())
@@ -116,7 +117,7 @@ fun WatchDrawer(state: HavenState, colors: ThemeColors) {
                 }
             }
 
-            if (s.watchContinue) {
+            "continue" -> if (s.watchContinue) {
                 Section("Continue watching", colors)
                 if (w.continueWatching.isEmpty()) Note("Nothing to continue. Apps that share progress with the TV show up here.", colors)
                 w.continueWatching.forEach { item ->
@@ -134,7 +135,7 @@ fun WatchDrawer(state: HavenState, colors: ThemeColors) {
                 }
             }
 
-            if (s.watchLive) {
+            "live" -> if (s.watchLive) {
                 Section("Live channels", colors)
                 if (w.live.isEmpty()) Note("No live channels. Live TV apps that share their channels show up here.", colors)
                 w.live.forEach { group ->
@@ -146,6 +147,8 @@ fun WatchDrawer(state: HavenState, colors: ThemeColors) {
                     }
                 }
             }
+
+          }
 
             Spacer(Modifier.height(4.dp))
             Text(

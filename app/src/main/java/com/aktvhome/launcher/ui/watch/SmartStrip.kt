@@ -56,7 +56,8 @@ fun SmartStrip(state: HavenState, colors: ThemeColors, first: FocusRequester, mo
     fun claim(): Modifier = if (!firstUsed) { firstUsed = true; Modifier.focusRequester(first) } else Modifier
 
     Row(modifier.height(68.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (s.watchNba) {
+      for (section in s.watchOrder) when (section) {
+        "nba" -> if (s.watchNba) {
             val g = w.featured()
             val fav = s.favoriteTeam
             when {
@@ -78,7 +79,7 @@ fun SmartStrip(state: HavenState, colors: ThemeColors, first: FocusRequester, mo
                 }
             }
         }
-        if (s.watchContinue) {
+        "continue" -> if (s.watchContinue) {
             val item = w.continueWatching.firstOrNull()
             StripCard(
                 "CONTINUE", item?.title ?: "Nothing to continue",
@@ -87,7 +88,7 @@ fun SmartStrip(state: HavenState, colors: ThemeColors, first: FocusRequester, mo
                 false, colors, claim().weight(1f),
             ) { if (item != null) w.open(item) else state.overlay = Overlay.WATCH }
         }
-        if (s.watchLive) {
+        "live" -> if (s.watchLive) {
             val groups = w.live
             StripCard(
                 "LIVE TV", groups.take(2).joinToString(" + ") { it.provider }.ifBlank { "No live channels" },
@@ -95,6 +96,7 @@ fun SmartStrip(state: HavenState, colors: ThemeColors, first: FocusRequester, mo
                 groups.any { g -> g.items.any { it.live } }, colors, claim().weight(1f),
             ) { state.overlay = Overlay.WATCH }
         }
+      }
         SeeMore(colors, claim()) { state.overlay = Overlay.WATCH }
     }
 }
@@ -136,18 +138,20 @@ private fun RowScope.StripCard(
 private fun SeeMore(colors: ThemeColors, modifier: Modifier, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(16.dp)
+    // Same glass as the cards beside it; only focus makes it solid.
     Column(
         modifier
             .width(118.dp)
             .fillMaxHeight()
             .clip(shape)
-            .background(if (focused) colors.accent else colors.pill.copy(alpha = 0.85f))
+            .background(if (focused) colors.pill else colors.glass)
+            .border(if (focused) 2.dp else 1.dp, if (focused) colors.accent else colors.edge, shape)
             .onFocusChanged { focused = it.isFocused }
             .tvClickable(onClick = onClick)
             .padding(horizontal = 14.dp),
         verticalArrangement = Arrangement.Center,
     ) {
-        val ink = if (focused) colors.pill else colors.pillInk
+        val ink = if (focused) colors.pillInk else colors.ink
         Text("WATCH NOW", color = ink.copy(alpha = 0.8f), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
         Text("See more", color = ink, fontSize = 16.sp, fontWeight = FontWeight.Bold)
     }
