@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 320x180 TV banner: night sky, glowing arc, glass "H" -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <path android:pathData="M0,0h320v180h-320z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0" android:startY="0"
+                android:endX="0" android:endY="180"
+                android:startColor="#FF050A1F"
+                android:endColor="#FF0B2A3A" />
+        </aapt:attr>
+    </path>
+    <path
+        android:pathData="M40,150 C90,20 230,20 280,120"
+        android:strokeColor="#FF9FE3FF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round" />
+    <path
+        android:fillColor="#33FFFFFF"
+        android:pathData="M120,62h80a14,14 0,0 1,14 14v40a14,14 0,0 1,-14 14h-80a14,14 0,0 1,-14 -14v-40a14,14 0,0 1,14 -14z" />
+    <path
+        android:fillColor="#FFEEF3FF"
+        android:pathData="M138,76h10v18h24v-18h10v40h-10v-14h-24v14h-10z" />
+</vector>

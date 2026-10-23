@@ -1,0 +1,10 @@
+.gradle/
+.kotlin/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+# Signing secrets: back these up somewhere safe, never commit them
+keystore/
+keystore.properties

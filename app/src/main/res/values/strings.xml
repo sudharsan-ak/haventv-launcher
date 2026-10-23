@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Haven</string>
+    <string name="home_override_label">Haven Home button</string>
+    <string name="home_override_description">Opens Haven when the Home button is pressed. Only watches for the Google TV home page; reads nothing on screen.</string>
+</resources>
