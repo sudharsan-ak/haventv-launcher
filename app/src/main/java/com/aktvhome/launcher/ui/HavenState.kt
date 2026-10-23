@@ -51,6 +51,12 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
     var homePresses by mutableStateOf(0)
     /** True when Android opened Haven as the home screen (Back then has nowhere to go). */
     var isHome by mutableStateOf(false)
+    /** Collection id to the package last opened from it; Down from that collection lands there. */
+    private val lastOpened = mutableMapOf<String, String>()
+
+    /** Where Down from [sc] should land: the app last opened from it, else the first. */
+    fun entryIndex(sc: ShownCollection): Int =
+        lastOpened[sc.collection.id]?.let { pkg -> sc.apps.indexOfFirst { it.pkg == pkg } }?.takeIf { it >= 0 } ?: 0
     var selectedCollection by mutableStateOf<String?>(null)
     var focusedApp by mutableStateOf<AppEntry?>(null)
     var menuFor by mutableStateOf<AppEntry?>(null)
@@ -122,6 +128,7 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
         layoutStore.layout.hidden.mapNotNull { apps[it] }.sortedBy { it.label.lowercase() }
 
     fun launch(app: AppEntry) {
+        layoutStore.collectionOf(app.pkg)?.let { lastOpened[it.id] = app.pkg }
         val intent = appRepo.launchIntent(app.pkg)
         if (intent == null) toast("Can't open ${app.label}") else runCatching { context.startActivity(intent) }
             .onFailure { toast("Can't open ${app.label}") }

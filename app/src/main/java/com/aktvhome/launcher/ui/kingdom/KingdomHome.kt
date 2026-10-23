@@ -59,7 +59,9 @@ import com.aktvhome.launcher.ui.ShownCollection
 import com.aktvhome.launcher.ui.clockText
 import com.aktvhome.launcher.ui.moveKeys
 import com.aktvhome.launcher.ui.rememberAmbientSeconds
+import com.aktvhome.launcher.ui.onKeyDown
 import com.aktvhome.launcher.ui.rememberWrapRow
+import android.view.KeyEvent
 import com.aktvhome.launcher.ui.theme.ThemeColors
 import com.aktvhome.launcher.ui.tvClickable
 import androidx.compose.ui.focus.focusProperties
@@ -77,6 +79,8 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
     val current = state.currentCollection(shown)
     val tiles = rememberWrapRow(shown.size)
     val currentIndex = shown.indexOfFirst { it.collection.id == current?.collection?.id }.coerceAtLeast(0)
+    // The row under the tiles (apps, or HDMI inputs). One instance so the tiles can move focus into it.
+    val items = rememberWrapRow(if (current?.isInputs == true) state.inputs.size else current?.apps?.size ?: 0)
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
     // Collections and apps always show with the full header above them.
@@ -134,7 +138,10 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
                     CollectionTile(
                         sc, colors, count = if (sc.isInputs) state.inputs.size else sc.apps.size,
                         selected = sc.collection.id == current?.collection?.id,
-                        modifier = tiles.item(i),
+                        // Down enters this collection at the app last opened from it (or the first).
+                        modifier = tiles.item(i).onKeyDown(KeyEvent.KEYCODE_DPAD_DOWN) {
+                            items.focus(if (sc.isInputs) 0 else state.entryIndex(sc))
+                        },
                         onFocused = {
                             tiles.onItemFocused(i)
                             state.selectedCollection = sc.collection.id
@@ -150,10 +157,10 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
                 Spacer(Modifier.height(6.dp))
                 when {
                     current.isInputs -> {
-                        val row = rememberWrapRow(state.inputs.size)
+                        val row = items
                         LazyRow(
                             state = row.state,
-                            modifier = row.keys,
+                            modifier = row.keys.onKeyDown(KeyEvent.KEYCODE_DPAD_UP) { tiles.focus(currentIndex) },
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                             contentPadding = PaddingValues(vertical = 12.dp, horizontal = SIDE),
                         ) {
@@ -171,10 +178,13 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
                     )
                     else -> {
                         val visible = current.apps.map { it.pkg }
-                        val row = rememberWrapRow(current.apps.size).also { it.paused = state.moving != null }
+                        val row = items.also { it.paused = state.moving != null }
                         LazyRow(
                             state = row.state,
-                            modifier = row.keys,
+                            // Up goes back to this collection's tile (not while moving an app).
+                            modifier = row.keys.onKeyDown(KeyEvent.KEYCODE_DPAD_UP, { state.moving == null }) {
+                                tiles.focus(currentIndex)
+                            },
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                             contentPadding = PaddingValues(vertical = 12.dp, horizontal = SIDE),
                         ) {

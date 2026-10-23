@@ -40,6 +40,16 @@ class WrapRow internal constructor(val state: LazyListState, private val scope: 
         focused = index
     }
 
+    /** Scrolls item [index] into view and focuses it (a lazy row can't focus what isn't composed). */
+    fun focus(index: Int) {
+        if (count == 0) return
+        val i = index.coerceIn(0, count - 1)
+        scope.launch {
+            state.scrollToItem(i)
+            runCatching { requester(i).requestFocus() }
+        }
+    }
+
     /** Key handling for the whole row. */
     val keys: Modifier = Modifier.onPreviewKeyEvent { e ->
         val code = e.nativeKeyEvent.keyCode
@@ -64,6 +74,17 @@ class WrapRow internal constructor(val state: LazyListState, private val scope: 
         override val scaleFactor = 1f
     }
 }
+
+/**
+ * Runs [action] on a single press of [keyCode] and consumes it, instead of letting Android pick
+ * whatever sits geometrically nearest. Used to move between a collection and its apps.
+ */
+fun Modifier.onKeyDown(keyCode: Int, enabled: () -> Boolean = { true }, action: () -> Unit): Modifier =
+    onPreviewKeyEvent { e ->
+        if (e.nativeKeyEvent.keyCode != keyCode || !enabled()) return@onPreviewKeyEvent false
+        if (e.type == KeyEventType.KeyDown) action()
+        true
+    }
 
 @Composable
 fun rememberWrapRow(count: Int): WrapRow {

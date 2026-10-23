@@ -56,7 +56,9 @@ import com.aktvhome.launcher.ui.Pill
 import com.aktvhome.launcher.ui.clockText
 import com.aktvhome.launcher.ui.moveKeys
 import com.aktvhome.launcher.ui.rememberAmbientSeconds
+import com.aktvhome.launcher.ui.onKeyDown
 import com.aktvhome.launcher.ui.rememberWrapRow
+import android.view.KeyEvent
 import com.aktvhome.launcher.ui.theme.ThemeColors
 import com.aktvhome.launcher.ui.tvClickable
 import androidx.compose.ui.focus.focusProperties
@@ -74,6 +76,8 @@ fun TideHome(state: HavenState, colors: ThemeColors) {
     // Chips: every shown collection, Inputs included. Settings is the gear at the top right, as on every theme.
     val chips = rememberWrapRow(shown.size)
     val currentIndex = shown.indexOfFirst { it.collection.id == current?.collection?.id }.coerceAtLeast(0)
+    // The dock (apps, or HDMI inputs). One instance so the chips can move focus into it.
+    val dockRow = rememberWrapRow(if (current?.isInputs == true) state.inputs.size else current?.apps?.size ?: 0)
 
     // The greeting fades in each time home comes back into view; with Motion off it just appears.
     val greetAlpha = remember { Animatable(1f) }
@@ -132,7 +136,10 @@ fun TideHome(state: HavenState, colors: ThemeColors) {
                     Pill(
                         sc.collection.name, colors,
                         selected = sc.collection.id == current?.collection?.id,
-                        modifier = chips.item(i),
+                        // Down enters this collection at the app last opened from it (or the first).
+                        modifier = chips.item(i).onKeyDown(KeyEvent.KEYCODE_DPAD_DOWN) {
+                            dockRow.focus(if (sc.isInputs) 0 else state.entryIndex(sc))
+                        },
                         icon = CollectionIcons.of(sc.collection.icon),
                         // Leaving the dock drops the app name so the label shows the collection again.
                         onFocused = { chips.onItemFocused(i); state.selectedCollection = sc.collection.id; state.focusedApp = null },
@@ -157,8 +164,11 @@ fun TideHome(state: HavenState, colors: ThemeColors) {
             ) {
                 when {
                     current?.isInputs == true -> {
-                        val dock = rememberWrapRow(state.inputs.size)
-                        LazyRow(state = dock.state, modifier = dock.keys, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        val dock = dockRow
+                        LazyRow(
+                            state = dock.state,
+                            modifier = dock.keys.onKeyDown(KeyEvent.KEYCODE_DPAD_UP) { chips.focus(currentIndex) },
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             itemsIndexed(state.inputs, key = { _, input -> input.id }) { i, input ->
                                 Pill(
                                     input.label, colors, modifier = dock.item(i), icon = CollectionIcons.of("hdmi"),
@@ -171,13 +181,14 @@ fun TideHome(state: HavenState, colors: ThemeColors) {
                         Text("Empty. Hold OK on any app to move it here.", color = colors.ink, fontSize = 13.sp, modifier = Modifier.padding(10.dp))
                     else -> {
                         val visible = current.apps.map { it.pkg }
-                        val dock = rememberWrapRow(current.apps.size).also { it.paused = state.moving != null }
+                        val dock = dockRow.also { it.paused = state.moving != null }
                         LazyRow(
                             state = dock.state,
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
-                            modifier = Modifier.height((76 * settings.cardSize.scale).dp).then(dock.keys),
+                            modifier = Modifier.height((76 * settings.cardSize.scale).dp).then(dock.keys)
+                                .onKeyDown(KeyEvent.KEYCODE_DPAD_UP, { state.moving == null }) { chips.focus(currentIndex) },
                         ) {
                             itemsIndexed(current.apps, key = { _, app -> app.pkg }) { i, app ->
                                 DockIcon(state, app, colors, visible, settings.cardSize.scale, dock.item(i)) { dock.onItemFocused(i) }
