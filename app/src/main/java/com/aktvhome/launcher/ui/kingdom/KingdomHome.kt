@@ -39,6 +39,9 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.size
+import com.aktvhome.launcher.ui.CollectionIcons
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.PathMeasure
@@ -142,16 +145,16 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
                 )
             }
 
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(14.dp))
             LazyRow(
                 state = tiles.state,
                 modifier = tiles.keys,
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(vertical = 10.dp, horizontal = SIDE),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                contentPadding = PaddingValues(vertical = 4.dp, horizontal = SIDE),
             ) {
                 itemsIndexed(shown, key = { _, sc -> sc.collection.id }) { i, sc ->
-                    CollectionTile(
-                        sc, colors, count = if (sc.isInputs) state.inputs.size else sc.apps.size,
+                    CollectionTab(
+                        sc, colors,
                         selected = sc.collection.id == current?.collection?.id,
                         // Down enters this collection at the app last opened from it (or the first).
                         modifier = tiles.item(i).onKeyDown(KeyEvent.KEYCODE_DPAD_DOWN) {
@@ -166,10 +169,10 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
                 }
             }
 
+            // A hairline under the tabs, like Settings; the open tab already names the row below.
+            Box(side.fillMaxWidth().padding(top = 6.dp).height(1.dp).background(colors.edge))
             if (current != null) {
-                Spacer(Modifier.height(10.dp))
-                Text(current.collection.name, color = colors.ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = side)
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(4.dp))
                 when {
                     current.isInputs -> {
                         val row = items
@@ -241,40 +244,36 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
     }
 }
 
+/**
+ * A collection as a compact tab, styled like the tabs in Settings: the open collection gets a
+ * solid light background, focus adds an accent ring, the rest are plain text with an icon.
+ */
 @Composable
-private fun CollectionTile(
+private fun CollectionTab(
     sc: ShownCollection,
     colors: ThemeColors,
-    count: Int,
     selected: Boolean,
     modifier: Modifier,
     onFocused: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (focused) 1.06f else 1f, label = "tileScale")
-    val shape = RoundedCornerShape(16.dp)
-    Column(
+    val shape = RoundedCornerShape(12.dp)
+    val solid = focused || selected
+    val ink = if (solid) colors.pillInk else colors.ink
+    Row(
         modifier
-            .width(150.dp)
-            .height(78.dp)
-            .scale(scale)
+            .height(42.dp)
             .clip(shape)
-            // A shadow under translucent glass shows through as dark patches, so focus brightens the glass instead.
-            .background(if (focused) colors.bgTop.copy(alpha = 0.92f) else colors.glass)
-            .border(if (focused) 3.dp else 2.dp, if (focused || selected) colors.accent else colors.edge, shape)
+            .background(if (solid) colors.pill.copy(alpha = if (focused) 1f else 0.88f) else Color.Transparent)
+            .border(2.dp, if (focused) colors.accent else Color.Transparent, shape)
             .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocused() }
             .tvClickable(onClick = onFocused)
-            .padding(horizontal = 14.dp, vertical = 9.dp),
-        verticalArrangement = Arrangement.SpaceBetween,
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        IconBadge(sc.collection.icon, colors, size = 24.dp, tint = if (focused || selected) colors.accent else colors.ink)
-        Column {
-            Text(sc.collection.name, color = colors.ink, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-            Text(
-                if (sc.isInputs) "$count inputs" else "$count apps",
-                color = colors.inkSoft, fontSize = 11.sp,
-            )
-        }
+        Icon(CollectionIcons.of(sc.collection.icon), null, tint = ink, modifier = Modifier.size(18.dp))
+        Text(sc.collection.name, color = ink, fontSize = 15.sp, fontWeight = if (solid) FontWeight.Bold else FontWeight.SemiBold, maxLines = 1)
     }
 }
 
