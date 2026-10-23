@@ -12,32 +12,6 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-enum class GameState { PRE, LIVE, FINAL }
-
-data class Team(
-    /** ESPN abbreviation, e.g. "GS". */
-    val abbr: String,
-    val name: String,
-    val score: String,
-    /** Hex color without '#', from ESPN. */
-    val color: String,
-    /** "P. Banchero 35", when ESPN reports it. */
-    val leader: String?,
-)
-
-data class Game(
-    val espnId: String,
-    val start: Instant,
-    val away: Team,
-    val home: Team,
-    val state: GameState,
-    /** "Q4 1:42", "Final", "Halftime", or the tip-off time. */
-    val status: String,
-    val network: String?,
-) {
-    fun involves(abbr: String) = abbr.isNotBlank() && (away.abbr == abbr || home.abbr == abbr)
-}
-
 /** One player line in the game detail box score. */
 data class PlayerLine(val name: String, val pts: String, val reb: String, val ast: String)
 
@@ -128,7 +102,7 @@ object Nba {
 
     /** Opens the game's page in the NBA app; falls back to its games list, then the app itself. */
     fun openInApp(context: Context, nbaGameId: String?): Boolean {
-        val pkg = "com.nbaimd.gametime.nba2011"
+        val pkg = NBA_APP
         val links = listOfNotNull(nbaGameId?.let { "gametime://game/$it" }, "gametime://games")
         for (link in links) {
             val ok = runCatching {
@@ -143,7 +117,8 @@ object Nba {
 
     private fun parseEvent(e: JSONObject): Game {
         val comp = e.getJSONArray("competitions").getJSONObject(0)
-        val statusType = (comp.optJSONObject("status") ?: e.getJSONObject("status")).getJSONObject("type")
+        val statusObj = comp.optJSONObject("status") ?: e.getJSONObject("status")
+        val statusType = statusObj.getJSONObject("type")
         val start = Instant.parse(e.getString("date").let { if (it.length == 17) it.replace("Z", ":00Z") else it })
         val state = when (statusType.optString("state")) {
             "in" -> GameState.LIVE
@@ -182,7 +157,14 @@ object Nba {
                 (0 until b.length()).mapNotNull { i -> b.getJSONObject(i).optJSONObject("media")?.optString("shortName") }
             }.orEmpty(),
         )?.filter { it.isNotBlank() }?.distinct()?.joinToString(", ")?.ifBlank { null }
-        return Game(e.getString("id"), start, away!!, home!!, state, status, network)
+        val name = statusType.optString("name")
+        return Game(
+            e.getString("id"), start, away!!, home!!, state, status, network,
+            period = statusObj.optInt("period"),
+            clock = statusObj.optString("displayClock"),
+            halftime = name == "STATUS_HALFTIME",
+            calledOff = name == "STATUS_POSTPONED" || name == "STATUS_CANCELED" || name == "STATUS_CANCELLED",
+        )
     }
 
     private fun JSONArray.strings(): List<String> = (0 until length()).map { optString(it) }

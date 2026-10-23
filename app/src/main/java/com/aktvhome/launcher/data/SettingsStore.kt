@@ -88,7 +88,17 @@ data class Settings(
     val localStations: Map<String, String> = emptyMap(),
     /** Order of the Watch Now cards and drawer sections: ids from [WATCH_SECTIONS]. */
     val watchOrder: List<String> = WATCH_SECTIONS.map { it.first },
+    /** NBA alerts over any app. Off until you turn them on, like the NBA section. */
+    val nbaAlerts: Boolean = false,
+    val alertsFavorite: Set<AlertEvent> = AlertEvent.entries.toSet(),
+    val alertsOther: Set<AlertEvent> = OTHER_EVENTS,
+    /** Banners leave out scores and results. */
+    val hideScores: Boolean = false,
+    /** Minutes between two other-team alerts. */
+    val alertCooldown: Int = 10,
 ) {
+    fun alertPrefs() = AlertPrefs(nbaAlerts, favoriteTeam, alertsFavorite, alertsOther, alertCooldown * 60_000L)
+
     fun backgroundFor(theme: ThemeId) = when (theme) {
         ThemeId.KINGDOM -> bgKingdom
         ThemeId.TIDE -> bgTide
@@ -136,6 +146,11 @@ class SettingsStore(context: Context) {
             .putString("favoriteTeam", next.favoriteTeam)
             .putString("localStations", next.localStations.entries.joinToString("\n") { "${it.key}=${it.value}" })
             .putString("watchOrder", next.watchOrder.joinToString(","))
+            .putBoolean("nbaAlerts", next.nbaAlerts)
+            .putString("alertsFavorite", next.alertsFavorite.joinToString(",") { it.name })
+            .putString("alertsOther", next.alertsOther.joinToString(",") { it.name })
+            .putBoolean("hideScores", next.hideScores)
+            .putInt("alertCooldown", next.alertCooldown)
             .apply()
     }
 
@@ -184,7 +199,15 @@ class SettingsStore(context: Context) {
         // Keep any saved order, and add sections that didn't exist when it was saved.
         watchOrder = (prefs.getString("watchOrder", null)?.split(",").orEmpty().filter { id -> WATCH_SECTIONS.any { it.first == id } } +
             WATCH_SECTIONS.map { it.first }).distinct(),
+        nbaAlerts = prefs.getBoolean("nbaAlerts", false),
+        alertsFavorite = events(prefs.getString("alertsFavorite", null)) ?: AlertEvent.entries.toSet(),
+        alertsOther = events(prefs.getString("alertsOther", null)) ?: OTHER_EVENTS,
+        hideScores = prefs.getBoolean("hideScores", false),
+        alertCooldown = prefs.getInt("alertCooldown", 10),
     )
+
+    private fun events(saved: String?): Set<AlertEvent>? =
+        saved?.split(",")?.mapNotNull { n -> AlertEvent.entries.firstOrNull { it.name == n } }?.toSet()
 
     private inline fun <reified E : Enum<E>> enumOr(name: String?, fallback: E): E =
         name?.let { n -> enumValues<E>().firstOrNull { it.name == n } } ?: fallback

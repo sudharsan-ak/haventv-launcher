@@ -6,6 +6,9 @@ import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.aktvhome.launcher.data.AccessibilityGuard
+import com.aktvhome.launcher.data.NbaAlerts
+import com.aktvhome.launcher.data.SettingsStore
+import com.aktvhome.launcher.ui.AlertBanner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -28,6 +31,9 @@ import kotlinx.coroutines.launch
  * - one-press Bluetooth speakers: after Haven opens the TV's page for a speaker, it presses that
  *   page's Connect or Disconnect ([pressInTvSettings]), then goes Back to Haven. Only in the TV's
  *   Settings app, only that one button, and only for 10 s after Haven asks.
+ * It also hosts NBA alerts ([NbaAlerts]), since it runs whatever app is in front: it polls ESPN and
+ * draws the banners ([AlertBanner]) as an accessibility overlay. Reading what's playing (to skip
+ * the game you're watching) goes through media sessions, not the screen.
  */
 class HomeOverrideService : AccessibilityService() {
 
@@ -35,11 +41,19 @@ class HomeOverrideService : AccessibilityService() {
 
     private val guard = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    private var banner: AlertBanner? = null
+    private var alerts: NbaAlerts? = null
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         connected = true
         instance = this
         if (rootInActiveWindow?.packageName == GOOGLE_TV_LAUNCHER) openHaven()
+        val store = SettingsStore(applicationContext)
+        val b = AlertBanner(this, store)
+        banner = b
+        alerts = NbaAlerts(applicationContext, guard, store, foreground = { rootInActiveWindow?.packageName?.toString() }, show = b::show)
+            .also { it.start() }
         // This service runs from internal storage for as long as the TV is on, so it also restores
         // other apps' accessibility services once their USB-stored apps load: every 20 s for the
         // first 10 minutes, then every 2 minutes.
@@ -57,6 +71,7 @@ class HomeOverrideService : AccessibilityService() {
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode != KeyEvent.KEYCODE_HOME) return false
+        banner?.dismissAll()
         // Act on release; swallow the press too so Google TV's home never flashes up.
         if (event.action == KeyEvent.ACTION_UP) return openHaven()
         return true
@@ -158,6 +173,8 @@ class HomeOverrideService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        alerts?.stop()
+        banner?.destroy()
         guard.cancel()
         connected = false
         instance = null
@@ -186,6 +203,13 @@ class HomeOverrideService : AccessibilityService() {
 
         /** True when the service is running, so Haven can read Sony's pairing PIN. */
         val canReadPin: Boolean get() = instance != null
+
+        /** Shows a sample NBA alert in 10 s. False when the service isn't running. */
+        fun sendTestAlert(): Boolean {
+            val a = instance?.alerts ?: return false
+            a.sendTest()
+            return true
+        }
 
         /** Reads the PIN from Sony's registration popup, if it's on screen. */
         fun readSonyPin(): String? = instance?.findSonyPin()

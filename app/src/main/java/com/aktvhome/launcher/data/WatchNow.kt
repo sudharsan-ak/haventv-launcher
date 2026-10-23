@@ -16,7 +16,8 @@ import java.time.LocalDate
 
 /**
  * Everything behind the Smart Strip and the Watch Now drawer. Refreshed from the UI clock while
- * Haven is open ([tick]); nothing runs in the background. NBA data only loads when its section is on.
+ * Haven is open ([tick]); NBA data only loads when its section is on. The alert banners keep
+ * their own copy in the Home button service, for its watch options ([loadRows]).
  */
 class WatchNow(
     private val context: Context,
@@ -64,17 +65,7 @@ class WatchNow(
         val now = System.currentTimeMillis()
         if ((s.watchContinue || s.watchLive) && (force || now - tvAt > 60_000)) {
             tvAt = now
-            scope.launch(Dispatchers.IO) {
-                val cw = if (s.watchContinue) listings.continueWatching() else emptyList()
-                val rows = listings.appRows(labelOf)
-                val liveSet = liveApps()
-                val lv = if (s.watchLive) rows.filter { it.pkg in liveSet }.map { remember(it) } else emptyList()
-                withContext(Dispatchers.Main) {
-                    continueWatching = cw
-                    live = lv
-                    appRows = rows.filter { it.pkg !in liveSet }
-                }
-            }
+            scope.launch { loadRows() }
         }
         // Today's games also feed Kingdom's headline when it follows your team.
         if (!s.watchNba && !(s.headlineChanging && s.favoriteTeam.isNotBlank())) return
@@ -90,6 +81,21 @@ class WatchNow(
                 val list = runCatching { Nba.schedule(fav) }.getOrNull()
                 if (list != null) withContext(Dispatchers.Main) { schedule = list } else scheduleAt = 0L
             }
+        }
+    }
+
+    /** Reads Continue watching and the apps' shared rows now. The alert banners call it directly. */
+    suspend fun loadRows() {
+        val s = settingsStore.settings
+        val liveSet = liveApps()
+        val (cw, rows) = withContext(Dispatchers.IO) {
+            (if (s.watchContinue) listings.continueWatching() else emptyList()) to listings.appRows(labelOf)
+        }
+        val lv = withContext(Dispatchers.IO) { if (s.watchLive) rows.filter { it.pkg in liveSet }.map { remember(it) } else emptyList() }
+        withContext(Dispatchers.Main) {
+            continueWatching = cw
+            live = lv
+            appRows = rows.filter { it.pkg !in liveSet }
         }
     }
 
