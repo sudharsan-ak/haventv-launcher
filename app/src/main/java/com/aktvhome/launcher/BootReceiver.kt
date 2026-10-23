@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.aktvhome.launcher.data.AccessibilityGuard
+import com.aktvhome.launcher.data.HomeOverride
 import com.aktvhome.launcher.data.PrivateDns
 import com.aktvhome.launcher.data.SettingsStore
 
@@ -15,5 +16,6 @@ class BootReceiver : BroadcastReceiver() {
         // Services of apps on a USB drive get dropped at boot; let the guard bring them back once loaded.
         AccessibilityGuard.onBoot(context)
         AccessibilityGuard.check(context)
+        HomeOverride.ensure(context)
     }
 }

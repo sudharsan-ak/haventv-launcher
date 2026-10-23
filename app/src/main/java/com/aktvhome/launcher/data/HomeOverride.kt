@@ -28,6 +28,7 @@ object HomeOverride {
      * it, so Home stops opening Haven. If it's on but hasn't connected, switch it off and on.
      */
     suspend fun reconnectIfStale(context: Context) {
+        ensure(context)
         if (!isOn(context)) return
         // Updates are the known trigger, and the service can look connected while getting no events,
         // so reconnect once per install rather than trusting the connected flag alone.
@@ -42,8 +43,24 @@ object HomeOverride {
         prefs.edit().putLong("reconnectedFor", installed).apply()
     }
 
+    /**
+     * Android can drop Haven's own service from the list during an update or boot. If you turned
+     * the Home button on (and haven't turned it off since), put it back. Run at boot, after
+     * updates and whenever Haven opens.
+     */
+    fun ensure(context: Context) {
+        val prefs = context.getSharedPreferences("home_override", Context.MODE_PRIVATE)
+        // Builds before this didn't record the choice; the guard's remembered list or the
+        // current list tells us it was on.
+        val wanted = if (prefs.contains("wanted")) prefs.getBoolean("wanted", false)
+        else (isOn(context) || "HomeOverrideService" in (context.getSharedPreferences("a11y_guard", Context.MODE_PRIVATE).getString("wanted", "") ?: ""))
+            .also { prefs.edit().putBoolean("wanted", it).apply() }
+        if (wanted && !isOn(context)) set(context, true)
+    }
+
     /** Returns false when Haven doesn't have the one-time ADB permission. */
     fun set(context: Context, on: Boolean): Boolean {
+        context.getSharedPreferences("home_override", Context.MODE_PRIVATE).edit().putBoolean("wanted", on).apply()
         if (!PrivateDns.canWrite(context)) return false
         val me = component(context)
         val short = "${context.packageName}/.HomeOverrideService"
