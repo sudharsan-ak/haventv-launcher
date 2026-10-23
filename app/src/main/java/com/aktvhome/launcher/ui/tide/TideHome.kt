@@ -59,6 +59,8 @@ import com.aktvhome.launcher.ui.rememberAmbientSeconds
 import com.aktvhome.launcher.ui.rememberWrapRow
 import com.aktvhome.launcher.ui.theme.ThemeColors
 import com.aktvhome.launcher.ui.tvClickable
+import androidx.compose.ui.focus.focusProperties
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.time.format.DateTimeFormatter
 import kotlin.math.PI
@@ -71,6 +73,7 @@ fun TideHome(state: HavenState, colors: ThemeColors) {
     val current = state.currentCollection(shown)
     // Chips: every shown collection, Inputs included. Settings is the gear at the top right, as on every theme.
     val chips = rememberWrapRow(shown.size)
+    val currentIndex = shown.indexOfFirst { it.collection.id == current?.collection?.id }.coerceAtLeast(0)
 
     // The greeting fades in each time home comes back into view; with Motion off it just appears.
     val greetAlpha = remember { Animatable(1f) }
@@ -95,7 +98,12 @@ fun TideHome(state: HavenState, colors: ThemeColors) {
             TideBackdrop(colors, settings.motion)
         }
 
-        GearButton(colors, Modifier.align(Alignment.TopEnd).padding(top = 44.dp, end = 48.dp)) {
+        // Down from the gear goes back to the collection you were on.
+        GearButton(
+            colors,
+            Modifier.align(Alignment.TopEnd).padding(top = 44.dp, end = 48.dp)
+                .focusProperties { down = chips.requester(currentIndex) },
+        ) {
             state.overlay = Overlay.QUICK
         }
 
@@ -183,6 +191,15 @@ fun TideHome(state: HavenState, colors: ThemeColors) {
     }
 
     AppMenuOverlays(state, colors)
+
+    // Closing settings returns focus to the collection you were on before opening them.
+    LaunchedEffect(state.overlay) {
+        if (state.overlay == Overlay.NONE && shown.isNotEmpty()) {
+            delay(80) // let the closing window hand focus back first
+            chips.state.scrollToItem(currentIndex)
+            runCatching { chips.requester(currentIndex).requestFocus() }
+        }
+    }
 
     LaunchedEffect(shown.isNotEmpty(), state.homePresses) {
         if (shown.isNotEmpty()) {

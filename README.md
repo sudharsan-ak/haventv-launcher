@@ -1,28 +1,116 @@
 # Haven
 
-Ad-free glass launcher for the living-room Sony BRAVIA (Android TV 12).
-App ID `com.aktvhome.launcher` (fixed). Display name "Haven" (change in `app/src/main/res/values/strings.xml`).
+An ad-free, glass-style home screen for Android TV / Google TV.
+
+Haven replaces the stock Google TV home (and its ads and "recommended" rows) with a calm,
+customizable launcher: your apps sorted into collections, themes that shift between day and
+night, rotating photo wallpapers, and a few power tools like a Private DNS switch. Built for
+and tested on a Sony BRAVIA running Google TV (Android 12).
+
+![Kingdom theme, day](docs/screenshots/kingdom-day.jpg)
+
+## Features
+
+- **Themes**: *Kingdom* (glass collection tiles with a glowing arc) and *Tide* (a big clock
+  over animated waves). Colors blend from day to night around 6 AM and 6 PM, or stay fixed.
+- **Collections**: apps are sorted into Streaming, Sports, Live TV, Video, Tools and System
+  on first run. Move apps between collections, reorder anything, create and rename your own,
+  pick an icon from 24, hide apps you don't use. HDMI inputs are a row of their own.
+- **Real app art**: uses each app's own TV banner or icon; the glow follows the focused app's color.
+- **Quick settings and Personalize**: a gear opens quick toggles; *All settings* opens a glass
+  panel over the live home, so every change previews instantly. Settings are grouped into
+  *Appearance* (theme, motion, wallpaper), *Home & layout* (cards, greeting, collections),
+  *TV & network* (Home button, Private DNS) and *About & data*.
+- **Photo wallpapers**: per theme, swap the animated scene for rotating photos from Bing,
+  Google Earth View, Wikimedia Commons or Unsplash (topics like nature, animals, cities, sports).
+  Changes every 1, 6, 12 or 24 hours.
+- **Private DNS**: one switch for encrypted DNS (AdGuard by default, also Cloudflare, Quad9 or
+  any hostname), with live status and an optional "keep enforced".
+- **Home button**: makes the remote's Home button open Haven on Google TV.
+- **Remote-first**: hold OK for options, rows wrap around end to end, greeting with your name,
+  card size, motion level, 12/24-hour clock.
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Kingdom, night](docs/screenshots/kingdom-night.jpg) | ![Tide, day](docs/screenshots/tide-day.jpg) |
+| *Kingdom at night* | *Tide during the day* |
+| ![Tide with a Bing photo](docs/screenshots/tide-photo-bing.jpg) | ![Tide with Earth View](docs/screenshots/tide-photo-earthview.jpg) |
+| *Photo wallpaper (Bing)* | *Photo wallpaper (Google Earth View)* |
+| ![Quick settings](docs/screenshots/quick-settings.jpg) | |
+| *Quick settings* | |
 
 ## Build and install
 
-```powershell
-.\gradlew.bat assembleRelease
-& "S:\AK (2)\ADB\platform-tools\adb.exe" install -r app\build\outputs\apk\release\app-release.apk
+Requirements: JDK 17, the Android SDK (platform 35), and `adb` with your TV's developer
+mode and network debugging on.
+
+1. Create a signing key and a `keystore.properties` in the project root (both are git-ignored):
+
+   ```
+   storeFile=keystore/haven-release.jks
+   storePassword=...
+   keyAlias=haven
+   keyPassword=...
+   ```
+
+   ```bash
+   keytool -genkeypair -keystore keystore/haven-release.jks -alias haven -keyalg RSA -keysize 2048 -validity 10000
+   ```
+
+2. Build and install:
+
+   ```bash
+   ./gradlew assembleRelease
+   adb connect <tv-ip>:5555
+   adb install -r app/build/outputs/apk/release/app-release.apk
+   ```
+
+   `install -r` updates in place and keeps your layout and settings. Keep your signing key
+   safe: updates must be signed with the same key.
+
+## One-time permissions (over ADB)
+
+Some features use permissions a TV can't grant from its own UI:
+
+```bash
+# Private DNS switch and the Home button setting
+adb shell pm grant com.aktvhome.launcher android.permission.WRITE_SECURE_SETTINGS
+
+# Reading Watch Next and app channels (for upcoming rows)
+adb shell pm grant com.aktvhome.launcher android.permission.READ_TV_LISTINGS
 ```
 
-`install -r` updates in place and keeps collections and settings.
+## Making Haven the home screen
 
-## Signing key: back it up
+Google TV always opens its own launcher on Home, even when another app is set as default.
+Haven includes a small accessibility service that only watches for the Google TV home page
+and opens Haven instead; it reads nothing on screen. Turn it on in
+**All settings › TV & network › Home button** (needs the `WRITE_SECURE_SETTINGS` grant above). If you use
+another launcher with its own Home override (such as Projectivy), switch that one off.
 
-`keystore/haven-release.jks` and `keystore.properties` sign every update. If they are lost,
-a new build can't install over the old one; Haven would have to be uninstalled first, which
-wipes its layout. Keep a copy somewhere off this PC.
+## Unsplash topics
 
-## Layout
+Unsplash needs a free Access Key: create an app at <https://unsplash.com/oauth/applications>
+and paste the key in **All settings › Appearance › Wallpaper › Unsplash key**. It's stored only on the TV.
 
-- `data/` app list, HDMI inputs, collections (`LayoutStore`), settings, first-run sorting (`Defaults`)
-- `ui/theme/` theme colors and the 6 AM / 6 PM day-night blend
+## Project layout
+
+- `data/` app list, HDMI inputs, collections (`LayoutStore`), settings, first-run sorting
+  (`Defaults`), Private DNS, wallpapers, Home override
 - `ui/kingdom/`, `ui/tide/` one folder per theme; each puts the settings gear at the top right
 - `ui/settings/` Quick settings card and the Personalize panel (both float over the live home)
-- `ui/Icons.kt` collection icon set; `ui/WrapRow.kt` rows that wrap end to end
-- `ui/Ambient.kt` frame clock for scene motion (works even with system animations set to 0)
+- `ui/theme/` theme colors and the day/night blend
+- `ui/Icons.kt` collection icons; `ui/WrapRow.kt` rows that wrap end to end;
+  `ui/Ambient.kt` frame clock for scene motion (works even with system animations off)
+
+## Notes
+
+- First-run sorting in `Defaults.kt` is tuned to the apps on my TV; anything unknown lands
+  in *Other* and can be moved.
+- Photo credits are shown on screen (required by Unsplash); Earth View's photo list comes from
+  a public mirror of Google's retired feed.
+- Licensed under the [MIT License](LICENSE).
+- Not affiliated with Google, Sony or any streaming service. App names and logos shown in
+  screenshots belong to their owners.

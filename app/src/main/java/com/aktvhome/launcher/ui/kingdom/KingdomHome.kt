@@ -62,6 +62,8 @@ import com.aktvhome.launcher.ui.rememberAmbientSeconds
 import com.aktvhome.launcher.ui.rememberWrapRow
 import com.aktvhome.launcher.ui.theme.ThemeColors
 import com.aktvhome.launcher.ui.tvClickable
+import androidx.compose.ui.focus.focusProperties
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.sin
@@ -74,6 +76,7 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
     val shown = state.shownCollections()
     val current = state.currentCollection(shown)
     val tiles = rememberWrapRow(shown.size)
+    val currentIndex = shown.indexOfFirst { it.collection.id == current?.collection?.id }.coerceAtLeast(0)
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
     // Collections and apps always show with the full header above them.
@@ -107,7 +110,10 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
                 Spacer(Modifier.weight(1f))
                 Text(clockText(state.now, settings.clock24), color = colors.ink, fontSize = 16.sp, fontWeight = FontWeight.Medium)
                 Spacer(Modifier.width(16.dp))
-                GearButton(colors) { state.overlay = Overlay.QUICK }
+                // Down from the gear goes back to the collection you were on, not the tile underneath.
+                GearButton(colors, Modifier.focusProperties { down = tiles.requester(currentIndex) }) {
+                    state.overlay = Overlay.QUICK
+                }
             }
 
             Spacer(Modifier.height(26.dp))
@@ -191,6 +197,15 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
     }
 
     AppMenuOverlays(state, colors)
+
+    // Closing settings returns focus to the collection you were on before opening them.
+    LaunchedEffect(state.overlay) {
+        if (state.overlay == Overlay.NONE && shown.isNotEmpty()) {
+            delay(80) // let the closing window hand focus back first
+            tiles.state.scrollToItem(currentIndex)
+            runCatching { tiles.requester(currentIndex).requestFocus() }
+        }
+    }
 
     LaunchedEffect(shown.isNotEmpty(), state.homePresses) {
         if (shown.isNotEmpty()) {
