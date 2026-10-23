@@ -88,16 +88,30 @@ data class Settings(
     val localStations: Map<String, String> = emptyMap(),
     /** Order of the Watch Now cards and drawer sections: ids from [WATCH_SECTIONS]. */
     val watchOrder: List<String> = WATCH_SECTIONS.map { it.first },
-    /** NBA alerts over any app. Off until you turn them on, like the NBA section. */
-    val nbaAlerts: Boolean = false,
+    /** NBA alerts for your teams' games, and for other games (the two switches in NBA alerts). */
+    val alertsMine: Boolean = true,
+    val alertsOthers: Boolean = true,
+    /**
+     * Teams whose games get the "Your team" alerts (ESPN abbreviations). Starts as just
+     * [favoriteTeam]; [favoriteTeam] stays the main team on Home either way.
+     */
+    val followedTeams: Set<String> = emptySet(),
     val alertsFavorite: Set<AlertEvent> = AlertEvent.entries.toSet(),
     val alertsOther: Set<AlertEvent> = OTHER_EVENTS,
     /** Banners leave out scores and results. */
     val hideScores: Boolean = false,
     /** Minutes between two other-team alerts. */
     val alertCooldown: Int = 10,
+    /** Seconds a banner stays up without a key press. */
+    val bannerSeconds: Int = 5,
 ) {
-    fun alertPrefs() = AlertPrefs(nbaAlerts, favoriteTeam, alertsFavorite, alertsOther, alertCooldown * 60_000L)
+    fun alertPrefs() = AlertPrefs(
+        on = alertsMine || alertsOthers,
+        favorite = favoriteTeam,
+        favoriteEvents = if (alertsMine) alertsFavorite else emptySet(),
+        otherEvents = if (alertsOthers) alertsOther else emptySet(),
+        cooldownMs = alertCooldown * 60_000L,
+    )
 
     fun backgroundFor(theme: ThemeId) = when (theme) {
         ThemeId.KINGDOM -> bgKingdom
@@ -146,11 +160,14 @@ class SettingsStore(context: Context) {
             .putString("favoriteTeam", next.favoriteTeam)
             .putString("localStations", next.localStations.entries.joinToString("\n") { "${it.key}=${it.value}" })
             .putString("watchOrder", next.watchOrder.joinToString(","))
-            .putBoolean("nbaAlerts", next.nbaAlerts)
+            .putBoolean("alertsMine", next.alertsMine)
+            .putBoolean("alertsOthers", next.alertsOthers)
+            .putString("followedTeams", next.followedTeams.joinToString(","))
             .putString("alertsFavorite", next.alertsFavorite.joinToString(",") { it.name })
             .putString("alertsOther", next.alertsOther.joinToString(",") { it.name })
             .putBoolean("hideScores", next.hideScores)
             .putInt("alertCooldown", next.alertCooldown)
+            .putInt("bannerSeconds", next.bannerSeconds)
             .apply()
     }
 
@@ -199,11 +216,15 @@ class SettingsStore(context: Context) {
         // Keep any saved order, and add sections that didn't exist when it was saved.
         watchOrder = (prefs.getString("watchOrder", null)?.split(",").orEmpty().filter { id -> WATCH_SECTIONS.any { it.first == id } } +
             WATCH_SECTIONS.map { it.first }).distinct(),
-        nbaAlerts = prefs.getBoolean("nbaAlerts", false),
+        alertsMine = prefs.getBoolean("alertsMine", true),
+        alertsOthers = prefs.getBoolean("alertsOthers", true),
+        followedTeams = prefs.getString("followedTeams", null)?.split(",")?.filter { it.isNotBlank() }?.toSet()
+            ?: setOfNotNull(prefs.getString("favoriteTeam", null)?.ifBlank { null }),
         alertsFavorite = events(prefs.getString("alertsFavorite", null)) ?: AlertEvent.entries.toSet(),
         alertsOther = events(prefs.getString("alertsOther", null)) ?: OTHER_EVENTS,
         hideScores = prefs.getBoolean("hideScores", false),
         alertCooldown = prefs.getInt("alertCooldown", 10),
+        bannerSeconds = prefs.getInt("bannerSeconds", 5),
     )
 
     private fun events(saved: String?): Set<AlertEvent>? =

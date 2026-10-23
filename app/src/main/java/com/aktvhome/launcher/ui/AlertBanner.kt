@@ -84,10 +84,10 @@ import java.time.format.DateTimeFormatter
 /**
  * NBA alert banners, drawn by the Home button service over whatever app is in front (an
  * accessibility overlay needs no "draw over apps" permission). A small glass toast, top right
- * under the gear.
- * The banner takes focus (on its watch button) so the remote can act on it; keys in the first
- * 500 ms are ignored, so a press meant for the app doesn't hit it. It closes after 5 s without a
- * key, on Back or Dismiss, and the window is removed so focus returns to the app underneath.
+ * under the gear. It takes focus (on its watch button) so the remote can act on it; keys in the
+ * first 500 ms are ignored, so a press meant for the app doesn't hit it. It closes after Banner
+ * time (5 s by default) without a key, on Back or Dismiss, and the window is removed so focus
+ * returns to the app underneath.
  * Alerts that arrive while one shows wait their turn.
  */
 class AlertBanner(private val service: AccessibilityService, private val store: SettingsStore) {
@@ -193,7 +193,7 @@ class AlertBanner(private val service: AccessibilityService, private val store: 
     private fun restartTimer() {
         timer?.cancel()
         timer = main.launch {
-            delay(5_000)
+            delay(store.settings.bannerSeconds * 1_000L)
             close()
         }
     }

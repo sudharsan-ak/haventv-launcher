@@ -70,7 +70,7 @@ class NbaAlerts(
         // Settings change in Haven's own copy; read them fresh each round.
         val s = withContext(Dispatchers.Main) { store.reload(); store.settings }
         // Off: nothing is fetched, only checked again soon so turning it on takes effect.
-        if (!s.nbaAlerts) return RETRY_MS
+        if (!s.alertsMine && !s.alertsOthers) return RETRY_MS
         val today = LocalDate.now()
         val yesterday = today.minusDays(1)
         val todayGames = withContext(Dispatchers.IO) { Nba.scoreboard(today) }

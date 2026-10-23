@@ -44,7 +44,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,8 +62,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aktvhome.launcher.R
-import com.aktvhome.launcher.HomeOverrideService
-import com.aktvhome.launcher.data.AlertEvent
 import com.aktvhome.launcher.data.AppCollection
 import com.aktvhome.launcher.data.AppEntry
 import com.aktvhome.launcher.data.Background
@@ -77,8 +74,6 @@ import com.aktvhome.launcher.data.Defaults
 import com.aktvhome.launcher.data.DnsChoice
 import com.aktvhome.launcher.data.HomeOverride
 import com.aktvhome.launcher.data.Nba
-import com.aktvhome.launcher.data.NbaAlerts
-import com.aktvhome.launcher.data.OTHER_EVENTS
 import com.aktvhome.launcher.data.WATCH_SECTIONS
 import com.aktvhome.launcher.data.LOCAL_NETWORKS
 import com.aktvhome.launcher.data.PrivateDns
@@ -649,62 +644,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                             }
                             if (b.problem.isNotBlank()) InfoStrip("Backup problem", b.problem, colors)
                         }
-                        Page.NBA_ALERTS -> {
-                            val ctx = LocalContext.current
-                            fun onOff(on: Boolean) = if (on) "On" else "Off"
-                            // Status lines read live state; look again every few seconds.
-                            var tick by remember { mutableStateOf(0) }
-                            LaunchedEffect(Unit) { while (true) { delay(5_000); tick++ } }
-                            var testNote by remember { mutableStateOf("Shows a sample banner in 10 s. Switch to Netflix or YouTube TV to see it there.") }
-                            SettingsRow("NBA alerts", "Banners over any app for close games, overtime and your team's games.", colors) {
-                                Pill(onOff(s.nbaAlerts), colors, selected = s.nbaAlerts, focusRequester = pageFirst) {
-                                    store.update { it.copy(nbaAlerts = !it.nbaAlerts) }
-                                }
-                            }
-                            SettingsRow("Favorite team", "Gets every alert you pick below. The same team as in Watch Now.", colors) {
-                                Pill(if (s.favoriteTeam.isBlank()) "None" else Nba.teamName(s.favoriteTeam), colors) { pickingTeam = true }
-                            }
-                            EventPills("Your team", "Tip-off is 10 minutes before the game.", AlertEvent.entries, s.alertsFavorite, colors) { e ->
-                                store.update { it.copy(alertsFavorite = it.alertsFavorite.toggle(e)) }
-                            }
-                            EventPills("Other games", "Close games, overtime and big comebacks anywhere in the league.", AlertEvent.entries.filter { it in OTHER_EVENTS }, s.alertsOther, colors) { e ->
-                                store.update { it.copy(alertsOther = it.alertsOther.toggle(e)) }
-                            }
-                            SettingsRow("Hide scores", "Banners say what's happening (\"Close game · tune in\"), never the score or result.", colors) {
-                                Pill(onOff(s.hideScores), colors, selected = s.hideScores) {
-                                    store.update { it.copy(hideScores = !it.hideScores) }
-                                }
-                            }
-                            SettingsRow("Other games, at most", "One banner per this long. Overtime always shows; your team is never held back.", colors) {
-                                ChoicePills(listOf("5 min", "10 min", "15 min", "30 min"), "${s.alertCooldown} min", colors) { v ->
-                                    store.update { it.copy(alertCooldown = v.removeSuffix(" min").toInt()) }
-                                }
-                            }
-                            SettingsRow("Send test alert", testNote, colors) {
-                                Pill("Send", colors) {
-                                    testNote = if (HomeOverrideService.sendTestAlert()) "Sent. The banner shows in 10 s, over whatever's on."
-                                    else "Needs the Home button service. Turn it on in TV & network › Home button."
-                                }
-                            }
-                            val access = remember(tick) { NbaAlerts.canSeePlaying(ctx) }
-                            val updated = remember(tick) { NbaAlerts.lastUpdate(ctx) }
-                            val service = remember(tick) { HomeOverrideService.connected }
-                            InfoStrip(
-                                "Status",
-                                listOf(
-                                    "Notification access: " + if (access) "granted" else "not granted",
-                                    "Home button service: " + if (service) "connected" else "not connected",
-                                    "Last ESPN update: " + if (updated == 0L) "not yet" else timeText(updated),
-                                ).joinToString("\n"),
-                                colors,
-                            )
-                            if (!access) {
-                                InfoStrip("One-time setup", "So alerts skip the game you're watching: ${NbaAlerts.GRANT_COMMAND}", colors)
-                            }
-                            if (!service) {
-                                InfoStrip("Needs the Home button service", "Alerts run in it. Turn it on in TV & network › Home button.", colors)
-                            }
-                        }
+                        Page.NBA_ALERTS -> NbaAlertsPage(state, colors, first)
                         Page.LIVE_CHANNELS -> Unit
                     }
                 }
@@ -884,7 +824,7 @@ private fun SettingsTab(
 }
 
 @Composable
-private fun SettingsRow(
+internal fun SettingsRow(
     title: String,
     note: String,
     colors: ThemeColors,
@@ -908,39 +848,8 @@ private fun SettingsRow(
     }
 }
 
-/** A settings row with a pill per alert event; ringed pills are on. */
 @Composable
-private fun EventPills(
-    title: String,
-    note: String,
-    events: List<AlertEvent>,
-    on: Set<AlertEvent>,
-    colors: ThemeColors,
-    onToggle: (AlertEvent) -> Unit,
-) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(colors.glass.copy(alpha = colors.glass.alpha * 0.8f))
-            .border(1.dp, colors.edge, RoundedCornerShape(16.dp))
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Column {
-            Text(title, color = colors.ink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            Text(note, color = colors.inkSoft, fontSize = 10.sp)
-        }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            events.forEach { e -> Pill(e.label, colors, selected = e in on) { onToggle(e) } }
-        }
-    }
-}
-
-private fun Set<AlertEvent>.toggle(e: AlertEvent) = if (e in this) this - e else this + e
-
-@Composable
-private fun ChoicePills(
+internal fun ChoicePills(
     values: List<String>,
     selected: String,
     colors: ThemeColors,
@@ -1152,7 +1061,7 @@ private fun ArrowButton(icon: ImageVector, label: String, enabled: Boolean, focu
 }
 
 @Composable
-private fun Switch(on: Boolean, colors: ThemeColors) {
+internal fun Switch(on: Boolean, colors: ThemeColors) {
     Box(
         Modifier
             .size(40.dp, 22.dp)
