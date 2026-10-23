@@ -11,25 +11,38 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -68,7 +81,8 @@ import java.time.format.DateTimeFormatter
 
 /**
  * NBA alert banners, drawn by the Home button service over whatever app is in front (an
- * accessibility overlay needs no "draw over apps" permission). Top right, in Haven's glass.
+ * accessibility overlay needs no "draw over apps" permission). A small glass toast, top right
+ * under the gear.
  * The banner takes focus (on its watch button) so the remote can act on it; keys in the first
  * 500 ms are ignored, so a press meant for the app doesn't hit it. It closes after 5 s without a
  * key, on Back or Dismiss, and the window is removed so focus returns to the app underneath.
@@ -248,24 +262,34 @@ private fun Banner(
 ) {
     val game = alert.game
     val primary = remember { FocusRequester() }
-    // Inside the TV-safe area: about 5% in from the top and right edges.
+    // A toast just under the gear: top right, inside the TV-safe area, a quarter of the screen wide.
     Column(
         Modifier
-            .padding(top = 32.dp, end = 48.dp)
-            .width(420.dp)
-            .glassPanel(colors, RoundedCornerShape(24.dp), alpha = 0.9f)
-            .padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(top = 76.dp, end = 40.dp)
+            .width(240.dp)
+            .glassPanel(colors, RoundedCornerShape(18.dp))
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Eyebrow("Haven · NBA", colors)
-        Text(alert.event.headline, color = colors.ink, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        TeamLine(game.away, hideScores, colors)
-        TeamLine(game.home, hideScores, colors)
-        val detail = if (hideScores) "${alert.event.label} · tune in" else statusText(game)
-        Text(listOfNotNull(detail, game.network).joinToString(" · "), color = colors.inkSoft, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Pill(option.label, colors, focusRequester = primary, onClick = onOpen)
-            Pill("Dismiss", colors, onClick = onDismiss)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(Modifier.weight(1f)) { Eyebrow("Haven · NBA", colors) }
+            SmallClose(colors, onDismiss)
+        }
+        Text(alert.event.headline, color = colors.ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                TeamLine(game.away, hideScores, colors)
+                TeamLine(game.home, hideScores, colors)
+                val detail = if (hideScores) "${alert.event.label} · tune in" else statusText(game)
+                Text(
+                    listOfNotNull(detail, game.network).joinToString(" · "),
+                    color = colors.inkSoft, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Column(Modifier.width(104.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                WatchPill("▶ Watch on ${option.app}", colors, primary, onOpen)
+                TextButton("Dismiss", colors, onDismiss)
+            }
         }
     }
     LaunchedEffect(Unit) { runCatching { primary.requestFocus() } }
@@ -273,11 +297,64 @@ private fun Banner(
 
 @Composable
 private fun TeamLine(team: Team, hideScore: Boolean, colors: ThemeColors) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
         val dot = runCatching { Color(android.graphics.Color.parseColor("#${team.color}")) }.getOrDefault(colors.accent)
-        Box(Modifier.size(10.dp).clip(RoundedCornerShape(50)).background(dot))
-        Text(team.name, color = colors.ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-        if (!hideScore) Text(team.score, color = colors.ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Box(Modifier.size(7.dp).clip(CircleShape).background(dot))
+        Text(team.name, color = colors.ink, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        if (!hideScore) Text(team.score, color = colors.ink, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+/** The banner's main action, a compact pill; focus fills it. */
+@Composable
+private fun WatchPill(text: String, colors: ThemeColors, focus: FocusRequester, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(50)
+    Text(
+        text, color = if (focused) colors.pillInk else colors.ink, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+        maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRequester(focus)
+            .clip(shape)
+            .background(if (focused) colors.pill else colors.glass)
+            .border(if (focused) 2.dp else 1.dp, if (focused) colors.accent else colors.edge, shape)
+            .onFocusChanged { focused = it.isFocused }
+            .tvClickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+    )
+}
+
+/** Plain text that underlines when focused; for the quieter action. */
+@Composable
+private fun TextButton(text: String, colors: ThemeColors, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    Text(
+        text, color = if (focused) colors.ink else colors.inkSoft, fontSize = 10.sp,
+        fontWeight = if (focused) FontWeight.Bold else FontWeight.Medium,
+        textDecoration = if (focused) TextDecoration.Underline else null,
+        modifier = Modifier
+            .onFocusChanged { focused = it.isFocused }
+            .tvClickable(onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    )
+}
+
+/** A small round close button, the settings panels' close in miniature. */
+@Composable
+private fun SmallClose(colors: ThemeColors, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    Box(
+        Modifier
+            .size(20.dp)
+            .clip(CircleShape)
+            .background(if (focused) colors.pill else colors.glass)
+            .border(1.dp, colors.edge, CircleShape)
+            .onFocusChanged { focused = it.isFocused }
+            .tvClickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icons.Rounded.Close, "Close", tint = if (focused) colors.pillInk else colors.ink, modifier = Modifier.size(12.dp))
     }
 }
 

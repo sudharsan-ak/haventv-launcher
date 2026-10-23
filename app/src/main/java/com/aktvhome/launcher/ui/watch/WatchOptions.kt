@@ -12,8 +12,8 @@ import com.aktvhome.launcher.data.carries
 import com.aktvhome.launcher.data.streamingApps
 import com.aktvhome.launcher.ui.HavenState
 
-/** One way to watch a game, best first. */
-data class WatchOption(val label: String, val open: () -> Unit)
+/** One way to watch a game, best first. [app] is just the app's name, for "Watch on <app>". */
+data class WatchOption(val label: String, val app: String = label, val open: () -> Unit)
 
 /**
  * What [watchOptions] reads and how it opens things, so it runs in Haven (the NBA cards) and in
@@ -55,7 +55,7 @@ fun HavenState.watchOptions(game: Game): List<WatchOption> = watchOptions(
  * Finished games offer only the NBA app (replays).
  */
 fun watchOptions(game: Game, src: WatchSources): List<WatchOption> {
-    val nbaApp = WatchOption("NBA app") { src.openGame(game) }
+    val nbaApp = WatchOption("NBA app", "NBA app") { src.openGame(game) }
     // Finished games: replays and recaps live in the NBA app. Upcoming games show where they'll air.
     if (game.state == GameState.FINAL) return listOf(nbaApp)
 
@@ -66,14 +66,17 @@ fun watchOptions(game: Game, src: WatchSources): List<WatchOption> {
     for (net in game.networks) {
         if (net !in TV_CHANNELS) continue
         val hit = src.live.flatMap { g -> g.items.map { g to it } }.firstOrNull { (_, item) -> carries(item.title, net, src.localStations) }
-        if (hit != null) options += WatchOption("Watch on ${src.labelOf(hit.first.pkg) ?: hit.first.provider} · ${hit.second.title}") { src.openItem(hit.second) }
+        if (hit != null) {
+            val app = src.labelOf(hit.first.pkg) ?: hit.first.provider
+            options += WatchOption("Watch on $app · ${hit.second.title}", app) { src.openItem(hit.second) }
+        }
     }
     val streaming = streamingApps(game).filter { src.labelOf(it) != null }
     // ESPN app: the exact stream if its Live row lists this game, otherwise the app.
     if (ESPN_APP in streaming) {
         val event = (src.appRows + src.live).firstOrNull { it.pkg == ESPN_APP }?.items?.firstOrNull { mentions(it, game) }
-        options += if (event != null) WatchOption("ESPN app · live stream") { src.openItem(event) }
-        else WatchOption("ESPN app") { src.openApp(ESPN_APP) }
+        options += if (event != null) WatchOption("ESPN app · live stream", "ESPN") { src.openItem(event) }
+        else WatchOption("ESPN app", "ESPN") { src.openApp(ESPN_APP) }
     }
     if (PEACOCK in streaming) options += WatchOption("Peacock") { src.openApp(PEACOCK) }
     if (PRIME in streaming) options += WatchOption("Prime Video") { src.openApp(PRIME) }
