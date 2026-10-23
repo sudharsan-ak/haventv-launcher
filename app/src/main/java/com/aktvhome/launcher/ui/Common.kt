@@ -282,11 +282,12 @@ fun CollectionPickerDialog(
     names: List<Pair<String, String>>,
     currentId: String?,
     onPick: (String) -> Unit,
-    onNew: () -> Unit,
+    onNew: (() -> Unit)?,
     onDismiss: () -> Unit,
+    title: String = "Move to",
 ) {
     val first = remember { FocusRequester() }
-    GlassDialog(colors, "Move to", onDismiss) {
+    GlassDialog(colors, title, onDismiss) {
         Column(Modifier.height(280.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             names.forEachIndexed { i, (id, name) ->
                 Pill(
@@ -294,7 +295,7 @@ fun CollectionPickerDialog(
                     focusRequester = if (i == 0) first else null, onClick = { onPick(id) },
                 )
             }
-            Pill("+ New collection", colors, modifier = Modifier.fillMaxWidth(), onClick = onNew)
+            if (onNew != null) Pill("+ New collection", colors, modifier = Modifier.fillMaxWidth(), onClick = onNew)
         }
     }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }

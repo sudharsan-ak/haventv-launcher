@@ -21,6 +21,9 @@ import com.aktvhome.launcher.ui.Overlay
 import com.aktvhome.launcher.ui.kingdom.KingdomHome
 import com.aktvhome.launcher.ui.settings.Personalize
 import com.aktvhome.launcher.ui.settings.QuickSettings
+import com.aktvhome.launcher.ui.watch.GameDetail
+import com.aktvhome.launcher.ui.watch.TeamSchedule
+import com.aktvhome.launcher.ui.watch.WatchDrawer
 import com.aktvhome.launcher.ui.theme.Palettes
 import com.aktvhome.launcher.ui.theme.dayness
 import com.aktvhome.launcher.ui.tide.TideHome
@@ -51,6 +54,7 @@ class MainActivity : ComponentActivity() {
                 while (true) {
                     state.now = LocalTime.now()
                     state.wallpapers.tick()
+                    state.watchNow.tick()
                     delay(15_000)
                 }
             }
@@ -69,8 +73,12 @@ class MainActivity : ComponentActivity() {
             when (state.overlay) {
                 Overlay.QUICK -> QuickSettings(state, colors)
                 Overlay.PERSONALIZE -> Personalize(state, colors)
+                Overlay.WATCH -> WatchDrawer(state, colors)
                 Overlay.NONE -> Unit
             }
+            // Schedule and game detail stack on top of the drawer (or the home, from the strip).
+            if (state.scheduleOpen) TeamSchedule(state, colors)
+            state.detailGame?.let { GameDetail(state, colors, it) }
         }
     }
 
@@ -80,6 +88,8 @@ class MainActivity : ComponentActivity() {
         if (!intent.hasCategory(Intent.CATEGORY_HOME)) return
         state.isHome = true
         state.overlay = Overlay.NONE
+        state.detailGame = null
+        state.scheduleOpen = false
         state.menuFor = null
         state.moving = null
         state.focusedApp = null

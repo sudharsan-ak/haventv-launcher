@@ -73,6 +73,7 @@ import com.aktvhome.launcher.data.DayMode
 import com.aktvhome.launcher.data.Defaults
 import com.aktvhome.launcher.data.DnsChoice
 import com.aktvhome.launcher.data.HomeOverride
+import com.aktvhome.launcher.data.Nba
 import com.aktvhome.launcher.data.PrivateDns
 import com.aktvhome.launcher.data.Motion
 import com.aktvhome.launcher.data.ThemeId
@@ -127,7 +128,7 @@ private enum class Page(val label: String, val group: SettingsGroup, val availab
     COLLECTIONS("Collections", SettingsGroup.HOME),
     HIDDEN("Hidden apps", SettingsGroup.HOME),
     NBA_ALERTS("NBA alerts", SettingsGroup.WATCHING, available = false),
-    WATCH_NOW("Watch Now", SettingsGroup.WATCHING, available = false),
+    WATCH_NOW("Watch Now", SettingsGroup.WATCHING),
     LIVE_CHANNELS("Live channels", SettingsGroup.WATCHING, available = false),
     HOME_BUTTON("Home button", SettingsGroup.SYSTEM),
     DNS("Private DNS", SettingsGroup.SYSTEM),
@@ -182,6 +183,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
     var editingName by remember { mutableStateOf(false) }
     var editingDns by remember { mutableStateOf(false) }
     var editingKey by remember { mutableStateOf(false) }
+    var pickingTeam by remember { mutableStateOf(false) }
     var collectionMenu by remember { mutableStateOf<AppCollection?>(null) }
     var renaming by remember { mutableStateOf<AppCollection?>(null) }
     var iconFor by remember { mutableStateOf<AppCollection?>(null) }
@@ -563,7 +565,33 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                             }
                         }
                         Page.ABOUT -> AboutCard(colors, first)
-                        Page.NBA_ALERTS, Page.WATCH_NOW, Page.LIVE_CHANNELS, Page.BACKUP -> Unit
+                        Page.WATCH_NOW -> {
+                            fun onOff(on: Boolean) = if (on) "On" else "Off"
+                            SettingsRow("NBA", "Scores, the 7-day schedule and your team. Uses ESPN and nba.com.", colors) {
+                                Pill(onOff(s.watchNba), colors, selected = s.watchNba, focusRequester = pageFirst) {
+                                    store.update { it.copy(watchNba = !it.watchNba) }
+                                }
+                            }
+                            SettingsRow("Favorite team", "Shown first on Home and in Watch Now, with its full schedule.", colors) {
+                                Pill(if (s.favoriteTeam.isBlank()) "None" else Nba.teamName(s.favoriteTeam), colors) { pickingTeam = true }
+                            }
+                            SettingsRow("Continue watching", "Shows from apps that share progress with the TV.", colors) {
+                                Pill(onOff(s.watchContinue), colors, selected = s.watchContinue) {
+                                    store.update { it.copy(watchContinue = !it.watchContinue) }
+                                }
+                            }
+                            SettingsRow("Live channels", "Live rows from TV apps, such as YouTube TV or ESPN.", colors) {
+                                Pill(onOff(s.watchLive), colors, selected = s.watchLive) {
+                                    store.update { it.copy(watchLive = !it.watchLive) }
+                                }
+                            }
+                            InfoStrip(
+                                "One-time setup",
+                                "Continue watching and Live channels need: adb shell pm grant com.aktvhome.launcher android.permission.READ_TV_LISTINGS",
+                                colors,
+                            )
+                        }
+                        Page.NBA_ALERTS, Page.LIVE_CHANNELS, Page.BACKUP -> Unit
                     }
                 }
             }
@@ -575,6 +603,17 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
         TextInputDialog(colors, "Your name", s.name,
             onSave = { n -> store.update { it.copy(name = n.trim()) }; editingName = false },
             onDismiss = { editingName = false })
+    }
+    if (pickingTeam) {
+        CollectionPickerDialog(
+            colors,
+            names = listOf("" to "None") + Nba.TEAMS,
+            currentId = s.favoriteTeam,
+            onPick = { abbr -> store.update { it.copy(favoriteTeam = abbr) }; pickingTeam = false },
+            onNew = null,
+            onDismiss = { pickingTeam = false },
+            title = "Favorite team",
+        )
     }
     if (editingKey) {
         TextInputDialog(colors, "Unsplash Access Key", s.unsplashKey,

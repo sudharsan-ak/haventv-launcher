@@ -72,6 +72,12 @@ data class Settings(
     val wallInterval: WallInterval = WallInterval.SIX,
     val wallCredit: Boolean = true,
     val unsplashKey: String = "",
+    /** Watch Now sections. NBA is a personal module and starts off for everyone. */
+    val watchNba: Boolean = false,
+    val watchContinue: Boolean = true,
+    val watchLive: Boolean = true,
+    /** ESPN team abbreviation of the favorite team ("" = none), e.g. "GS". */
+    val favoriteTeam: String = "",
 ) {
     fun backgroundFor(theme: ThemeId) = when (theme) {
         ThemeId.KINGDOM -> bgKingdom
@@ -108,6 +114,10 @@ class SettingsStore(context: Context) {
             .putString("wallInterval", next.wallInterval.name)
             .putBoolean("wallCredit", next.wallCredit)
             .putString("unsplashKey", next.unsplashKey)
+            .putBoolean("watchNba", next.watchNba)
+            .putBoolean("watchContinue", next.watchContinue)
+            .putBoolean("watchLive", next.watchLive)
+            .putString("favoriteTeam", next.favoriteTeam)
             .apply()
     }
 
@@ -145,6 +155,10 @@ class SettingsStore(context: Context) {
         wallInterval = enumOr(prefs.getString("wallInterval", null), WallInterval.SIX),
         wallCredit = prefs.getBoolean("wallCredit", true),
         unsplashKey = prefs.getString("unsplashKey", null) ?: "",
+        watchNba = prefs.getBoolean("watchNba", false),
+        watchContinue = prefs.getBoolean("watchContinue", true),
+        watchLive = prefs.getBoolean("watchLive", true),
+        favoriteTeam = prefs.getString("favoriteTeam", null) ?: "",
     )
 
     private inline fun <reified E : Enum<E>> enumOr(name: String?, fallback: E): E =

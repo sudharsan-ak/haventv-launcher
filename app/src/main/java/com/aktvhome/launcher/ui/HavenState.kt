@@ -16,12 +16,13 @@ import com.aktvhome.launcher.data.LayoutStore
 import com.aktvhome.launcher.data.SettingsStore
 import com.aktvhome.launcher.data.TvInput
 import com.aktvhome.launcher.data.Wallpapers
+import com.aktvhome.launcher.data.WatchNow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.time.LocalTime
 
 /** What floats over the home screen. The home itself always stays drawn behind. */
-enum class Overlay { NONE, QUICK, PERSONALIZE }
+enum class Overlay { NONE, QUICK, PERSONALIZE, WATCH }
 
 /** A collection as shown on screen: only installed, non-hidden apps, in the user's order. */
 data class ShownCollection(val collection: AppCollection, val apps: List<AppEntry>) {
@@ -36,6 +37,11 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
     val layoutStore = LayoutStore(context)
     val settingsStore = SettingsStore(context)
     val wallpapers = Wallpapers(context, scope, settingsStore)
+    val watchNow = WatchNow(
+        context, scope, settingsStore,
+        liveApps = { layoutStore.layout.collections.firstOrNull { it.id == "livetv" }?.apps?.toSet().orEmpty() },
+        labelOf = { pkg -> apps[pkg]?.label ?: pkg.substringAfterLast('.') },
+    )
 
     var apps by mutableStateOf<Map<String, AppEntry>>(emptyMap())
         private set
@@ -45,6 +51,10 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
         private set
 
     var overlay by mutableStateOf(Overlay.NONE)
+    /** NBA game shown in the game detail view (from the strip, the drawer or the schedule). */
+    var detailGame by mutableStateOf<com.aktvhome.launcher.data.Game?>(null)
+    /** Whether the favorite team's full schedule is open. */
+    var scheduleOpen by mutableStateOf(false)
     /** Bumped each time the home screen comes back into view; themes key their welcome on it. */
     var arrivals by mutableStateOf(0)
     /** Bumped when Home is pressed while Haven is showing; themes move focus back to the first row. */

@@ -24,6 +24,10 @@ and tested on a Sony BRAVIA running Google TV (Android 12).
 - **Photo wallpapers**: per theme, swap the animated scene for rotating photos from Bing,
   Google Earth View, Wikimedia Commons or Unsplash (topics like nature, animals, cities, sports).
   Changes every 1, 6, 12 or 24 hours.
+- **Watch Now**: a slim strip on Home (Tonight / Continue / Live TV) and a glass drawer with
+  *Continue Watching* and *Live Channels* from any app that shares them with Android TV, plus an
+  optional NBA module: live scores, a 7-day schedule and date picker, a favorite team with its
+  full season, and a game view with box-score leaders that opens the game in the NBA app.
 - **Private DNS**: one switch for encrypted DNS (AdGuard by default, also Cloudflare, Quad9 or
   any hostname), with live status and an optional "keep enforced".
 - **Home button**: makes the remote's Home button open Haven on Google TV.
@@ -78,7 +82,7 @@ Some features use permissions a TV can't grant from its own UI:
 # Private DNS switch and the Home button setting
 adb shell pm grant com.aktvhome.launcher android.permission.WRITE_SECURE_SETTINGS
 
-# Reading Watch Next and app channels (for upcoming rows)
+# Continue Watching and Live Channels in Watch Now
 adb shell pm grant com.aktvhome.launcher android.permission.READ_TV_LISTINGS
 ```
 
@@ -89,6 +93,14 @@ Haven includes a small accessibility service that only watches for the Google TV
 and opens Haven instead; it reads nothing on screen. Turn it on in
 **All settings › TV & network › Home button** (needs the `WRITE_SECURE_SETTINGS` grant above). If you use
 another launcher with its own Home override (such as Projectivy), switch that one off.
+
+## Watch Now and NBA
+
+Continue Watching and Live Channels show whatever apps publish to Android TV's shared lists,
+for any service; apps that don't publish (Netflix, Prime Video) won't appear. The NBA module is
+off by default: turn it on in **All settings › Watching & alerts › Watch Now**, and pick a
+favorite team there. Scores and schedules come from ESPN's public (unofficial) API; NBA's own
+game IDs come from nba.com's games page so games open directly in the NBA app.
 
 ## Unsplash topics
 

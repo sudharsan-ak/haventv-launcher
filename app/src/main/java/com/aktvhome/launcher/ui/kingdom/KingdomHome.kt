@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -33,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -60,6 +62,8 @@ import com.aktvhome.launcher.ui.clockText
 import com.aktvhome.launcher.ui.moveKeys
 import com.aktvhome.launcher.ui.rememberAmbientSeconds
 import com.aktvhome.launcher.ui.onKeyDown
+import com.aktvhome.launcher.ui.watch.SmartStrip
+import com.aktvhome.launcher.ui.watch.stripVisible
 import com.aktvhome.launcher.ui.rememberWrapRow
 import android.view.KeyEvent
 import com.aktvhome.launcher.ui.theme.ThemeColors
@@ -79,6 +83,8 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
     val current = state.currentCollection(shown)
     val tiles = rememberWrapRow(shown.size)
     val currentIndex = shown.indexOfFirst { it.collection.id == current?.collection?.id }.coerceAtLeast(0)
+    val showStrip = state.stripVisible()
+    val stripFirst = remember { FocusRequester() }
     // The row under the tiles (apps, or HDMI inputs). One instance so the tiles can move focus into it.
     val items = rememberWrapRow(if (current?.isInputs == true) state.inputs.size else current?.apps?.size ?: 0)
     val scroll = rememberScrollState()
@@ -107,27 +113,36 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
             Modifier
                 .fillMaxSize()
                 .verticalScroll(scroll)
-                .padding(top = 44.dp, bottom = 28.dp),
+                .padding(top = 30.dp, bottom = 24.dp),
         ) {
             val side = Modifier.padding(horizontal = SIDE)
             Row(side, verticalAlignment = Alignment.CenterVertically) {
                 Spacer(Modifier.weight(1f))
                 Text(clockText(state.now, settings.clock24), color = colors.ink, fontSize = 16.sp, fontWeight = FontWeight.Medium)
                 Spacer(Modifier.width(16.dp))
-                // Down from the gear goes back to the collection you were on, not the tile underneath.
-                GearButton(colors, Modifier.focusProperties { down = tiles.requester(currentIndex) }) {
+                // Down from the gear: the Watch Now strip if shown, else the collection you were on.
+                GearButton(colors, Modifier.focusProperties { down = if (showStrip) stripFirst else tiles.requester(currentIndex) }) {
                     state.overlay = Overlay.QUICK
                 }
             }
 
-            Spacer(Modifier.height(26.dp))
-            state.greetingLine()?.let { Text(it, color = colors.inkSoft, fontSize = 15.sp, modifier = side) }
+            Spacer(Modifier.height(14.dp))
+            state.greetingLine()?.let { Text(it, color = colors.inkSoft, fontSize = 14.sp, modifier = side) }
             Text(
-                "What are we watching?", color = colors.ink, fontSize = 40.sp,
+                "What are we watching?", color = colors.ink, fontSize = 34.sp,
                 fontWeight = FontWeight.Bold, letterSpacing = (-1).sp, modifier = side,
             )
 
-            Spacer(Modifier.height(22.dp))
+            if (showStrip) {
+                Spacer(Modifier.height(14.dp))
+                // Above the tiles, so Down from a tile still goes straight to its apps.
+                SmartStrip(
+                    state, colors, stripFirst,
+                    side.fillMaxWidth().onKeyDown(KeyEvent.KEYCODE_DPAD_DOWN) { tiles.focus(currentIndex) },
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
             LazyRow(
                 state = tiles.state,
                 modifier = tiles.keys,
@@ -152,7 +167,7 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
             }
 
             if (current != null) {
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(10.dp))
                 Text(current.collection.name, color = colors.ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = side)
                 Spacer(Modifier.height(6.dp))
                 when {
@@ -241,7 +256,7 @@ private fun CollectionTile(
     Column(
         modifier
             .width(150.dp)
-            .height(96.dp)
+            .height(78.dp)
             .scale(scale)
             .clip(shape)
             // A shadow under translucent glass shows through as dark patches, so focus brightens the glass instead.
@@ -249,10 +264,10 @@ private fun CollectionTile(
             .border(if (focused) 3.dp else 2.dp, if (focused || selected) colors.accent else colors.edge, shape)
             .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocused() }
             .tvClickable(onClick = onFocused)
-            .padding(14.dp),
+            .padding(horizontal = 14.dp, vertical = 9.dp),
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
-        IconBadge(sc.collection.icon, colors, size = 30.dp, tint = if (focused || selected) colors.accent else colors.ink)
+        IconBadge(sc.collection.icon, colors, size = 24.dp, tint = if (focused || selected) colors.accent else colors.ink)
         Column {
             Text(sc.collection.name, color = colors.ink, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             Text(
