@@ -1,7 +1,11 @@
+@file:OptIn(ExperimentalLayoutApi::class) // FlowRow for the watch buttons
+
 package com.aktvhome.launcher.ui.watch
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -75,8 +79,15 @@ fun GameDetail(state: HavenState, colors: ThemeColors, game: Game) {
                     Players(game.home.abbr, box!!.home, colors, Modifier.weight(1f))
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Pill("▶  Open in NBA app", colors, focusRequester = openFocus) { state.watchNow.openGame(game); close() }
+            // Best way to watch first (from the game's networks), then the alternatives, then Dismiss.
+            val options = state.watchOptions(game)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                options.forEachIndexed { i, o ->
+                    Pill(
+                        if (i == 0) "▶  ${o.label}" else o.label, colors, selected = i == 0,
+                        focusRequester = if (i == 0) openFocus else null,
+                    ) { o.open(); close() }
+                }
                 Pill("Dismiss", colors, onClick = close)
             }
         }
