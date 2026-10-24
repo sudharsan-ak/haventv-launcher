@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -397,7 +398,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                             SettingsActionRow(
                                 "Unsplash key",
                                 if (s.unsplashKey.isBlank()) "Not set. OK to paste it" else "Set (ends in ${s.unsplashKey.takeLast(4)})",
-                                s.unsplashKey.ifBlank { "Not set" }, colors,
+                                if (s.unsplashKey.isBlank()) "Not set" else "••••••••", colors,
                             ) { editingKey = true }
                             SettingsToggleRow("Photo credit", if (s.wallCredit) "Shown in the corner" else "Hidden", s.wallCredit, colors) {
                                 store.update { it.copy(wallCredit = !it.wallCredit) }
@@ -847,6 +848,7 @@ private fun ThemeCard(theme: ThemeId, state: HavenState, chosen: Boolean, colors
                 CompositionLocalProvider(LocalTvInteractionsEnabled provides false) {
                     Box(
                         Modifier
+                            .wrapContentSize(Alignment.TopStart, unbounded = true)
                             .requiredSize(1280.dp, 720.dp)
                             .graphicsLayer {
                                 scaleX = scale

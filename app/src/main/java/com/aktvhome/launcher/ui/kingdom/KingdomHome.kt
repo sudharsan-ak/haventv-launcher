@@ -113,7 +113,7 @@ fun KingdomHome(state: HavenState, colors: ThemeColors, preview: Boolean = false
     )
 
     // Wallpaper view (Back on Home) fades the layout out, leaving just the background.
-    val homeAlpha = homeShown(state)
+    val homeAlpha = if (preview) 1f else homeShown(state)
 
     Box(
         Modifier

@@ -71,7 +71,12 @@ fun ThisTvPage(state: HavenState, colors: ThemeColors, first: Modifier) {
                 openSystemPage(ctx, Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             }
         } else {
-            SettingsStatusRow(c.label, listOf(note, stateLabel(st.state)).filter { it.isNotBlank() }.joinToString(" · "), colors)
+            SettingsStatusRow(
+                c.label,
+                listOf(note, stateLabel(st.state)).filter { it.isNotBlank() }.joinToString(" · "),
+                colors,
+                traversable = true,
+            )
         }
     }
     if (listOf(Capability.SECURE_SETTINGS, Capability.TV_LISTINGS, Capability.NOTIFICATIONS, Capability.FILES).any { device.state(it) == CapState.NEEDS_SETUP }) {

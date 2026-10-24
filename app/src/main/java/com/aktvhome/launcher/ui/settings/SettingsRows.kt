@@ -8,6 +8,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -115,67 +117,83 @@ internal fun SettingsPickerHost(
     content: @Composable () -> Unit,
 ) {
     val controller = remember { SettingsPickerController() }
+    var presented by remember { mutableStateOf<SettingsPickerRequest?>(null) }
+    SideEffect { controller.request?.let { presented = it } }
     CompositionLocalProvider(LocalSettingsPicker provides controller) {
         Box(modifier) {
             content()
-            AnimatedVisibility(
-                visible = controller.request != null,
-                modifier = Modifier.fillMaxSize(),
-                enter = fadeIn() + slideInHorizontally { it / 3 },
-                exit = fadeOut() + slideOutHorizontally { it / 3 },
-            ) {
-                controller.request?.let { request -> SettingsPicker(request, controller, colors) }
+            presented?.let { request ->
+                SettingsPicker(request, controller.request != null, controller, colors)
             }
         }
     }
 }
 
 @Composable
-private fun SettingsPicker(request: SettingsPickerRequest, controller: SettingsPickerController, colors: ThemeColors) {
+private fun SettingsPicker(
+    request: SettingsPickerRequest,
+    visible: Boolean,
+    controller: SettingsPickerController,
+    colors: ThemeColors,
+) {
     val focusers = remember(request.token) { request.options.map { FocusRequester() } }
     val doneFocus = remember(request.token) { FocusRequester() }
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.42f))
             .onPreviewKeyEvent { event ->
                 if (event.nativeKeyEvent.keyCode != KeyEvent.KEYCODE_BACK) return@onPreviewKeyEvent false
                 if (event.type == KeyEventType.KeyUp) controller.close()
                 true
             },
     ) {
-        Column(
-            Modifier
-                .align(Alignment.CenterEnd)
-                .width(320.dp)
-                .fillMaxHeight()
-                .background(colors.bgMid.copy(alpha = 0.98f))
-                .border(1.dp, colors.edge, RoundedCornerShape(topStart = 22.dp, bottomStart = 22.dp))
-                .padding(horizontal = 18.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+        AnimatedVisibility(
+            visible = visible,
+            modifier = Modifier.fillMaxSize(),
+            enter = fadeIn(),
+            exit = fadeOut(),
         ) {
-            Eyebrow("Choose", colors)
-            Text(request.title, color = colors.ink, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.16f)))
+        }
+        AnimatedVisibility(
+            visible = visible,
+            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+            enter = slideInHorizontally { it },
+            exit = slideOutHorizontally { it },
+        ) {
+            val shape = RoundedCornerShape(topStart = 22.dp, bottomStart = 22.dp)
             Column(
-                Modifier.weight(1f).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(7.dp),
+                Modifier
+                    .width(340.dp)
+                    .fillMaxHeight()
+                    .glassPanel(colors, shape, alpha = 0.94f)
+                    .padding(horizontal = 18.dp, vertical = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                request.options.forEachIndexed { index, option ->
-                    PickerOptionRow(
-                        option = option,
-                        selected = option.value in request.selected,
-                        showSaved = !request.multi,
-                        colors = colors,
-                        modifier = Modifier.focusRequester(focusers[index]),
-                    ) { controller.toggle(option.value) }
+                Eyebrow("Choose", colors)
+                Text(request.title, color = colors.ink, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Column(
+                    Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    request.options.forEachIndexed { index, option ->
+                        PickerOptionRow(
+                            option = option,
+                            selected = option.value in request.selected,
+                            showSaved = !request.multi,
+                            colors = colors,
+                            modifier = Modifier.focusRequester(focusers[index]),
+                        ) { controller.toggle(option.value) }
+                    }
                 }
-            }
-            if (request.multi) {
-                Pill("Done", colors, modifier = Modifier.fillMaxWidth().focusRequester(doneFocus)) { controller.close() }
+                if (request.multi) {
+                    Pill("Done", colors, modifier = Modifier.fillMaxWidth().focusRequester(doneFocus)) { controller.close() }
+                }
             }
         }
     }
-    LaunchedEffect(request.token) {
+    LaunchedEffect(request.token, visible) {
+        if (!visible) return@LaunchedEffect
         val selected = request.options.indexOfFirst { it.value in request.selected }.takeIf { it >= 0 } ?: 0
         runCatching { (focusers.getOrNull(selected) ?: doneFocus).requestFocus() }
     }
@@ -342,14 +360,20 @@ internal fun SettingsStatusRow(
     value: String,
     colors: ThemeColors,
     modifier: Modifier = Modifier,
+    traversable: Boolean = false,
 ) {
+    var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(16.dp)
     Row(
         modifier
             .fillMaxWidth()
             .clip(shape)
             .background(colors.glass.copy(alpha = colors.glass.alpha * 0.62f))
-            .border(1.dp, colors.edge, shape)
+            .border(if (focused) 2.dp else 1.dp, if (focused) colors.accent else colors.edge, shape)
+            .then(
+                if (traversable) Modifier.onFocusChanged { focused = it.isFocused }.focusable()
+                else Modifier,
+            )
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
