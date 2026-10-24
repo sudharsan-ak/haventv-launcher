@@ -29,6 +29,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import com.aktvhome.launcher.data.SonyControl
+import com.aktvhome.launcher.data.Setup
 import com.aktvhome.launcher.data.Capability
 import com.aktvhome.launcher.data.DeviceCapabilities
 import com.aktvhome.launcher.data.GenericControl
@@ -134,12 +135,15 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
                 val dns by rememberDnsView(state)
                 val dnsOn = dns.active?.host != null || dns.active == DnsChoice.CUSTOM
                 val device = state.device
+                // While the one-time setup has something to do, it comes first.
+                val setupCard = Setup.needed(device.status).isNotEmpty()
+                if (setupCard) FinishSetupCard(state, colors, first)
                 // Only what works on this TV right now; anything else waits on This TV, and the grid
                 // closes up around what's left.
                 Tiles(
                     colors,
                     listOfNotNull(
-                        Tile("Theme", s.theme.label, R.drawable.fluent_artist_palette, first) {
+                        Tile("Theme", s.theme.label, R.drawable.fluent_artist_palette, first.takeIf { !setupCard }) {
                             store.update { it.copy(theme = it.theme.next()) }
                         },
                         Tile("Day & night", s.dayMode.label, R.drawable.fluent_sun) {

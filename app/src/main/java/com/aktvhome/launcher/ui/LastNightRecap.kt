@@ -50,7 +50,8 @@ fun LastNightRecap(state: HavenState, colors: ThemeColors) {
     var toast by remember { mutableStateOf<LastNightToast?>(null) }
 
     val home = life.isAtLeast(Lifecycle.State.RESUMED) && state.overlay == Overlay.NONE &&
-        state.menuFor == null && !state.backup.offerRestore && !state.wallpaperView
+        state.menuFor == null && !state.backup.offerRestore && !state.wallpaperView &&
+        (state.setup.offered || com.aktvhome.launcher.data.Setup.needed(state.device.status).isEmpty())
     val today = LocalDate.now()
     val yesterday = today.minusDays(1)
     // state.now ticks every 15 s, so 6 AM and a new day are noticed while Home sits open.

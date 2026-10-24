@@ -1,11 +1,14 @@
 package com.aktvhome.launcher.ui.settings
 
 import android.content.Intent
+import android.os.Build
 import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,17 +29,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aktvhome.launcher.data.CapState
 import com.aktvhome.launcher.data.Capability
+import com.aktvhome.launcher.data.Setup
 import com.aktvhome.launcher.ui.HavenState
+import com.aktvhome.launcher.ui.Overlay
 import com.aktvhome.launcher.ui.Pill
 import com.aktvhome.launcher.ui.theme.ThemeColors
-
-/** The one-time grants only ADB can give, as you'd run them from a computer. */
-private val ADB_COMMANDS = listOf(
-    "adb shell pm grant com.aktvhome.launcher android.permission.WRITE_SECURE_SETTINGS",
-    "adb shell pm grant com.aktvhome.launcher android.permission.READ_TV_LISTINGS",
-    "adb shell cmd notification allow_listener com.aktvhome.launcher/com.aktvhome.launcher.HavenMediaListener 0",
-    "adb shell appops set com.aktvhome.launcher MANAGE_EXTERNAL_STORAGE allow",
-)
 
 /**
  * All settings › About & data › This TV: everything Haven can do on some TVs, and what this one
@@ -56,7 +53,14 @@ fun ThisTvPage(state: HavenState, colors: ThemeColors, first: Modifier) {
         if (needs == 0) "Everything this TV allows is set up." else "$needs ${if (needs == 1) "thing needs" else "things need"} setting up. Anything this TV can't do is hidden from Haven.",
         colors,
     ) {
-        Pill("Check again", colors, focusRequester = null, modifier = first) { device.refresh() }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (Setup.needed(status).isNotEmpty()) {
+                Pill("Set up", colors, selected = true, modifier = first) { state.overlay = Overlay.SETUP }
+                Pill("Check again", colors) { device.refresh() }
+            } else {
+                Pill("Check again", colors, modifier = first) { device.refresh() }
+            }
+        }
     }
     Capability.entries.forEach { c ->
         val st = status.getValue(c)
@@ -79,7 +83,8 @@ fun ThisTvPage(state: HavenState, colors: ThemeColors, first: Modifier) {
         ) {
             InfoStrip(
                 "One-time setup",
-                "Haven will soon set these up from the TV itself. Until then, from a computer or a phone ADB app:\n" + ADB_COMMANDS.joinToString("\n"),
+                "Set up does these from the TV itself. Or from a computer or a phone ADB app:\n" +
+                    Setup.computerCommands(ctx.packageName, Build.VERSION.SDK_INT).joinToString("\n"),
                 colors,
             )
         }
@@ -91,7 +96,7 @@ fun ThisTvPage(state: HavenState, colors: ThemeColors, first: Modifier) {
  * fills in) so the remote can step down the list.
  */
 @Composable
-private fun StateBadge(state: CapState, colors: ThemeColors) {
+internal fun StateBadge(state: CapState, colors: ThemeColors) {
     val (text, ring) = when (state) {
         CapState.AVAILABLE -> "Available" to colors.accent
         CapState.NEEDS_SETUP -> "Set up" to colors.ink

@@ -24,7 +24,7 @@ import java.time.LocalTime
 
 /** What floats over the home screen. The home itself always stays drawn behind. */
 /** WATCH is the full Watch Now drawer; NBA, LIVE and CONTINUE are the single-card panels. */
-enum class Overlay { NONE, QUICK, PERSONALIZE, WATCH, NBA, LIVE, CONTINUE }
+enum class Overlay { NONE, QUICK, PERSONALIZE, WATCH, NBA, LIVE, CONTINUE, SETUP }
 
 /** A collection as shown on screen: only installed, non-hidden apps, in the user's order. */
 data class ShownCollection(val collection: AppCollection, val apps: List<AppEntry>) {
@@ -49,6 +49,7 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
     val sony = com.aktvhome.launcher.data.SonyControl(context)
     /** What this TV lets Haven do; the UI shows, offers to set up or hides each feature from it. */
     val device = com.aktvhome.launcher.data.DeviceCapabilities(context, sony)
+    val setup = com.aktvhome.launcher.data.SetupRunner(context, device, scope)
     val watchNow = WatchNow(
         context, scope, settingsStore,
         liveApps = { layoutStore.layout.collections.firstOrNull { it.id == "livetv" }?.apps?.toSet().orEmpty() },
@@ -141,7 +142,7 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
             )
         }
         val ok = PrivateDns.apply(context, choice, custom)
-        if (!ok) toast("Haven needs a one-time ADB permission to change Private DNS")
+        if (!ok) toast("Private DNS needs the one-time setup: About & data › This TV › Set up")
         return ok
     }
 
