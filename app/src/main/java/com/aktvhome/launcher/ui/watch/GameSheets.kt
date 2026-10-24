@@ -13,16 +13,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
@@ -61,11 +57,6 @@ import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.Pill
 import com.aktvhome.launcher.ui.settings.CloseButton
 import com.aktvhome.launcher.ui.settings.Eyebrow
-import com.aktvhome.launcher.ui.settings.GlassCard
-import com.aktvhome.launcher.ui.settings.HavenOverlay
-import com.aktvhome.launcher.ui.settings.STACKED_DIM
-import com.aktvhome.launcher.ui.settings.STACKED_GLASS
-import com.aktvhome.launcher.ui.settings.glassPanel
 import com.aktvhome.launcher.ui.theme.ThemeColors
 import com.aktvhome.launcher.ui.tvClickable
 import kotlinx.coroutines.delay
@@ -91,6 +82,7 @@ private val TEAM_STATS = listOf(
 
 private val BOX_COLUMNS = listOf("MIN", "PTS", "REB", "AST", "FG", "3PT")
 private val clockFmt = DateTimeFormatter.ofPattern("h:mm a")
+private val headerDateFmt = DateTimeFormatter.ofPattern("EEE, MMM d")
 
 /** A game's summary, kept fresh while its details are open. */
 private class SummaryFeed {
@@ -174,7 +166,8 @@ fun GameDetailPane(
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Eyebrow("NBA ·", colors)
+                    // The game's date up top, so a game opened from a schedule says when it is.
+                    Eyebrow(game?.let { "NBA · ${it.start.atZone(ZoneId.systemDefault()).format(headerDateFmt)} ·" } ?: "NBA ·", colors)
                     game?.let { StatusPill(it, colors) }
                 }
                 Text(
@@ -231,13 +224,13 @@ fun GameDetailPane(
     if (shown != null && pid != null) PlayerCard(state, colors, shown, feed.summary, pid) { playerId = null }
 }
 
-/** A compact tab: smaller than a Pill so all four fit the details pane; the open tab is ringed. */
+/** A compact tab: smaller than a Pill so four fit side by side (details tabs, the NBA panel's filters); the open one is ringed. */
 @Composable
-private fun TabChip(text: String, selected: Boolean, colors: ThemeColors, onClick: () -> Unit) {
+internal fun TabChip(text: String, selected: Boolean, colors: ThemeColors, modifier: Modifier = Modifier, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(50)
     Box(
-        Modifier
+        modifier
             .clip(shape)
             .background(
                 when {
@@ -535,50 +528,4 @@ private fun periodName(p: Int): String = when {
     p <= 4 -> "Q$p"
     p == 5 -> "OT"
     else -> "${p - 4}OT"
-}
-
-/** The favorite team's season, opened at the next game. OK on a game shows its detail. */
-@Composable
-fun TeamSchedule(state: HavenState, colors: ThemeColors) {
-    val w = state.watchNow
-    val fav = state.settingsStore.settings.favoriteTeam
-    val games = w.schedule
-    val close = { state.scheduleOpen = false }
-    val nextIndex = games.indexOfFirst { it.state != GameState.FINAL }.let { if (it < 0) (games.size - 1).coerceAtLeast(0) else it }
-    val list = rememberLazyListState(initialFirstVisibleItemIndex = (nextIndex - 2).coerceAtLeast(0))
-    val nextFocus = remember { FocusRequester() }
-    // Opens over the drawer or the NBA panel.
-    HavenOverlay(dim = STACKED_DIM, onDismiss = close) {
-        Column(
-            Modifier.align(Alignment.Center).width(640.dp).fillMaxHeight(0.86f)
-                .glassPanel(colors, RoundedCornerShape(26.dp), alpha = STACKED_GLASS).padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Eyebrow("Haven / Watch now / Schedule", colors)
-            Text("${Nba.teamName(fav)} schedule", color = colors.ink, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            // The last two games of each season are set after the NBA Cup group stage.
-            val note = if (games.size in 1 until 82) "${games.size} of 82 games scheduled · ${82 - games.size} to be added after the NBA Cup group stage" else "${games.size} games"
-            Text(note, color = colors.inkSoft, fontSize = 12.sp)
-            if (games.isEmpty()) Text("Loading schedule…", color = colors.inkSoft, fontSize = 13.sp)
-            LazyColumn(state = list, verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                itemsIndexed(games, key = { _, g -> g.espnId }) { i, g ->
-                    GlassCard(colors, Modifier.fillMaxWidth(), selected = i == nextIndex, focusRequester = if (i == nextIndex) nextFocus else null, onClick = { state.openGame(g) }) { ink ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(shortDate(g), color = ink.copy(alpha = 0.75f), fontSize = 13.sp, modifier = Modifier.width(110.dp))
-                            Text(opponent(g, fav) + " · " + Nba.teamName(if (g.home.abbr == fav) g.away.abbr else g.home.abbr), color = ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1)
-                            Text(
-                                when (g.state) {
-                                    GameState.FINAL -> result(g, fav)
-                                    GameState.LIVE -> "LIVE · ${g.status}"
-                                    GameState.PRE -> g.status + (g.network?.let { " · $it" } ?: "")
-                                },
-                                color = ink, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-    LaunchedEffect(games.size) { if (games.isNotEmpty()) runCatching { nextFocus.requestFocus() } }
 }

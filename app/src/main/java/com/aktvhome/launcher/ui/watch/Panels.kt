@@ -29,6 +29,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -142,7 +145,7 @@ private fun Panel(colors: ThemeColors, title: String, subtitle: String, onClose:
     }
 }
 
-private enum class GameFilter(val label: String) { ALL("All games"), MINE("My team"), ALERTS("My alerts") }
+private enum class GameFilter(val label: String) { ALL("All games"), MINE("My team"), ALERTS("My alerts"), SCHEDULES("Schedules") }
 
 private val dateLineFmt = DateTimeFormatter.ofPattern("EEE, MMM d")
 private val tipFmt = DateTimeFormatter.ofPattern("h:mm a")
@@ -163,6 +166,9 @@ private fun dayWord(day: LocalDate, today: LocalDate): String = when (day) {
  * Focusing a card selects it after a short pause (so scrolling past cards fetches nothing). OK on
  * a card, or Right from the right-hand column, moves into the details; Left or Back there returns
  * to the card. Back on the left closes the panel.
+ *
+ * Schedules swaps the games for teams: your favorite teams, then either conference; the right side
+ * shows the chosen team's season, and OK on one of its games shows its details in its place.
  */
 @Composable
 fun NbaPanel(state: HavenState, colors: ThemeColors) {
@@ -187,7 +193,17 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
     var focusPending by remember { mutableStateOf(true) }
     val inPane = remember { booleanArrayOf(false) }
     val focusManager = LocalFocusManager.current
-    fun backToCard() { selected?.let { runCatching { cardFocus(it).requestFocus() } } }
+    // Schedules: the team shown, and the card it was chosen from (a team can be in both lists).
+    var team by remember { mutableStateOf(state.nbaSchedule ?: fav.ifBlank { null }) }
+    var teamCard by remember { mutableStateOf<String?>(null) }
+    var focusedTeam by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var west by remember { mutableStateOf(team?.let { it in Nba.WEST } ?: true) }
+    // A game opened from the team's schedule, shown in place of the schedule until Back.
+    var scheduleGame by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(team) { scheduleGame = null }
+    /** The card focus returns to from the right side: the selected game's, or the team's in Schedules. */
+    fun returnCard(): String? = if (filter == GameFilter.SCHEDULES) teamCard else selected
+    fun backToCard() { returnCard()?.let { runCatching { cardFocus(it).requestFocus() } } }
     fun openPane(id: String) {
         selected = id
         toPane++
@@ -207,6 +223,7 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
         GameFilter.ALL -> list.orEmpty()
         GameFilter.MINE -> list.orEmpty().filter(::ours)
         GameFilter.ALERTS -> list.orEmpty().filter { it.espnId in s.alertGames }
+        GameFilter.SCHEDULES -> emptyList()
     }
     val main = shown.firstOrNull { it.involves(fav) }
     // Followed teams lead the grid (ringed); the rest keep ESPN's order (live first).
@@ -233,6 +250,31 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
             delay(50)
             runCatching { if (id != null) cardFocus(id).requestFocus() else first.requestFocus() }
         }
+    }
+    // Asked for a team's schedule (the "Full schedule" links): the Schedules tab on that team.
+    LaunchedEffect(state.nbaSchedule) {
+        val abbr = state.nbaSchedule ?: return@LaunchedEffect
+        state.nbaSchedule = null
+        filter = GameFilter.SCHEDULES
+        team = abbr
+        west = abbr in Nba.WEST
+        // Its card among the favorite teams if it's one, else in its conference.
+        val cardKey = if (abbr in mine) "fav:$abbr" else "conf:$abbr"
+        teamCard = cardKey
+        delay(50)
+        runCatching { cardFocus(cardKey).requestFocus() }
+    }
+    // A team card in focus becomes the shown team after 300 ms, like the game cards.
+    LaunchedEffect(focusedTeam) {
+        val (cardKey, abbr) = focusedTeam ?: return@LaunchedEffect
+        delay(300)
+        team = abbr
+        teamCard = cardKey
+    }
+    fun openTeam(key: String, abbr: String) {
+        team = abbr
+        teamCard = key
+        toPane++
     }
     // A card in focus becomes the selection after 300 ms; moving on sooner cancels it.
     LaunchedEffect(focusedCard) {
@@ -267,14 +309,22 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
                         Text(day.format(dateLineFmt), color = colors.ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     GameFilter.entries.forEachIndexed { i, f ->
-                        Pill(f.label, colors, selected = f == filter, focusRequester = if (i == 0) first else null) { filter = f }
+                        TabChip(f.label, f == filter, colors, if (i == 0) Modifier.focusRequester(first) else Modifier) { filter = f }
                     }
                     Spacer(Modifier.weight(1f))
-                    Pill("${dayWord(day, today)} ▾", colors) { choosingDay = true }
+                    // A day only means something for games.
+                    if (filter != GameFilter.SCHEDULES) TabChip("${dayWord(day, today)} ▾", false, colors) { choosingDay = true }
                 }
                 when {
+                    filter == GameFilter.SCHEDULES -> TeamPicker(
+                        state, colors, mine, fav, team, west,
+                        onConference = { west = it },
+                        focus = ::cardFocus,
+                        onFocused = { key, abbr -> focusedTeam = key to abbr },
+                        onOpen = ::openTeam,
+                    )
                     list == null && w.nbaError -> Text("Couldn't reach ESPN. Check the connection and try again.", color = colors.inkSoft, fontSize = 12.sp)
                     list == null -> Text("Loading games…", color = colors.inkSoft, fontSize = 12.sp)
                     shown.isEmpty() -> Text(
@@ -282,6 +332,8 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
                             GameFilter.ALL -> "No NBA games on ${day.format(dateLineFmt)}."
                             GameFilter.MINE -> "Your teams don't play on ${day.format(dateLineFmt)}."
                             GameFilter.ALERTS -> "No games with Set alert on this day. Open a game and press Set alert."
+                            // Shows the team picker above instead; never reaches here.
+                            GameFilter.SCHEDULES -> ""
                         },
                         color = colors.inkSoft, fontSize = 12.sp,
                     )
@@ -317,9 +369,9 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
                         }
                     }
                 }
-                if (fav.isNotBlank()) {
+                if (fav.isNotBlank() && filter != GameFilter.SCHEDULES) {
                     val next = w.nextFavorite()
-                    GlassCard(colors, Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp), onClick = { state.scheduleOpen = true }) { ink ->
+                    GlassCard(colors, Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp), onClick = { state.openSchedule(fav) }) { ink ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 "${Nba.teamName(fav)}" + (next?.let { " · Next: ${shortDate(it)} ${opponent(it, fav)}" } ?: ""),
@@ -337,9 +389,12 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
                     .onFocusChanged { inPane[0] = it.hasFocus }
                     .onPreviewKeyEvent { e ->
                         when (e.nativeKeyEvent.keyCode) {
-                            // Back in the details returns to the card instead of closing the panel.
+                            // Back in the details returns to the card instead of closing the panel; a
+                            // game opened from a schedule goes back to the schedule first.
                             KeyEvent.KEYCODE_BACK -> {
-                                if (e.type == KeyEventType.KeyUp) backToCard()
+                                if (e.type == KeyEventType.KeyUp) {
+                                    if (filter == GameFilter.SCHEDULES && scheduleGame != null) scheduleGame = null else backToCard()
+                                }
                                 true
                             }
                             else -> false
@@ -350,7 +405,7 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
                     // whichever card happens to sit nearest.
                     .focusProperties {
                         exit = { dir ->
-                            val id = selected
+                            val id = returnCard()
                             if (dir == FocusDirection.Left && id != null) cardFocus(id) else FocusRequester.Default
                         }
                     }
@@ -358,12 +413,23 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
                     .padding(horizontal = 14.dp, vertical = 12.dp),
             ) {
                 val id = selected
-                if (id != null) {
+                val shownTeam = team
+                if (filter == GameFilter.SCHEDULES && shownTeam != null) {
+                    key(shownTeam) {
+                        TeamSchedulePane(
+                            state, colors, shownTeam, paneFocus, close, openGame = scheduleGame,
+                            onOpenGame = { scheduleGame = it; toPane++ }, onBack = { scheduleGame = null },
+                        )
+                    }
+                } else if (filter != GameFilter.SCHEDULES && id != null) {
                     key(id) { GameDetailPane(state, colors, id, paneFocus, close) }
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("No game selected", color = colors.inkSoft, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                            Text(
+                                if (filter == GameFilter.SCHEDULES) "Pick a team" else "No game selected",
+                                color = colors.inkSoft, fontSize = 13.sp, modifier = Modifier.weight(1f),
+                            )
                             CloseButton(colors, onClick = close)
                         }
                     }
@@ -377,6 +443,192 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
     if (picking) DatePickerDialog(colors, day, onPick = { day = it; picking = false }, onDismiss = { picking = false })
     // The recap's "show Summary" lasts as long as the panel.
     DisposableEffect(Unit) { onDispose { state.nbaSummaryFor = null } }
+}
+
+/**
+ * The Schedules tab's left side: your favorite teams (main team first, three to a row), then
+ * West / East and that conference's teams in two columns. Right from the end of a row goes into the
+ * schedule, like OK.
+ */
+@Composable
+private fun TeamPicker(
+    state: HavenState,
+    colors: ThemeColors,
+    mine: Set<String>,
+    main: String,
+    shown: String?,
+    west: Boolean,
+    onConference: (Boolean) -> Unit,
+    focus: (String) -> FocusRequester,
+    onFocused: (key: String, abbr: String) -> Unit,
+    onOpen: (key: String, abbr: String) -> Unit,
+) {
+    @Composable
+    fun rows(prefix: String, teams: List<String>, perRow: Int, short: Boolean) {
+        teams.chunked(perRow).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEachIndexed { col, abbr ->
+                    val cardKey = "$prefix:$abbr"
+                    val right = if (col == row.size - 1) Modifier.onKeyDown(KeyEvent.KEYCODE_DPAD_RIGHT) { onOpen(cardKey, abbr) } else Modifier
+                    key(cardKey) {
+                        TeamPick(
+                            state.watchNow, abbr, short, colors, chosen = abbr == shown, focus = focus(cardKey),
+                            modifier = Modifier.weight(1f).then(right),
+                            onFocused = { onFocused(cardKey, abbr) },
+                        ) { onOpen(cardKey, abbr) }
+                    }
+                }
+                repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+    val favorites = mine.sortedWith(compareBy({ it != main }, { Nba.teamName(it) }))
+    if (favorites.isNotEmpty()) {
+        SectionLabel("Favorite teams", colors)
+        rows("fav", favorites, perRow = 3, short = true)
+    }
+    SectionLabel("Find any team", colors)
+    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        TabChip("West", west, colors) { onConference(true) }
+        TabChip("East", !west, colors) { onConference(false) }
+    }
+    val conference = Nba.TEAMS.map { it.first }.filter { (it in Nba.WEST) == west }.sortedBy { Nba.teamName(it) }
+    rows("conf", conference, perRow = 2, short = false)
+}
+
+/** A team to pick: its logo and name (the nickname among favorites, the full name in a conference). */
+@Composable
+private fun TeamPick(
+    w: WatchNow, abbr: String, short: Boolean, colors: ThemeColors, chosen: Boolean, focus: FocusRequester,
+    modifier: Modifier, onFocused: () -> Unit, onClick: () -> Unit,
+) {
+    GlassCard(
+        colors, modifier, selected = chosen, focusRequester = focus, onFocused = onFocused,
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp), onClick = onClick,
+    ) { ink ->
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            NetImage(w, Nba.logo(abbr), 26.dp)
+            val name = Nba.teamName(abbr)
+            Text(
+                if (short) name.substringAfterLast(' ').let { if (abbr == "POR") "Trail Blazers" else it } else name,
+                color = ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+private val scheduleDateFmt = DateTimeFormatter.ofPattern("EEE MMM d")
+
+/**
+ * A team's season on the right side of Schedules: name and season, then every game, oldest first,
+ * opened at the next one (ringed, and where focus lands). OK on a game shows its details right
+ * here, in place of the schedule ([openGame]); "‹ Back to schedule" or Back returns to the list,
+ * at the same place, with focus on that game.
+ */
+@Composable
+private fun TeamSchedulePane(
+    state: HavenState,
+    colors: ThemeColors,
+    abbr: String,
+    focus: FocusRequester,
+    onClose: () -> Unit,
+    openGame: String?,
+    onOpenGame: (String) -> Unit,
+    onBack: () -> Unit,
+) {
+    val w = state.watchNow
+    LaunchedEffect(abbr) { w.loadSchedule(abbr) }
+    val games = w.teamSchedules[abbr]
+    val next = games?.let { all -> all.indexOfFirst { it.state != GameState.FINAL }.let { if (it < 0) all.size - 1 else it } } ?: 0
+    // Kept while a game is open, so the list comes back where it was.
+    val list = rememberLazyListState()
+    LaunchedEffect(abbr, games != null) { if (games != null) list.scrollToItem((next - 1).coerceAtLeast(0)) }
+    val rows = remember(abbr) { mutableMapOf<String, FocusRequester>() }
+    // The next game's row uses [focus] (where entering the schedule lands); the others their own.
+    fun rowFocus(id: String, i: Int) = if (i == next) focus else rows.getOrPut(id) { FocusRequester() }
+    var lastOpened by remember(abbr) { mutableStateOf<String?>(null) }
+    // Back from a game: its row takes focus again once the list is back.
+    LaunchedEffect(openGame) {
+        val id = lastOpened
+        if (openGame != null || id == null) return@LaunchedEffect
+        val i = games?.indexOfFirst { it.espnId == id } ?: -1
+        if (i < 0) return@LaunchedEffect
+        repeat(20) {
+            if (runCatching { rowFocus(id, i).requestFocus() }.isSuccess) return@LaunchedEffect
+            delay(50)
+        }
+    }
+
+    if (openGame != null) {
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TabChip("‹ Back to schedule", false, colors, onClick = onBack)
+                NetImage(w, Nba.logo(abbr), 18.dp)
+                Text(Nba.teamName(abbr), color = colors.inkSoft, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            key(openGame) { GameDetailPane(state, colors, openGame, focus, onClose, Modifier.weight(1f)) }
+        }
+        return
+    }
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            NetImage(w, Nba.logo(abbr), 34.dp)
+            Column(Modifier.weight(1f)) {
+                Eyebrow("NBA · Schedule", colors)
+                Text(Nba.teamName(abbr), color = colors.ink, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                games?.firstOrNull()?.let { g0 ->
+                    // A season starts in October: "2026–27 regular season".
+                    val y = g0.start.atZone(ZoneId.systemDefault()).year
+                    Text("$y–${(y + 1) % 100} regular season · ${games.size} games", color = colors.inkSoft, fontSize = 11.sp)
+                }
+            }
+            CloseButton(colors, onClick = onClose)
+        }
+        when {
+            games == null && w.teamScheduleFailed[abbr] == true -> Text("Couldn't reach ESPN for this schedule.", color = colors.inkSoft, fontSize = 12.sp)
+            games == null -> Text("Loading schedule…", color = colors.inkSoft, fontSize = 12.sp)
+            games.isEmpty() -> Text("No games scheduled.", color = colors.inkSoft, fontSize = 12.sp)
+            else -> LazyColumn(state = list, verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth().weight(1f)) {
+                itemsIndexed(games, key = { _, g -> g.espnId }) { i, g ->
+                    ScheduleRow(g, abbr, colors, isNext = i == next, focus = rowFocus(g.espnId, i)) {
+                        lastOpened = g.espnId
+                        onOpenGame(g.espnId)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Date, "@ LAL · Los Angeles Lakers" with the network or Final under it, and the result or tip-off time. */
+@Composable
+private fun ScheduleRow(g: Game, abbr: String, colors: ThemeColors, isNext: Boolean, focus: FocusRequester?, onClick: () -> Unit) {
+    GlassCard(
+        colors, Modifier.fillMaxWidth(), selected = isNext, focusRequester = focus,
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp), onClick = onClick,
+    ) { ink ->
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(g.start.atZone(ZoneId.systemDefault()).format(scheduleDateFmt), color = ink.copy(alpha = 0.75f), fontSize = 11.sp, modifier = Modifier.width(76.dp))
+            Column(Modifier.weight(1f)) {
+                val other = if (g.home.abbr == abbr) g.away.abbr else g.home.abbr
+                Text("${opponent(g, abbr)} · ${Nba.teamName(other)}", color = ink, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val sub = when (g.state) {
+                    GameState.FINAL -> "Final"
+                    GameState.LIVE -> "Live · ${g.clockLine()}"
+                    GameState.PRE -> g.broadcasters.joinToString(" · ")
+                }
+                if (sub.isNotBlank()) Text(sub, color = ink.copy(alpha = 0.7f), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Text(
+                when (g.state) {
+                    GameState.FINAL -> result(g, abbr)
+                    GameState.LIVE -> "${g.away.score}–${g.home.score}"
+                    GameState.PRE -> g.start.atZone(ZoneId.systemDefault()).format(tipFmt)
+                },
+                color = ink, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+            )
+        }
+    }
 }
 
 @Composable

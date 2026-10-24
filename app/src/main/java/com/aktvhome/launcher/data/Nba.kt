@@ -36,6 +36,9 @@ object Nba {
 
     fun teamName(abbr: String) = TEAMS.firstOrNull { it.first == abbr }?.second ?: abbr
 
+    /** Western Conference teams (ESPN abbreviations); the rest of [TEAMS] are in the East. */
+    val WEST = setOf("DAL", "DEN", "GS", "HOU", "LAC", "LAL", "MEM", "MIN", "NO", "OKC", "PHX", "POR", "SAC", "SA", "UTAH")
+
     /** The league's logo; loaded at runtime like all logos (never shipped with the app). */
     const val LEAGUE_LOGO = "https://a.espncdn.com/i/teamlogos/leagues/500/nba.png"
 

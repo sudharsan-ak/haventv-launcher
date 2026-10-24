@@ -74,11 +74,17 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
     fun openGame(game: com.aktvhome.launcher.data.Game, onSummary: Boolean = false) {
         nbaSummaryFor = if (onSummary) game.espnId else null
         nbaGame = game.espnId to game.start.atZone(java.time.ZoneId.systemDefault()).toLocalDate()
-        scheduleOpen = false
         overlay = Overlay.NBA
     }
-    /** Whether the favorite team's full schedule is open. */
-    var scheduleOpen by mutableStateOf(false)
+
+    /** A team whose schedule the NBA panel should open on (its Schedules tab), set by [openSchedule]. */
+    var nbaSchedule by mutableStateOf<String?>(null)
+
+    /** Opens the NBA panel's Schedules tab on [abbr] (the "Full schedule" links). */
+    fun openSchedule(abbr: String) {
+        nbaSchedule = abbr
+        overlay = Overlay.NBA
+    }
     /** Bumped each time the home screen comes back into view; themes key their welcome on it. */
     var arrivals by mutableStateOf(0)
     /** Bumped when Home is pressed while Haven is showing; themes move focus back to the first row. */
