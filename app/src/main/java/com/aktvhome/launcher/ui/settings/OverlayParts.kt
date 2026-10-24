@@ -54,8 +54,9 @@ import com.aktvhome.launcher.ui.tvClickable
 
 /**
  * Full-screen, see-through window for the settings overlays. The home screen stays live
- * behind it under a light tint ([dim]) and [blur], so changes show up there as they're made.
- * The NBA panels dim and blur a little more, so logos and numbers stay crisp on top.
+ * behind it under a light tint ([dim]), so changes show up there as they're made. [blur] only
+ * works on TVs that blur across windows (not this one); the home blurs itself instead (see
+ * MainActivity). An overlay stacked on another uses [STACKED_DIM] and [STACKED_GLASS].
  */
 @Composable
 fun HavenOverlay(dim: Float, onDismiss: () -> Unit, blur: Int = 20, content: @Composable BoxScope.() -> Unit) {
@@ -76,11 +77,17 @@ fun HavenOverlay(dim: Float, onDismiss: () -> Unit, blur: Int = 20, content: @Co
     }
 }
 
+/** Dim behind an overlay opened over another, so the one underneath doesn't compete with its text. */
+const val STACKED_DIM = 0.55f
+
+/** Glass opacity for an overlay opened over another. */
+const val STACKED_GLASS = 0.85f
+
 /** Translucent panel treatment shared by Quick Settings and Personalize. */
 fun Modifier.glassPanel(
     colors: ThemeColors,
     shape: RoundedCornerShape,
-    alpha: Float = 0.66f,
+    alpha: Float = 0.74f,
 ): Modifier {
     val neutralGlass = if (colors.ink.luminance() > 0.5f) Color(0xFF101419) else Color.White
     return this

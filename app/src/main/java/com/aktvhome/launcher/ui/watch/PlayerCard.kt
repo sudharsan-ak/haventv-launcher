@@ -46,6 +46,8 @@ import com.aktvhome.launcher.ui.Pill
 import com.aktvhome.launcher.ui.settings.CloseButton
 import com.aktvhome.launcher.ui.settings.Eyebrow
 import com.aktvhome.launcher.ui.settings.HavenOverlay
+import com.aktvhome.launcher.ui.settings.STACKED_DIM
+import com.aktvhome.launcher.ui.settings.STACKED_GLASS
 import com.aktvhome.launcher.ui.settings.glassPanel
 import com.aktvhome.launcher.ui.theme.ThemeColors
 import java.time.format.DateTimeFormatter
@@ -77,10 +79,11 @@ fun PlayerCard(state: HavenState, colors: ThemeColors, game: Game, summary: Game
     val first = remember { FocusRequester() }
     val profile = info?.profile
 
-    HavenOverlay(dim = 0.35f, onDismiss = onClose, blur = 30) {
+    // Over the NBA panel: dimmer behind and more solid glass, so the panel doesn't compete.
+    HavenOverlay(dim = STACKED_DIM, onDismiss = onClose, blur = 30) {
         Column(
             Modifier.align(Alignment.Center).width(520.dp)
-                .glassPanel(colors, RoundedCornerShape(22.dp)).padding(horizontal = 16.dp, vertical = 14.dp),
+                .glassPanel(colors, RoundedCornerShape(22.dp), alpha = STACKED_GLASS).padding(horizontal = 16.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {

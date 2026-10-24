@@ -54,6 +54,9 @@ data class Game(
         return "$name $clock".trim()
     }
 
+    /** Every broadcaster ESPN lists, as it names them: "NBA League Pass", "MyMi", "Bucks App". */
+    val broadcasters: List<String> get() = network.orEmpty().split(",").map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+
     /** Networks ESPN lists for the game, upper case: "ESPN", "ABC", "PRIME VIDEO". */
     val networks: List<String> get() = network.orEmpty().split(",").map { it.trim().uppercase() }.filter { it.isNotEmpty() }
 }
@@ -79,4 +82,26 @@ data class GameSummary(
     val plays: List<Play>,
     val teams: Map<String, TeamBox>,
     val series: String?,
+    /** ESPN's recap of a finished game, when it has one. */
+    val recap: String? = null,
 )
+
+/**
+ * A finished game in one or two plain sentences, from the data alone: "Bulls beat the Bucks
+ * 132–125. Norman Powell led Chicago with 25; Tyler Herro had 34 for Milwaukee." [awayTop] and
+ * [homeTop] are each side's top scorer and points. Null without a winner.
+ */
+fun recapLine(game: Game, awayTop: Pair<String, Int>?, homeTop: Pair<String, Int>?): String? {
+    val a = game.away.score.toIntOrNull() ?: return null
+    val h = game.home.score.toIntOrNull() ?: return null
+    if (a == h) return null
+    val awayWon = a > h
+    val (win, lose) = if (awayWon) game.away to game.home else game.home to game.away
+    val (winTop, loseTop) = if (awayWon) awayTop to homeTop else homeTop to awayTop
+    val ot = if (game.period > 4) " in overtime" else ""
+    val result = "${win.name} beat the ${lose.name} ${maxOf(a, h)}–${minOf(a, h)}$ot."
+    val led = winTop?.let { "${it.first} led ${win.location.ifBlank { win.name }} with ${it.second}" }
+    val had = loseTop?.let { "${it.first} had ${it.second} for ${lose.location.ifBlank { lose.name }}" }
+    val scorers = listOfNotNull(led, had).joinToString("; ")
+    return if (scorers.isEmpty()) result else "$result ${scorers.replaceFirstChar { it.uppercase() }}."
+}

@@ -3,6 +3,7 @@
 package com.aktvhome.launcher.ui.watch
 
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -23,6 +25,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -51,12 +55,16 @@ import com.aktvhome.launcher.data.Nba
 import com.aktvhome.launcher.data.Play
 import com.aktvhome.launcher.data.Team
 import com.aktvhome.launcher.data.WatchNow
+import com.aktvhome.launcher.data.networkApp
+import com.aktvhome.launcher.data.recapLine
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.Pill
 import com.aktvhome.launcher.ui.settings.CloseButton
 import com.aktvhome.launcher.ui.settings.Eyebrow
 import com.aktvhome.launcher.ui.settings.GlassCard
 import com.aktvhome.launcher.ui.settings.HavenOverlay
+import com.aktvhome.launcher.ui.settings.STACKED_DIM
+import com.aktvhome.launcher.ui.settings.STACKED_GLASS
 import com.aktvhome.launcher.ui.settings.glassPanel
 import com.aktvhome.launcher.ui.theme.ThemeColors
 import com.aktvhome.launcher.ui.tvClickable
@@ -95,15 +103,30 @@ private class SummaryFeed {
 
 /**
  * Game details for [id], always from the latest data: the summary (refreshed every 10 s while the
- * game is live, once more when it ends) or the scoreboard, whichever is newer. Score block,
- * watch / Game stats / Set alert, then Summary, Box score, Play-by-play and Team stats.
- * Refreshes update everything in place; the tab, scroll positions and focus stay.
+ * game is live, once more when it ends) or the scoreboard, whichever is newer. Title with every
+ * broadcaster, score block, Watch on <app> ([watchFocus]) and Set alert, then Summary, Box score,
+ * Play-by-play and Team stats. Refreshes update everything in place; the tab, scroll positions
+ * and focus stay.
  */
 @Composable
-fun GameDetail(state: HavenState, colors: ThemeColors, id: String) {
+fun GameDetailPane(
+    state: HavenState,
+    colors: ThemeColors,
+    id: String,
+    watchFocus: FocusRequester,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val w = state.watchNow
-    val close = { state.detailGameId = null }
-    val feed = remember(id) { SummaryFeed() }
+    val close = onClose
+    // Starts from this session's copy, if any, so a game seen before shows at once.
+    val feed = remember(id) {
+        SummaryFeed().apply {
+            summary = w.summaries[id]
+            updatedAt = w.summaryTime(id)
+            loaded = summary != null
+        }
+    }
     val known = w.findGame(id)
     val fresh = feed.summary?.game
     // Whichever was fetched last wins for score and clock; names and logos come from the scoreboard.
@@ -115,6 +138,8 @@ fun GameDetail(state: HavenState, colors: ThemeColors, id: String) {
     }
     val live = game?.state == GameState.LIVE
     LaunchedEffect(id, live) {
+        // A finished or upcoming game already fetched in that state needs nothing new.
+        if (!live && feed.summary?.game?.state == game?.state && feed.summary != null) return@LaunchedEffect
         while (true) {
             val got = w.summary(id)
             val now = System.currentTimeMillis()
@@ -130,72 +155,72 @@ fun GameDetail(state: HavenState, colors: ThemeColors, id: String) {
             delay(10_000)
         }
     }
-    var tab by remember(id) { mutableStateOf(DetailTab.SUMMARY) }
+    // One tab for the whole NBA panel, saved across restarts, so moving down the games keeps showing
+    // the same view (say, each game's Box score). Upcoming games show Summary without changing it;
+    // so does a game opened from the Last night recap.
+    val store = state.settingsStore
+    val saved = DetailTab.entries.firstOrNull { it.name == store.settings.nbaTab } ?: DetailTab.SUMMARY
+    var chosen by remember(id) { mutableStateOf<DetailTab?>(null) }
+    val tab = chosen ?: if (game?.state == GameState.PRE || state.nbaSummaryFor == id) DetailTab.SUMMARY else saved
+    fun choose(t: DetailTab) {
+        chosen = t
+        if (game?.state != GameState.PRE) store.update { it.copy(nbaTab = t.name) }
+    }
     val scrolls = remember(id) { mutableMapOf<DetailTab, ScrollState>() }
-    val watchFocus = remember { FocusRequester() }
     // The player card open over the details, by ESPN athlete id.
     var playerId by remember(id) { mutableStateOf<String?>(null) }
 
-    // Compact and frosted like the settings panels, over a home dimmed and blurred a bit more.
-    HavenOverlay(dim = 0.35f, onDismiss = close, blur = 30) {
-        Column(
-            Modifier.align(Alignment.Center).width(600.dp).fillMaxHeight(0.88f)
-                .glassPanel(colors, RoundedCornerShape(24.dp)).padding(horizontal = 18.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Eyebrow("NBA ·", colors)
-                        game?.let { StatusPill(it, colors) }
-                    }
-                    Text(
-                        game?.let { "${it.away.name} vs ${it.home.name}" } ?: "Game details",
-                        color = colors.ink, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    )
+    Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Eyebrow("NBA ·", colors)
+                    game?.let { StatusPill(it, colors) }
                 }
-                CloseButton(colors, onClick = close)
+                Text(
+                    game?.let { "${it.away.name} vs ${it.home.name}" } ?: "Game details",
+                    color = colors.ink, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                game?.let { BroadcastLine(state, it, colors) }
             }
-            if (game == null) {
-                Text(if (feed.loaded) "Couldn't load this game from ESPN." else "Loading…", color = colors.inkSoft, fontSize = 13.sp)
-            } else {
-                ScoreBlock(w, game, colors)
-                if (live) UpdatedLine(feed, colors)
+            CloseButton(colors, onClick = close)
+        }
+        if (game == null) {
+            Text(if (feed.loaded) "Couldn't load this game from ESPN." else "Loading…", color = colors.inkSoft, fontSize = 13.sp)
+        } else {
+            ScoreBlock(w, game, colors)
+            if (live) UpdatedLine(feed, colors)
 
-                // Best way to watch first (from the game's networks), the alternatives, then the game's own actions.
-                val options = state.watchOptions(game)
-                val alertOn = id in state.settingsStore.settings.alertGames
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    options.forEachIndexed { i, o ->
-                        Pill(if (i == 0) "▶  Watch on ${o.app}" else o.label, colors, selected = i == 0, focusRequester = if (i == 0) watchFocus else null) {
-                            o.open(); close()
-                        }
-                    }
-                    if (game.state != GameState.PRE) Pill("Game stats", colors) { tab = DetailTab.BOX }
-                    if (game.state != GameState.FINAL) {
-                        Pill(if (alertOn) "Alert on" else "Set alert", colors, selected = alertOn) {
-                            state.settingsStore.update {
-                                it.copy(alertGames = if (id in it.alertGames) it.alertGames - id else it.alertGames + (id to game.start.toEpochMilli()))
-                            }
+            // The best way to watch (from the game's networks), then the game's alert.
+            val option = state.watchOptions(game).first()
+            val alertOn = id in state.settingsStore.settings.alertGames
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Pill("▶  Watch on ${option.app}", colors, selected = true, focusRequester = watchFocus) { option.open(); close() }
+                if (game.state != GameState.FINAL) {
+                    Pill(if (alertOn) "Alert on" else "Set alert", colors, selected = alertOn) {
+                        state.settingsStore.update {
+                            it.copy(alertGames = if (id in it.alertGames) it.alertGames - id else it.alertGames + (id to game.start.toEpochMilli()))
                         }
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    DetailTab.entries.forEach { t -> Pill(t.label, colors, selected = t == tab) { tab = t } }
-                }
-                Box(Modifier.fillMaxWidth().height(1.dp).background(colors.edge))
-                val scroll = scrolls.getOrPut(tab) { ScrollState(0) }
-                Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val summary = feed.summary
-                    when {
-                        game.state == GameState.PRE && tab != DetailTab.SUMMARY -> Note("Available after tip-off.", colors)
-                        summary == null -> Note(if (feed.loaded) "Couldn't load the details from ESPN. They'll try again while the game is live." else "Loading…", colors)
-                        else -> when (tab) {
-                            DetailTab.SUMMARY -> SummaryTab(w, game, summary, colors)
-                            DetailTab.BOX -> BoxTab(game, summary, colors) { p -> playerId = p.id }
-                            DetailTab.PLAYS -> PlaysTab(w, game, summary, colors)
-                            DetailTab.TEAM -> TeamTab(game, summary, colors)
-                        }
+            }
+            // Scrolls sideways when the pane is too narrow for every tab, so none gets squeezed
+            // (a squeezed tab wrapped its label letter by letter and pushed the content off screen).
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                DetailTab.entries.forEach { t -> TabChip(t.label, t == tab, colors) { choose(t) } }
+            }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(colors.edge))
+            val scroll = scrolls.getOrPut(tab) { ScrollState(0) }
+            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val summary = feed.summary
+                when {
+                    game.state == GameState.PRE && tab != DetailTab.SUMMARY -> Note("Available after tip-off.", colors)
+                    summary == null -> Note(if (feed.loaded) "Couldn't load the details from ESPN. They'll try again while the game is live." else "Loading…", colors)
+                    else -> when (tab) {
+                        DetailTab.SUMMARY -> SummaryTab(state, game, summary, colors)
+                        DetailTab.BOX -> BoxTab(game, summary, colors) { p -> playerId = p.id }
+                        DetailTab.PLAYS -> PlaysTab(w, game, summary, colors)
+                        DetailTab.TEAM -> TeamTab(game, summary, colors)
                     }
                 }
             }
@@ -204,8 +229,49 @@ fun GameDetail(state: HavenState, colors: ThemeColors, id: String) {
     val shown = game
     val pid = playerId
     if (shown != null && pid != null) PlayerCard(state, colors, shown, feed.summary, pid) { playerId = null }
-    // The watch button exists once the game is known (straight away, or after the first fetch).
-    LaunchedEffect(game == null) { if (game != null) runCatching { watchFocus.requestFocus() } }
+}
+
+/** A compact tab: smaller than a Pill so all four fit the details pane; the open tab is ringed. */
+@Composable
+private fun TabChip(text: String, selected: Boolean, colors: ThemeColors, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(50)
+    Box(
+        Modifier
+            .clip(shape)
+            .background(
+                when {
+                    focused -> colors.pill
+                    selected -> colors.pill.copy(alpha = 0.22f)
+                    else -> colors.glass
+                },
+            )
+            .border(if (selected) 2.dp else 1.dp, if (selected) colors.accent else colors.edge, shape)
+            .onFocusChanged { focused = it.isFocused }
+            .tvClickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Text(
+            text, color = if (focused) colors.pillInk else colors.ink, fontSize = 12.sp,
+            fontWeight = if (selected || focused) FontWeight.Bold else FontWeight.Medium, maxLines = 1, softWrap = false,
+        )
+    }
+}
+
+/** Every broadcaster ESPN lists, each with its app's icon when that app is installed. */
+@Composable
+private fun BroadcastLine(state: HavenState, g: Game, colors: ThemeColors) {
+    val names = g.broadcasters
+    if (names.isEmpty()) return
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        names.forEachIndexed { i, n ->
+            if (i > 0) Text("·", color = colors.inkSoft, fontSize = 11.sp)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                networkApp(n)?.let { state.apps[it]?.icon }?.let { Image(it, null, Modifier.size(13.dp).clip(RoundedCornerShape(3.dp))) }
+                Text(n, color = colors.inkSoft, fontSize = 11.sp)
+            }
+        }
+    }
 }
 
 /** [base] with [fresh]'s score, clock and records. */
@@ -213,6 +279,7 @@ private fun merge(base: Game, fresh: Game): Game = base.copy(
     away = base.away.copy(score = fresh.away.score, record = fresh.away.record.ifBlank { base.away.record }),
     home = base.home.copy(score = fresh.home.score, record = fresh.home.record.ifBlank { base.home.record }),
     state = fresh.state, status = fresh.status, period = fresh.period, clock = fresh.clock, halftime = fresh.halftime,
+    network = (base.broadcasters + fresh.broadcasters).distinctBy { it.lowercase() }.joinToString(", ").ifBlank { null },
 )
 
 /** Red LIVE, FINAL, or the tip-off time. */
@@ -282,13 +349,34 @@ private fun UpdatedLine(feed: SummaryFeed, colors: ThemeColors) {
     Text(text, color = colors.inkSoft, fontSize = 10.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
 }
 
+/**
+ * Before tip-off: both records, the season series and where it airs. Live: line score, top
+ * performers and the last three plays. Final: the recap (ESPN's, else one from the data) and the
+ * top performers.
+ */
 @Composable
-private fun SummaryTab(w: WatchNow, g: Game, s: GameSummary, colors: ThemeColors) {
+private fun SummaryTab(state: HavenState, g: Game, s: GameSummary, colors: ThemeColors) {
+    val w = state.watchNow
     if (g.state == GameState.PRE) {
         val records = listOf(g.away, g.home).filter { it.record.isNotBlank() }.joinToString("   ·   ") { "${it.name} ${it.record}" }
         if (records.isNotBlank()) DetailLine(colors) { Text(records, color = colors.ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
         s.series?.let { DetailLine(colors) { Text("Season series: $it", color = colors.ink, fontSize = 13.sp) } }
-        if (records.isBlank() && s.series == null) Note("Nothing more until tip-off.", colors)
+        if (g.broadcasters.isNotEmpty()) DetailLine(colors) { Text("On " + g.broadcasters.joinToString(" · "), color = colors.ink, fontSize = 13.sp) }
+        if (records.isBlank() && s.series == null && g.broadcasters.isEmpty()) Note("Nothing more until tip-off.", colors)
+        return
+    }
+    val tops = listOf(g.away, g.home).mapNotNull { t -> s.teams[t.abbr]?.players?.maxByOrNull { it.points }?.let { t to it } }
+    if (g.state == GameState.FINAL) {
+        val recap = s.recap ?: recapLine(
+            g,
+            tops.firstOrNull { it.first.abbr == g.away.abbr }?.second?.let { it.name to it.points },
+            tops.firstOrNull { it.first.abbr == g.home.abbr }?.second?.let { it.name to it.points },
+        )
+        if (recap != null) {
+            Eyebrow("Game recap", colors)
+            DetailLine(colors) { Text(recap, color = colors.ink, fontSize = 13.sp) }
+        }
+        TopPerformers(w, tops, colors)
         return
     }
     // Line score.
@@ -301,8 +389,17 @@ private fun SummaryTab(w: WatchNow, g: Game, s: GameSummary, colors: ThemeColors
         StatTableRow(colors, cells = listOf(g.away.abbr) + (0 until periods).map { away.getOrElse(it) { "" } } + g.away.score)
         StatTableRow(colors, cells = listOf(g.home.abbr) + (0 until periods).map { home.getOrElse(it) { "" } } + g.home.score)
     }
-    // Top performers: each team's highest scorer.
-    val tops = listOf(g.away, g.home).mapNotNull { t -> s.teams[t.abbr]?.players?.maxByOrNull { it.points }?.let { t to it } }
+    TopPerformers(w, tops, colors)
+    // The last three plays.
+    if (s.plays.isNotEmpty()) {
+        Eyebrow("Recent plays", colors)
+        s.plays.takeLast(3).reversed().forEach { PlayLine(w, g, it, colors) }
+    }
+}
+
+/** Each team's highest scorer: photo, name, team and position, PTS / REB / AST. */
+@Composable
+private fun TopPerformers(w: WatchNow, tops: List<Pair<Team, BoxPlayer>>, colors: ThemeColors) {
     if (tops.isNotEmpty()) {
         Eyebrow("Top performers", colors)
         tops.forEach { (t, p) ->
@@ -320,11 +417,6 @@ private fun SummaryTab(w: WatchNow, g: Game, s: GameSummary, colors: ThemeColors
                 }
             }
         }
-    }
-    // The last three plays.
-    if (s.plays.isNotEmpty()) {
-        Eyebrow("Recent plays", colors)
-        s.plays.takeLast(3).reversed().forEach { PlayLine(w, g, it, colors) }
     }
 }
 
@@ -455,10 +547,11 @@ fun TeamSchedule(state: HavenState, colors: ThemeColors) {
     val nextIndex = games.indexOfFirst { it.state != GameState.FINAL }.let { if (it < 0) (games.size - 1).coerceAtLeast(0) else it }
     val list = rememberLazyListState(initialFirstVisibleItemIndex = (nextIndex - 2).coerceAtLeast(0))
     val nextFocus = remember { FocusRequester() }
-    HavenOverlay(dim = 0.45f, onDismiss = close) {
+    // Opens over the drawer or the NBA panel.
+    HavenOverlay(dim = STACKED_DIM, onDismiss = close) {
         Column(
             Modifier.align(Alignment.Center).width(640.dp).fillMaxHeight(0.86f)
-                .glassPanel(colors, RoundedCornerShape(26.dp), alpha = 0.95f).padding(24.dp),
+                .glassPanel(colors, RoundedCornerShape(26.dp), alpha = STACKED_GLASS).padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Eyebrow("Haven / Watch now / Schedule", colors)
@@ -469,7 +562,7 @@ fun TeamSchedule(state: HavenState, colors: ThemeColors) {
             if (games.isEmpty()) Text("Loading schedule…", color = colors.inkSoft, fontSize = 13.sp)
             LazyColumn(state = list, verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 itemsIndexed(games, key = { _, g -> g.espnId }) { i, g ->
-                    GlassCard(colors, Modifier.fillMaxWidth(), selected = i == nextIndex, focusRequester = if (i == nextIndex) nextFocus else null, onClick = { state.detailGameId = g.espnId }) { ink ->
+                    GlassCard(colors, Modifier.fillMaxWidth(), selected = i == nextIndex, focusRequester = if (i == nextIndex) nextFocus else null, onClick = { state.openGame(g) }) { ink ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(shortDate(g), color = ink.copy(alpha = 0.75f), fontSize = 13.sp, modifier = Modifier.width(110.dp))
                             Text(opponent(g, fav) + " · " + Nba.teamName(if (g.home.abbr == fav) g.away.abbr else g.home.abbr), color = ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1)

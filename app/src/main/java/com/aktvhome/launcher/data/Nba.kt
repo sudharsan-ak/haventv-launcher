@@ -152,12 +152,19 @@ object Nba {
         }
         val abbrs = (lines.keys + teamStats.keys + players.keys).distinct()
         val series = o.optJSONArray("seasonseries")?.optJSONObject(0)?.let { it.optString("summary").ifBlank { it.optString("description") } }?.ifBlank { null }
+        // The recap article, when ESPN has one: its short description, else the story's first paragraph.
+        val recap = o.optJSONObject("article")?.let { a ->
+            a.optString("description").ifBlank { null }
+                ?: a.optString("story").let { html -> Regex("<p>(.*?)</p>", RegexOption.DOT_MATCHES_ALL).find(html)?.groupValues?.get(1) ?: html }
+                    .replace(Regex("<[^>]+>"), "").replace("&nbsp;", " ").replace("&amp;", "&").trim().ifBlank { null }
+        }
         return GameSummary(
             game = game,
             lines = lines,
             plays = plays,
             teams = abbrs.associateWith { TeamBox(players[it].orEmpty(), teamStats[it].orEmpty()) },
             series = series,
+            recap = recap,
         )
     }
 

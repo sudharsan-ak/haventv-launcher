@@ -9,8 +9,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.lifecycleScope
@@ -20,6 +27,7 @@ import com.aktvhome.launcher.data.PrivateDns
 import kotlinx.coroutines.launch
 import com.aktvhome.launcher.data.SettingsStore
 import com.aktvhome.launcher.data.ThemeId
+import com.aktvhome.launcher.ui.LastNightRecap
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.Overlay
 import com.aktvhome.launcher.ui.kingdom.KingdomHome
@@ -27,7 +35,6 @@ import com.aktvhome.launcher.ui.settings.Personalize
 import com.aktvhome.launcher.ui.settings.QuickSettings
 import com.aktvhome.launcher.ui.settings.RestorePrompt
 import com.aktvhome.launcher.ui.watch.ContinuePanel
-import com.aktvhome.launcher.ui.watch.GameDetail
 import com.aktvhome.launcher.ui.watch.LivePanel
 import com.aktvhome.launcher.ui.watch.NbaPanel
 import com.aktvhome.launcher.ui.watch.TeamSchedule
@@ -81,12 +88,21 @@ class MainActivity : ComponentActivity() {
             // As the home screen there's nothing to go back to, so Back only ends a move.
             BackHandler(enabled = state.moving != null || state.isHome) { state.moving = null }
 
-            Crossfade(targetState = s.theme, animationSpec = tween(350), label = "theme") { theme ->
-                when (theme) {
-                    ThemeId.TIDE -> TideHome(state, colors)
-                    ThemeId.KINGDOM -> KingdomHome(state, colors)
+            // This TV can't blur across windows (the overlays' blur-behind does nothing), so the home
+            // blurs itself while anything floats over it; the overlays stay sharp.
+            val covered = state.overlay != Overlay.NONE || state.scheduleOpen || state.backup.offerRestore
+            val homeBlur by animateDpAsState(if (covered) 18.dp else 0.dp, tween(200), label = "homeBlur")
+            Box(Modifier.fillMaxSize().then(if (homeBlur > 0.dp) Modifier.blur(homeBlur) else Modifier)) {
+                Crossfade(targetState = s.theme, animationSpec = tween(350), label = "theme") { theme ->
+                    when (theme) {
+                        ThemeId.TIDE -> TideHome(state, colors)
+                        ThemeId.KINGDOM -> KingdomHome(state, colors)
+                    }
                 }
             }
+
+            // The morning catch-up toast, on Home only.
+            LastNightRecap(state, colors)
 
             // Settings float over the home, which stays live behind them.
             when (state.overlay) {
@@ -98,9 +114,8 @@ class MainActivity : ComponentActivity() {
                 Overlay.CONTINUE -> ContinuePanel(state, colors)
                 Overlay.NONE -> Unit
             }
-            // Schedule and game detail stack on top of the drawer (or the home, from the strip).
+            // The schedule stacks on top of the drawer or the NBA panel.
             if (state.scheduleOpen) TeamSchedule(state, colors)
-            state.detailGameId?.let { GameDetail(state, colors, it) }
             if (state.backup.offerRestore) RestorePrompt(state, colors)
         }
     }
@@ -111,7 +126,7 @@ class MainActivity : ComponentActivity() {
         if (!intent.hasCategory(Intent.CATEGORY_HOME)) return
         state.isHome = true
         state.overlay = Overlay.NONE
-        state.detailGameId = null
+        state.nbaGame = null
         state.scheduleOpen = false
         state.menuFor = null
         state.moving = null

@@ -46,6 +46,8 @@ import com.aktvhome.launcher.ui.settings.CloseButton
 import com.aktvhome.launcher.ui.settings.Eyebrow
 import com.aktvhome.launcher.ui.settings.GlassCard
 import com.aktvhome.launcher.ui.settings.HavenOverlay
+import com.aktvhome.launcher.ui.settings.STACKED_DIM
+import com.aktvhome.launcher.ui.settings.STACKED_GLASS
 import com.aktvhome.launcher.ui.settings.glassPanel
 import com.aktvhome.launcher.ui.theme.ThemeColors
 import java.time.LocalDate
@@ -103,7 +105,7 @@ fun WatchDrawer(state: HavenState, colors: ThemeColors) {
                     list == null -> Note("Loading games…", colors)
                     list.isEmpty() -> Note("No NBA games on ${if (day == w.today()) "today" else day.format(DateTimeFormatter.ofPattern("EEEE, MMM d"))}.", colors)
                     else -> list.forEachIndexed { i, g ->
-                        GameRow(g, fav, colors, modifier = if (i == 0) upTo(days.of(day)) else Modifier) { state.detailGameId = g.espnId }
+                        GameRow(g, fav, colors, modifier = if (i == 0) upTo(days.of(day)) else Modifier) { state.openGame(g) }
                     }
                 }
             }
@@ -209,9 +211,10 @@ private fun Note(text: String, colors: ThemeColors) {
 fun DatePickerDialog(colors: ThemeColors, current: LocalDate, onPick: (LocalDate) -> Unit, onDismiss: () -> Unit) {
     var month by remember { mutableStateOf(current.withDayOfMonth(1)) }
     val first = remember { FocusRequester() }
-    HavenOverlay(dim = 0.3f, onDismiss = onDismiss) {
+    // Opens over the drawer or the NBA panel.
+    HavenOverlay(dim = STACKED_DIM, onDismiss = onDismiss) {
         Column(
-            Modifier.align(Alignment.Center).width(460.dp).glassPanel(colors, RoundedCornerShape(24.dp), alpha = 0.95f).padding(22.dp),
+            Modifier.align(Alignment.Center).width(460.dp).glassPanel(colors, RoundedCornerShape(24.dp), alpha = STACKED_GLASS).padding(22.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -109,6 +109,9 @@ class WatchNow(
         }
     }
 
+    /** When [date]'s games were last fetched, or 0. */
+    fun fetchedAt(date: LocalDate): Long = loadedAt[date] ?: 0L
+
     /** True when [date]'s games were fetched in the last 3 minutes (the alerts' rule for fresh). */
     fun fresh(date: LocalDate): Boolean = System.currentTimeMillis() - (loadedAt[date] ?: 0L) <= 3 * 60_000L
 
@@ -222,8 +225,19 @@ class WatchNow(
         return info
     }
 
-    /** A game's summary from ESPN, or null if it couldn't be fetched. */
-    suspend fun summary(espnId: String): GameSummary? = withContext(Dispatchers.IO) { runCatching { Nba.summary(espnId) }.getOrNull() }
+    /** Game summaries fetched this session, so going back to a game shows it at once. */
+    val summaries = mutableStateMapOf<String, GameSummary>()
+    private val summaryAt = mutableMapOf<String, Long>()
+
+    fun summaryTime(espnId: String): Long = summaryAt[espnId] ?: 0L
+
+    /** A game's summary from ESPN (kept in [summaries]), or null if it couldn't be fetched. */
+    suspend fun summary(espnId: String): GameSummary? {
+        val got = withContext(Dispatchers.IO) { runCatching { Nba.summary(espnId) }.getOrNull() } ?: return null
+        summaries[espnId] = got
+        summaryAt[espnId] = System.currentTimeMillis()
+        return got
+    }
 
     /** A game already loaded (any day's scoreboard, or the team schedule), with when it was fetched. */
     fun findGame(espnId: String): Pair<Game, Long>? {

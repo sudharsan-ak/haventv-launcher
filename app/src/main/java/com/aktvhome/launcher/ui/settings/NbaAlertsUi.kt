@@ -112,6 +112,9 @@ fun NbaAlertsPage(state: HavenState, colors: ThemeColors, first: Modifier) {
             store.update { it.copy(bannerSeconds = v.removeSuffix(" s").toInt()) }
         }
     }
+    SettingsRow("Last night recap", "A catch-up on Haven's Home each morning", colors) {
+        Pill(onOff(s.lastNightRecap), colors, selected = s.lastNightRecap) { store.update { it.copy(lastNightRecap = !it.lastNightRecap) } }
+    }
     SettingsRow("Send test alert", testNote, colors) {
         Pill("Send", colors) {
             testNote = if (HomeOverrideService.sendTestAlert()) "Sent. The banner shows in 10 s, over whatever's on."
