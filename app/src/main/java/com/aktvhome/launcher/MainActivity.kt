@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Bundle
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -30,6 +31,7 @@ import com.aktvhome.launcher.data.ThemeId
 import com.aktvhome.launcher.ui.LastNightRecap
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.Overlay
+import com.aktvhome.launcher.ui.WallpaperHint
 import com.aktvhome.launcher.ui.kingdom.KingdomHome
 import com.aktvhome.launcher.ui.settings.Personalize
 import com.aktvhome.launcher.ui.settings.QuickSettings
@@ -84,8 +86,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // As the home screen there's nothing to go back to, so Back only ends a move.
-            BackHandler(enabled = state.moving != null || state.isHome) { state.moving = null }
+            // As the home screen there's nothing to go back to, so Back ends a move, or else shows
+            // just the wallpaper.
+            BackHandler(enabled = state.moving != null || state.isHome) {
+                if (state.moving != null) state.moving = null
+                else if (state.overlay == Overlay.NONE && state.menuFor == null) state.wallpaperView = true
+            }
 
             // This TV can't blur across windows (the overlays' blur-behind does nothing), so the home
             // blurs itself while anything floats over it; the overlays stay sharp.
@@ -99,6 +105,8 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+
+            WallpaperHint(state, colors)
 
             // The morning catch-up toast, on Home only.
             LastNightRecap(state, colors)
@@ -117,11 +125,33 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** The key that ended wallpaper view; the rest of its press (repeats, release) is swallowed. */
+    private var swallowKey: Int? = null
+
+    /**
+     * In wallpaper view any key brings Home back and does nothing else: Back doesn't hide it again
+     * and OK doesn't open an app. Caught here so it works wherever focus is. Volume and mute keep
+     * working and leave the wallpaper up.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (state.wallpaperView && event.action == KeyEvent.ACTION_DOWN && event.keyCode !in VOLUME_KEYS) {
+            state.wallpaperView = false
+            swallowKey = event.keyCode
+            return true
+        }
+        if (event.keyCode == swallowKey) {
+            if (event.action == KeyEvent.ACTION_UP) swallowKey = null
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     /** Home pressed while Haven is already open: close whatever is up and go back to the first row. */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (!intent.hasCategory(Intent.CATEGORY_HOME)) return
         state.isHome = true
+        state.wallpaperView = false
         state.overlay = Overlay.NONE
         state.nbaGame = null
         state.nbaSchedule = null
@@ -151,8 +181,20 @@ class MainActivity : ComponentActivity() {
             HomeOverride.reconnectIfStale(applicationContext)
         }    }
 
+    override fun onResume() {
+        super.onResume()
+        // Something may have changed while Haven was away (Accessibility, HDMI-CEC, a grant).
+        state.device.refresh()
+    }
+
     override fun onStop() {
         unregisterReceiver(packageReceiver)
+        state.wallpaperView = false
+        swallowKey = null
         super.onStop()
+    }
+
+    private companion object {
+        val VOLUME_KEYS = setOf(KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_MUTE)
     }
 }

@@ -49,6 +49,7 @@ import com.aktvhome.launcher.data.AppEntry
 import com.aktvhome.launcher.data.Background
 import com.aktvhome.launcher.data.Motion
 import com.aktvhome.launcher.ui.PhotoBackdrop
+import com.aktvhome.launcher.ui.homeShown
 import com.aktvhome.launcher.ui.AppMenuOverlays
 import com.aktvhome.launcher.ui.CollectionIcons
 import com.aktvhome.launcher.ui.GearButton
@@ -96,6 +97,9 @@ fun TideHome(state: HavenState, colors: ThemeColors) {
         }
     }
 
+    // Wallpaper view (Back on Home) fades the layout out, leaving just the background.
+    val homeAlpha = homeShown(state)
+
     Box(
         Modifier
             .fillMaxSize()
@@ -103,7 +107,7 @@ fun TideHome(state: HavenState, colors: ThemeColors) {
     ) {
         val photo = state.wallpapers.current
         if (settings.bgTide == Background.PHOTO && photo != null) {
-            PhotoBackdrop(photo, state.dayness(), state.wallpapers.credit.takeIf { settings.wallCredit })
+            PhotoBackdrop(photo, state.dayness(), state.wallpapers.credit.takeIf { settings.wallCredit }, tint = homeAlpha)
         } else {
             TideBackdrop(colors, settings.motion)
         }
@@ -111,13 +115,13 @@ fun TideHome(state: HavenState, colors: ThemeColors) {
         // Down from the gear goes back to the collection you were on.
         GearButton(
             colors,
-            Modifier.align(Alignment.TopEnd).padding(top = 44.dp, end = 48.dp)
+            Modifier.align(Alignment.TopEnd).padding(top = 44.dp, end = 48.dp).graphicsLayer { alpha = homeAlpha }
                 .focusProperties { down = if (showStrip) stripFirst else chips.requester(currentIndex) },
         ) {
             state.overlay = Overlay.QUICK
         }
 
-        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.fillMaxSize().graphicsLayer { alpha = homeAlpha }, horizontalAlignment = Alignment.CenterHorizontally) {
             Spacer(Modifier.height(36.dp))
             Text(
                 state.greetingLine().orEmpty(),

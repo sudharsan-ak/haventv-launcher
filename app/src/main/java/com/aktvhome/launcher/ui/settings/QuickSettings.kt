@@ -29,6 +29,9 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import com.aktvhome.launcher.data.SonyControl
+import com.aktvhome.launcher.data.Capability
+import com.aktvhome.launcher.data.DeviceCapabilities
+import com.aktvhome.launcher.data.GenericControl
 import com.aktvhome.launcher.HomeOverrideService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -130,52 +133,60 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
             } else {
                 val dns by rememberDnsView(state)
                 val dnsOn = dns.active?.host != null || dns.active == DnsChoice.CUSTOM
-                TileRow {
-                    QuickTile("Theme", s.theme.label, R.drawable.fluent_artist_palette, colors, first) {
-                        store.update { it.copy(theme = it.theme.next()) }
-                    }
-                    QuickTile("Day & night", s.dayMode.label, R.drawable.fluent_sun, colors) {
-                        store.update { it.copy(dayMode = it.dayMode.next()) }
-                    }
-                    QuickTile("Motion", s.motion.label, R.drawable.fluent_wavy_dash, colors) {
-                        store.update { it.copy(motion = it.motion.next()) }
-                    }
-                }
-                TileRow {
-                    QuickTile("Clock", if (s.clock24) "24-hour" else "12-hour", R.drawable.fluent_mantelpiece_clock, colors) {
-                        store.update { it.copy(clock24 = !it.clock24) }
-                    }
-                    QuickTile("DNS", if (dnsOn) dns.label else "Off", R.drawable.fluent_shield, colors) { state.toggleDns() }
-                    QuickTile(
-                        "Wallpaper", state.wallpapers.credit.ifBlank { "Photo is off" }, R.drawable.fluent_framed_picture, colors,
-                    ) { state.wallpapers.tick(force = true) }
-                }
+                val device = state.device
+                // Only what works on this TV right now; anything else waits on This TV, and the grid
+                // closes up around what's left.
+                Tiles(
+                    colors,
+                    listOfNotNull(
+                        Tile("Theme", s.theme.label, R.drawable.fluent_artist_palette, first) {
+                            store.update { it.copy(theme = it.theme.next()) }
+                        },
+                        Tile("Day & night", s.dayMode.label, R.drawable.fluent_sun) {
+                            store.update { it.copy(dayMode = it.dayMode.next()) }
+                        },
+                        Tile("Motion", s.motion.label, R.drawable.fluent_wavy_dash) {
+                            store.update { it.copy(motion = it.motion.next()) }
+                        },
+                        Tile("Clock", if (s.clock24) "24-hour" else "12-hour", R.drawable.fluent_mantelpiece_clock) {
+                            store.update { it.copy(clock24 = !it.clock24) }
+                        },
+                        Tile("DNS", if (dnsOn) dns.label else "Off", R.drawable.fluent_shield) { state.toggleDns() }
+                            .takeIf { device.available(Capability.SECURE_SETTINGS) },
+                        Tile("Wallpaper", state.wallpapers.credit.ifBlank { "Photo is off" }, R.drawable.fluent_framed_picture) {
+                            state.wallpapers.tick(force = true)
+                        },
+                    ),
+                )
 
                 Spacer(Modifier.height(2.dp))
                 Eyebrow("TV", colors)
-                TileRow {
-                    QuickTile("Picture", tv.pictureSummary() ?: "Picture settings", R.drawable.fluent_sunrise_over_mountains, colors, tileFocus[TvPage.PICTURE]) {
-                        show(TvPage.PICTURE)
-                    }
-                    QuickTile("Sound", tv.soundSummary() ?: "Sound & output", R.drawable.fluent_musical_note, colors, tileFocus[TvPage.SOUND]) {
-                        show(TvPage.SOUND)
-                    }
-                    QuickTile("Power saving", tv.saving?.let(::savingLabel) ?: "Energy", R.drawable.fluent_high_voltage, colors, tileFocus[TvPage.SAVING]) {
-                        show(TvPage.SAVING)
-                    }
-                }
-                TileRow {
-                    QuickTile("Screen", "Wide mode & more", R.drawable.fluent_desktop_computer, colors) {
-                        open(screenSettings())
-                    }
-                    // "Wi-Fi & Bluetooth" doesn't fit a one-third tile; the page itself keeps the full name.
-                    QuickTile("Wi-Fi & BT", "${wifiText(context)} · ${bluetoothText(context)}", R.drawable.fluent_wifi_bt, colors, tileFocus[TvPage.NETWORK]) {
-                        show(TvPage.NETWORK)
-                    }
-                    QuickTile("Sleep timer", sleepEnds?.let { "Off at ${timeText(it)}" } ?: "Off", R.drawable.fluent_crescent_moon, colors, tileFocus[TvPage.SLEEP]) {
-                        show(TvPage.SLEEP)
-                    }
-                }
+                val sony = device.available(Capability.TV_CONTROL)
+                Tiles(
+                    colors,
+                    listOfNotNull(
+                        Tile("Picture", tv.pictureSummary() ?: "Picture settings", R.drawable.fluent_sunrise_over_mountains, tileFocus[TvPage.PICTURE]) {
+                            show(TvPage.PICTURE)
+                        }.takeIf { sony },
+                        Tile(
+                            "Sound", if (device.isSony) tv.soundSummary() ?: "Sound & output" else "Volume ${GenericControl.volume(context)}",
+                            R.drawable.fluent_musical_note, tileFocus[TvPage.SOUND],
+                        ) { show(TvPage.SOUND) },
+                        Tile("Power saving", tv.saving?.let(::savingLabel) ?: "Energy", R.drawable.fluent_high_voltage, tileFocus[TvPage.SAVING]) {
+                            show(TvPage.SAVING)
+                        }.takeIf { sony },
+                        Tile("Screen", if (device.isSony) "Wide mode & more" else "Resolution & more", R.drawable.fluent_desktop_computer) {
+                            open(screenPage(context, device.isSony))
+                        }.takeIf { device.available(Capability.DISPLAY_SETTINGS) },
+                        // "Wi-Fi & Bluetooth" doesn't fit a one-third tile; the page itself keeps the full name.
+                        Tile("Wi-Fi & BT", "${wifiText(context)} · ${bluetoothText(context)}", R.drawable.fluent_wifi_bt, tileFocus[TvPage.NETWORK]) {
+                            show(TvPage.NETWORK)
+                        },
+                        Tile("Sleep timer", sleepEnds?.let { "Off at ${timeText(it)}" } ?: "Off", R.drawable.fluent_crescent_moon, tileFocus[TvPage.SLEEP]) {
+                            show(TvPage.SLEEP)
+                        }.takeIf { device.available(Capability.SLEEP) },
+                    ),
+                )
 
                 Spacer(Modifier.height(2.dp))
                 PowerArea(
@@ -203,10 +214,24 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
 }
 
-/** One line of three equal tiles. */
+/** A Quick settings tile, before it's laid out. */
+private class Tile(
+    val title: String,
+    val value: String,
+    @DrawableRes val icon: Int,
+    val focus: FocusRequester? = null,
+    val onClick: () -> Unit,
+)
+
+/** [tiles] three to a line; a short last line keeps its tiles the same width as the others. */
 @Composable
-private fun TileRow(content: @Composable RowScope.() -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), content = content)
+private fun Tiles(colors: ThemeColors, tiles: List<Tile>) {
+    tiles.chunked(3).forEach { line ->
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            line.forEach { t -> QuickTile(t.title, t.value, t.icon, colors, t.focus, t.onClick) }
+            repeat(3 - line.size) { Spacer(Modifier.weight(1f)) }
+        }
+    }
 }
 
 /** Compact tile: a colour emoji on the left, name and current value on the right. */
@@ -278,7 +303,7 @@ private fun PowerArea(
 
     suspend fun pair() {
         if (!HomeOverrideService.canReadPin) {
-            message = "Pairing needs Haven's Home button service. Turn it on in All settings › TV & network › Home button."
+            message = "Pairing needs Haven's Home button service. Turn it on in All settings › TV & network › Home button, or in Settings › Accessibility."
             return
         }
         busy = true
@@ -306,10 +331,11 @@ private fun PowerArea(
         when (result) {
             SonyControl.Result.DONE -> {
                 message = "Paired. Haven now shows in Remote device settings."
+                state.device.refresh()
                 go(PowerStep.CHOOSE)
             }
-            null -> message = "Couldn't read the PIN from the TV's popup. Press Reject on it, then try ⏻ again."
-            else -> message = "Pairing didn't finish. Press ⏻ to try again."
+            null -> message = "Couldn't read the PIN from the TV's popup. Press Reject on it, then press the power button again."
+            else -> message = "Pairing didn't finish. Press the power button to try again."
         }
     }
 
@@ -346,10 +372,23 @@ private fun PowerArea(
                 BarButton("Android settings", colors, Modifier.weight(1f), onClick = onAndroidSettings)
                 BarButton(null, colors, Modifier.width(48.dp), Icons.Rounded.PowerSettingsNew, powerFocus) {
                     if (busy) return@BarButton
-                    if (sony.paired) go(PowerStep.CHOOSE) else scope.launch { pair() }
+                    // Pairing is a Sony thing; other TVs go straight to Sleep / Restart.
+                    if (sony.paired || !state.device.isSony) go(PowerStep.CHOOSE) else scope.launch { pair() }
                 }
             }
-            PowerStep.CHOOSE -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Without Sony's service: sleep through the Home button service, and Android's own power
+            // menu for Restart (apps can't restart a device themselves).
+            PowerStep.CHOOSE -> if (!state.device.isSony) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                BarButton("Sleep", colors, Modifier.weight(1f), Icons.Rounded.PowerSettingsNew, stepFocus) {
+                    if (GenericControl.sleep()) onPoweringOff()
+                    else message = "Sleep needs Haven's Home button service. Turn it on in Settings › Accessibility › Haven."
+                }
+                BarButton("Restart…", colors, Modifier.weight(1f), Icons.Rounded.RestartAlt) {
+                    if (GenericControl.powerMenu()) onPoweringOff()
+                    else message = "Restart needs Haven's Home button service. Turn it on in Settings › Accessibility › Haven."
+                }
+                BarButton("Cancel", colors, Modifier.weight(1f)) { message = null; go(PowerStep.BAR) }
+            } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 BarButton("Power off", colors, Modifier.weight(1f), Icons.Rounded.PowerSettingsNew, stepFocus) {
                     send({ sony.powerOff() }) { onPoweringOff() }
                 }
@@ -422,6 +461,10 @@ private fun sony(pkg: String, activity: String, action: String): Intent =
 
 /** Sony's Screen page (wide mode, display area); its control service doesn't offer these. */
 fun screenSettings(): Intent = sony("com.sony.dtv.configsettings", "ScreenSettingActivity", "com.sony.dtv.base.screensettings")
+
+/** The screen settings to open: Sony's Screen page on a Sony, else this device's display settings. */
+fun screenPage(context: Context, isSony: Boolean): Intent =
+    if (isSony) screenSettings() else DeviceCapabilities.displaySettings(context) ?: Intent(Settings.ACTION_SETTINGS)
 
 /** Opens a TV settings page; falls back to the TV's main Settings if that page isn't there. */
 fun openSystemPage(context: Context, intent: Intent) {

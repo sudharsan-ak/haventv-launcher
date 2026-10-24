@@ -1,11 +1,13 @@
 package com.aktvhome.launcher
 
 import android.accessibilityservice.AccessibilityService
+import android.content.ComponentName
 import android.content.Intent
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.aktvhome.launcher.data.AccessibilityGuard
+import com.aktvhome.launcher.data.DeviceCapabilities
 import com.aktvhome.launcher.data.NbaAlerts
 import com.aktvhome.launcher.data.SettingsStore
 import com.aktvhome.launcher.ui.AlertBanner
@@ -22,8 +24,11 @@ import kotlinx.coroutines.launch
  * set to, so this:
  * - catches the Home key itself and opens Haven instead (works even when Google TV's home is
  *   already on screen, where no window change happens);
- * - swaps Google TV's home page for Haven whenever it comes up some other way (Back out of an app);
- * - opens Haven when the service starts and Google TV's home is already showing (boot, updates).
+ * - swaps the device's own home page for Haven whenever it comes up some other way (Back out of an
+ *   app): Google TV's, the classic Android TV launcher's or a maker's own, whichever this device has;
+ * - opens Haven when the service starts and that home is already showing (boot, updates).
+ * On TVs without Sony's control service it also puts the device to sleep and opens Android's power
+ * menu for Quick settings' power button and the sleep timer ([sleep], [powerMenu]).
  * It only looks at which app is in front, not at what's on screen. Two exceptions, each only while
  * Haven is waiting for it:
  * - pairing with the TV: Sony's registration popup covers Haven and cancels the PIN when it closes,
@@ -39,6 +44,10 @@ class HomeOverrideService : AccessibilityService() {
 
     private var lastRedirect = 0L
 
+    /** The device's own home screen activity, watched so Haven opens instead. */
+    private var home: ComponentName? = null
+    private val homePackage: String get() = home?.packageName ?: GOOGLE_TV_LAUNCHER
+
     private val guard = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private var banner: AlertBanner? = null
@@ -48,7 +57,9 @@ class HomeOverrideService : AccessibilityService() {
         super.onServiceConnected()
         connected = true
         instance = this
-        if (rootInActiveWindow?.packageName == GOOGLE_TV_LAUNCHER) openHaven()
+        // The device's own home screen (Google TV, the classic Android TV launcher or a maker's own).
+        home = DeviceCapabilities.stockLauncher(applicationContext)
+        if (rootInActiveWindow?.packageName == homePackage) openHaven()
         val store = SettingsStore(applicationContext)
         val b = AlertBanner(this, store)
         banner = b
@@ -79,9 +90,11 @@ class HomeOverrideService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
-        if (event.packageName != GOOGLE_TV_LAUNCHER) return
-        // Only the home page itself; the launcher's other screens (profiles, accounts, inputs) stay usable.
-        if (event.className?.toString()?.endsWith(".home.HomeActivity") != true) return
+        if (event.packageName != homePackage) return
+        // Only the home page itself; the launcher's other screens (profiles, accounts, inputs) stay
+        // usable. Google TV's home page is its HomeActivity; other launchers' is their Home activity.
+        val cls = event.className?.toString() ?: return
+        if (!cls.endsWith(".home.HomeActivity") && cls != home?.className) return
         openHaven()
     }
 
@@ -210,6 +223,12 @@ class HomeOverrideService : AccessibilityService() {
             a.sendTest()
             return true
         }
+
+        /** Puts the device to sleep, as its power button would. False when the service isn't running. */
+        fun sleep(): Boolean = instance?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN) == true
+
+        /** Opens Android's own power menu (Restart lives there). False when the service isn't running. */
+        fun powerMenu(): Boolean = instance?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_POWER_DIALOG) == true
 
         /** Reads the PIN from Sony's registration popup, if it's on screen. */
         fun readSonyPin(): String? = instance?.findSonyPin()

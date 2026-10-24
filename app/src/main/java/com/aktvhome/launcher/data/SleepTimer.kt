@@ -11,8 +11,9 @@ import kotlinx.coroutines.launch
 
 /**
  * Haven's own sleep timer: after the chosen minutes, the TV powers off through Sony's control
- * service (the same as the power button in Quick settings). Sony's timer isn't reachable from its
- * control service, so the two are separate. A restart clears it.
+ * service (the same as the power button in Quick settings), or on other TVs the device goes to
+ * sleep. Sony's timer isn't reachable from its control service, so the two are separate. A restart
+ * clears it.
  */
 object SleepTimer {
 
@@ -43,7 +44,10 @@ object SleepTimer {
     )
 }
 
-/** Fires when the sleep timer runs out: powers the TV off. */
+/**
+ * Fires when the sleep timer runs out: powers the TV off through Sony's service when Haven is
+ * paired with one, otherwise puts the device to sleep through the Home button service.
+ */
 class SleepTimerReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val done = goAsync()
@@ -51,7 +55,9 @@ class SleepTimerReceiver : BroadcastReceiver() {
         app.getSharedPreferences("sleep_timer", Context.MODE_PRIVATE).edit().remove("endsAt").apply()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                SonyControl(app).powerOff()
+                val sony = SonyControl(app)
+                val off = sony.paired && sony.powerOff() == SonyControl.Result.DONE
+                if (!off) GenericControl.sleep()
             } finally {
                 done.finish()
             }
