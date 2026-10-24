@@ -56,6 +56,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.aktvhome.launcher.data.AppEntry
 import com.aktvhome.launcher.ui.theme.ThemeColors
+import com.aktvhome.launcher.ui.settings.STACKED_GLASS
+import com.aktvhome.launcher.ui.settings.glassPanel
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
@@ -238,15 +240,17 @@ fun Pill(
     }
 }
 
+/**
+ * A small titled dialog (date menu, team picker, app menu…) in the same frosted glass as the
+ * panels, at the opacity of anything stacked over another panel.
+ */
 @Composable
 fun GlassDialog(colors: ThemeColors, title: String, onDismiss: () -> Unit, content: @Composable () -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
         Column(
             Modifier
                 .width(360.dp)
-                .clip(RoundedCornerShape(22.dp))
-                .background(colors.surface.copy(alpha = 0.97f))
-                .border(1.dp, colors.edge, RoundedCornerShape(22.dp))
+                .glassPanel(colors, RoundedCornerShape(22.dp), alpha = STACKED_GLASS)
                 .padding(22.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
