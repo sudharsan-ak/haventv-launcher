@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Wi-Fi & Bluetooth for Quick settings, drawn for Haven in the flat Fluent Emoji style (Unicode has
+  no Wi-Fi emoji): three arcs and a dot in Fluent blue, lighter at the top, and a round Bluetooth
+  badge at the bottom right.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="32dp"
+    android:height="32dp"
+    android:viewportWidth="32"
+    android:viewportHeight="32">
+    <path
+        android:pathData="M8.90 20.40A6.5 6.5 0 0 1 18.10 20.40"
+        android:strokeWidth="3"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="13.5"
+                android:startY="7"
+                android:endX="13.5"
+                android:endY="27"
+                android:startColor="#2EA8FF"
+                android:endColor="#1767D1" />
+        </aapt:attr>
+    </path>
+    <path
+        android:pathData="M5.37 16.87A11.5 11.5 0 0 1 21.63 16.87"
+        android:strokeWidth="3"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="13.5"
+                android:startY="7"
+                android:endX="13.5"
+                android:endY="27"
+                android:startColor="#2EA8FF"
+                android:endColor="#1767D1" />
+        </aapt:attr>
+    </path>
+    <path
+        android:pathData="M1.83 13.33A16.5 16.5 0 0 1 25.17 13.33"
+        android:strokeWidth="3"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="13.5"
+                android:startY="7"
+                android:endX="13.5"
+                android:endY="27"
+                android:startColor="#2EA8FF"
+                android:endColor="#1767D1" />
+        </aapt:attr>
+    </path>
+    <path android:pathData="M13.5 22.6a2.4 2.4 0 1 1 0 4.8a2.4 2.4 0 1 1 0-4.8z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="13.5"
+                android:startY="7"
+                android:endX="13.5"
+                android:endY="27"
+                android:startColor="#2EA8FF"
+                android:endColor="#1767D1" />
+        </aapt:attr>
+    </path>
+    <path
+        android:fillColor="#1E6BE6"
+        android:pathData="M26.0 20.5a5.5 5.5 0 1 1 0 11.0a5.5 5.5 0 1 1 0 -11.0z"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1" />
+    <path
+        android:pathData="M24.3 23.9L27.7 27.2L26.0 28.9V23.1L27.7 24.8L24.3 28.1"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.1"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

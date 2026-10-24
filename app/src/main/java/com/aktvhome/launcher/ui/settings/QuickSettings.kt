@@ -2,10 +2,12 @@ package com.aktvhome.launcher.ui.settings
 
 import android.bluetooth.BluetoothManager
 import android.content.Context
+import androidx.annotation.DrawableRes
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.provider.Settings
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -19,13 +21,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Animation
-import androidx.compose.material.icons.rounded.AspectRatio
-import androidx.compose.material.icons.rounded.Bedtime
-import androidx.compose.material.icons.rounded.BrightnessAuto
-import androidx.compose.material.icons.rounded.Image
-import androidx.compose.material.icons.rounded.MusicNote
-import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.runtime.rememberCoroutineScope
@@ -39,12 +34,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import androidx.compose.material.icons.rounded.Schedule
-import androidx.compose.material.icons.rounded.Shield
-import androidx.compose.material.icons.rounded.EnergySavingsLeaf
 import com.aktvhome.launcher.data.SleepTimer
-import androidx.compose.material.icons.rounded.Wallpaper
-import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -61,10 +51,12 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aktvhome.launcher.R
 import com.aktvhome.launcher.data.DnsChoice
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.Overlay
@@ -139,48 +131,48 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
                 val dns by rememberDnsView(state)
                 val dnsOn = dns.active?.host != null || dns.active == DnsChoice.CUSTOM
                 TileRow {
-                    QuickTile("Theme", s.theme.label, Icons.Rounded.Palette, colors, first) {
+                    QuickTile("Theme", s.theme.label, R.drawable.fluent_artist_palette, colors, first) {
                         store.update { it.copy(theme = it.theme.next()) }
                     }
-                    QuickTile("Day & night", s.dayMode.label, Icons.Rounded.BrightnessAuto, colors) {
+                    QuickTile("Day & night", s.dayMode.label, R.drawable.fluent_sun, colors) {
                         store.update { it.copy(dayMode = it.dayMode.next()) }
                     }
-                    QuickTile("Motion", s.motion.label, Icons.Rounded.Animation, colors) {
+                    QuickTile("Motion", s.motion.label, R.drawable.fluent_wavy_dash, colors) {
                         store.update { it.copy(motion = it.motion.next()) }
                     }
                 }
                 TileRow {
-                    QuickTile("Clock", if (s.clock24) "24-hour" else "12-hour", Icons.Rounded.Schedule, colors) {
+                    QuickTile("Clock", if (s.clock24) "24-hour" else "12-hour", R.drawable.fluent_mantelpiece_clock, colors) {
                         store.update { it.copy(clock24 = !it.clock24) }
                     }
-                    QuickTile("DNS", if (dnsOn) dns.label else "Off", Icons.Rounded.Shield, colors) { state.toggleDns() }
+                    QuickTile("DNS", if (dnsOn) dns.label else "Off", R.drawable.fluent_shield, colors) { state.toggleDns() }
                     QuickTile(
-                        "Wallpaper", state.wallpapers.credit.ifBlank { "Photo is off" }, Icons.Rounded.Wallpaper, colors,
+                        "Wallpaper", state.wallpapers.credit.ifBlank { "Photo is off" }, R.drawable.fluent_framed_picture, colors,
                     ) { state.wallpapers.tick(force = true) }
                 }
 
                 Spacer(Modifier.height(2.dp))
                 Eyebrow("TV", colors)
                 TileRow {
-                    QuickTile("Picture", tv.pictureSummary() ?: "Picture settings", Icons.Rounded.Image, colors, tileFocus[TvPage.PICTURE]) {
+                    QuickTile("Picture", tv.pictureSummary() ?: "Picture settings", R.drawable.fluent_sunrise_over_mountains, colors, tileFocus[TvPage.PICTURE]) {
                         show(TvPage.PICTURE)
                     }
-                    QuickTile("Sound", tv.soundSummary() ?: "Sound & output", Icons.Rounded.MusicNote, colors, tileFocus[TvPage.SOUND]) {
+                    QuickTile("Sound", tv.soundSummary() ?: "Sound & output", R.drawable.fluent_musical_note, colors, tileFocus[TvPage.SOUND]) {
                         show(TvPage.SOUND)
                     }
-                    QuickTile("Power saving", tv.saving?.let(::savingLabel) ?: "Energy", Icons.Rounded.EnergySavingsLeaf, colors, tileFocus[TvPage.SAVING]) {
+                    QuickTile("Power saving", tv.saving?.let(::savingLabel) ?: "Energy", R.drawable.fluent_high_voltage, colors, tileFocus[TvPage.SAVING]) {
                         show(TvPage.SAVING)
                     }
                 }
                 TileRow {
-                    QuickTile("Screen", "Wide mode & more", Icons.Rounded.AspectRatio, colors) {
+                    QuickTile("Screen", "Wide mode & more", R.drawable.fluent_desktop_computer, colors) {
                         open(screenSettings())
                     }
                     // "Wi-Fi & Bluetooth" doesn't fit a one-third tile; the page itself keeps the full name.
-                    QuickTile("Wi-Fi & BT", "${wifiText(context)} · ${bluetoothText(context)}", Icons.Rounded.Wifi, colors, tileFocus[TvPage.NETWORK]) {
+                    QuickTile("Wi-Fi & BT", "${wifiText(context)} · ${bluetoothText(context)}", R.drawable.fluent_wifi_bt, colors, tileFocus[TvPage.NETWORK]) {
                         show(TvPage.NETWORK)
                     }
-                    QuickTile("Sleep timer", sleepEnds?.let { "Off at ${timeText(it)}" } ?: "Off", Icons.Rounded.Bedtime, colors, tileFocus[TvPage.SLEEP]) {
+                    QuickTile("Sleep timer", sleepEnds?.let { "Off at ${timeText(it)}" } ?: "Off", R.drawable.fluent_crescent_moon, colors, tileFocus[TvPage.SLEEP]) {
                         show(TvPage.SLEEP)
                     }
                 }
@@ -217,12 +209,12 @@ private fun TileRow(content: @Composable RowScope.() -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), content = content)
 }
 
-/** Compact tile: icon on the left, name and current value on the right. */
+/** Compact tile: a colour emoji on the left, name and current value on the right. */
 @Composable
 private fun RowScope.QuickTile(
     title: String,
     value: String,
-    icon: ImageVector,
+    @DrawableRes icon: Int,
     colors: ThemeColors,
     focusRequester: FocusRequester? = null,
     onClick: () -> Unit,
@@ -244,7 +236,8 @@ private fun RowScope.QuickTile(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Icon(icon, null, tint = ink, modifier = Modifier.size(18.dp))
+        // Fluent Emoji in their own colours, not tinted like the rest of the panel.
+        Image(painterResource(icon), null, Modifier.size(22.dp))
         Column {
             Text(title, color = ink, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(value, color = ink.copy(alpha = 0.7f), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
