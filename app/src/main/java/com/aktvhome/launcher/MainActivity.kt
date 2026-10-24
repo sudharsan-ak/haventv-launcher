@@ -37,7 +37,6 @@ import com.aktvhome.launcher.ui.settings.RestorePrompt
 import com.aktvhome.launcher.ui.watch.ContinuePanel
 import com.aktvhome.launcher.ui.watch.LivePanel
 import com.aktvhome.launcher.ui.watch.NbaPanel
-import com.aktvhome.launcher.ui.watch.TeamSchedule
 import com.aktvhome.launcher.ui.watch.WatchDrawer
 import com.aktvhome.launcher.ui.theme.Palettes
 import com.aktvhome.launcher.ui.theme.dayness
@@ -90,7 +89,7 @@ class MainActivity : ComponentActivity() {
 
             // This TV can't blur across windows (the overlays' blur-behind does nothing), so the home
             // blurs itself while anything floats over it; the overlays stay sharp.
-            val covered = state.overlay != Overlay.NONE || state.scheduleOpen || state.backup.offerRestore
+            val covered = state.overlay != Overlay.NONE || state.backup.offerRestore
             val homeBlur by animateDpAsState(if (covered) 18.dp else 0.dp, tween(200), label = "homeBlur")
             Box(Modifier.fillMaxSize().then(if (homeBlur > 0.dp) Modifier.blur(homeBlur) else Modifier)) {
                 Crossfade(targetState = s.theme, animationSpec = tween(350), label = "theme") { theme ->
@@ -114,8 +113,6 @@ class MainActivity : ComponentActivity() {
                 Overlay.CONTINUE -> ContinuePanel(state, colors)
                 Overlay.NONE -> Unit
             }
-            // The schedule stacks on top of the drawer or the NBA panel.
-            if (state.scheduleOpen) TeamSchedule(state, colors)
             if (state.backup.offerRestore) RestorePrompt(state, colors)
         }
     }
@@ -127,7 +124,7 @@ class MainActivity : ComponentActivity() {
         state.isHome = true
         state.overlay = Overlay.NONE
         state.nbaGame = null
-        state.scheduleOpen = false
+        state.nbaSchedule = null
         state.menuFor = null
         state.moving = null
         state.focusedApp = null
