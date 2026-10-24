@@ -840,12 +840,15 @@ internal fun SettingsRow(
     colors: ThemeColors,
     control: @Composable () -> Unit,
 ) {
+    var active by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(16.dp)
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(colors.glass.copy(alpha = colors.glass.alpha * 0.8f))
-            .border(1.dp, colors.edge, RoundedCornerShape(16.dp))
+            .clip(shape)
+            .background(if (active) colors.glass else colors.glass.copy(alpha = colors.glass.alpha * 0.8f))
+            .border(1.dp, if (active) colors.accent.copy(alpha = 0.6f) else colors.edge, shape)
+            .onFocusChanged { active = it.hasFocus }
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
