@@ -40,6 +40,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.size
@@ -55,6 +56,7 @@ import androidx.compose.ui.unit.sp
 import com.aktvhome.launcher.data.Background
 import com.aktvhome.launcher.data.Motion
 import com.aktvhome.launcher.ui.PhotoBackdrop
+import com.aktvhome.launcher.ui.homeShown
 import com.aktvhome.launcher.ui.AppCard
 import com.aktvhome.launcher.ui.AppMenuOverlays
 import com.aktvhome.launcher.ui.GearButton
@@ -110,6 +112,9 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
         state.focusedApp?.color?.copy(alpha = colors.glow.alpha) ?: colors.glow, tween(900), label = "glow",
     )
 
+    // Wallpaper view (Back on Home) fades the layout out, leaving just the background.
+    val shown = homeShown(state)
+
     Box(
         Modifier
             .fillMaxSize()
@@ -117,7 +122,7 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
     ) {
         val photo = state.wallpapers.current
         if (settings.bgKingdom == Background.PHOTO && photo != null) {
-            PhotoBackdrop(photo, state.dayness(), state.wallpapers.credit.takeIf { settings.wallCredit })
+            PhotoBackdrop(photo, state.dayness(), state.wallpapers.credit.takeIf { settings.wallCredit }, tint = shown)
         } else {
             KingdomBackdrop(colors, glow, settings.motion, Modifier.fillMaxSize())
         }
@@ -125,6 +130,7 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
         Column(
             Modifier
                 .fillMaxSize()
+                .graphicsLayer { alpha = shown }
                 .verticalScroll(scroll)
                 .padding(top = 30.dp, bottom = 24.dp),
         ) {

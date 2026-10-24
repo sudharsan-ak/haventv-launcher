@@ -396,6 +396,11 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                                     walls.tick(force = true)
                                 }
                             }
+                            InfoStrip(
+                                "Wallpaper view",
+                                "Press Back on the home screen to see just the wallpaper. Press any button to bring Haven back.",
+                                colors,
+                            )
                             Eyebrow("Sources", colors)
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 WallSource.entries.forEach { src ->

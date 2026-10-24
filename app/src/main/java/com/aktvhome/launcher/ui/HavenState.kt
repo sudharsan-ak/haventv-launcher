@@ -93,6 +93,8 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
     var homePresses by mutableStateOf(0)
     /** True when Android opened Haven as the home screen (Back then has nowhere to go). */
     var isHome by mutableStateOf(false)
+    /** Wallpaper view: Back on Home hides the layout and the photo's tint; any key brings them back. */
+    var wallpaperView by mutableStateOf(false)
     /** Collection id to the package last opened from it; Down from that collection lands there. */
     private val lastOpened = mutableMapOf<String, String>()
 
