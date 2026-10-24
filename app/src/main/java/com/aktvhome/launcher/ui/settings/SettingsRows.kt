@@ -29,7 +29,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -117,13 +116,14 @@ internal fun SettingsPickerHost(
     content: @Composable () -> Unit,
 ) {
     val controller = remember { SettingsPickerController() }
+    val active = controller.request
     var presented by remember { mutableStateOf<SettingsPickerRequest?>(null) }
-    SideEffect { controller.request?.let { presented = it } }
+    LaunchedEffect(active) { active?.let { presented = it } }
     CompositionLocalProvider(LocalSettingsPicker provides controller) {
         Box(modifier) {
             content()
             presented?.let { request ->
-                SettingsPicker(request, controller.request != null, controller, colors)
+                SettingsPicker(request, active != null, controller, colors)
             }
         }
     }
