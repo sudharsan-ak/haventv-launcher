@@ -70,6 +70,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.aktvhome.launcher.HomeOverrideService
+import com.aktvhome.launcher.data.Capability
+import com.aktvhome.launcher.data.GenericControl
 import com.aktvhome.launcher.data.SleepTimer
 import com.aktvhome.launcher.data.SonyControl
 import com.aktvhome.launcher.data.SonySetting
@@ -230,7 +232,9 @@ fun TvPageBody(page: TvPage, state: HavenState, tv: TvSettings, colors: ThemeCol
 private fun TvSection(page: TvPage, state: HavenState, tv: TvSettings, colors: ThemeColors, top: Modifier) {
     when (page) {
         TvPage.PICTURE -> PicturePage(tv, colors, top)
-        TvPage.SOUND -> SoundPage(tv, colors, top)
+        // On a Sony, the TV's own sound settings (they say how to pair if needed); elsewhere this
+        // device's volume.
+        TvPage.SOUND -> if (state.device.isSony) SoundPage(tv, colors, top) else GenericSoundPage(colors, top)
         TvPage.SAVING -> SavingPage(tv, colors, top)
         TvPage.SLEEP -> SleepPage(colors, top)
         TvPage.WIFI -> WifiPage(state, colors, top)
@@ -248,19 +252,32 @@ private enum class TvSectionChip(val label: String, val page: TvPage?) {
     SCREEN("Screen ›", null), ACCESSIBILITY("Accessibility ›", null),
 }
 
-/** The TV controls tab: section chips across the top, the chosen section below. */
+/**
+ * The TV controls tab: section chips across the top, the chosen section below. Sections this TV
+ * can't do are left out: Picture and Power saving off a Sony, Screen without display settings,
+ * Sleep timer when the device can't be put to sleep.
+ */
 @Composable
 fun TvControlsPage(state: HavenState, colors: ThemeColors, first: Modifier) {
     val context = LocalContext.current
     val tv = remember { TvSettings(state.sony) }
-    var section by remember { mutableStateOf(TvSectionChip.PICTURE) }
+    val device = state.device
+    val chips = TvSectionChip.entries.filter { c ->
+        when (c) {
+            TvSectionChip.PICTURE, TvSectionChip.SAVING -> device.isSony
+            TvSectionChip.SCREEN -> device.supported(Capability.DISPLAY_SETTINGS)
+            TvSectionChip.SLEEP -> device.supported(Capability.SLEEP)
+            else -> true
+        }
+    }
+    var section by remember { mutableStateOf(chips.first()) }
     LaunchedEffect(Unit) { tv.load() }
 
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        TvSectionChip.entries.forEachIndexed { i, c ->
+        chips.forEachIndexed { i, c ->
             Chip(c.label, c == section, colors, if (i == 0) first else Modifier) {
                 when (c) {
-                    TvSectionChip.SCREEN -> openSystemPage(context, screenSettings())
+                    TvSectionChip.SCREEN -> openSystemPage(context, screenPage(context, device.isSony))
                     TvSectionChip.ACCESSIBILITY -> openSystemPage(context, Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                     else -> { tv.problem = null; section = c }
                 }
@@ -281,7 +298,10 @@ private fun NotPaired(tv: TvSettings, colors: ThemeColors): Boolean {
         return true
     }
     if (tv.paired) return false
-    Text("Haven isn't paired with the TV yet. Press ⏻ at the bottom of Quick settings to pair (once).", color = colors.inkSoft, fontSize = 12.sp)
+    Text(
+        "Haven isn't paired with the TV yet. Turn on Settings › Remote device settings › Control remotely, then press the power button at the bottom right of Quick settings to pair (once).",
+        color = colors.inkSoft, fontSize = 12.sp,
+    )
     return true
 }
 
@@ -397,6 +417,36 @@ private fun SavingPage(tv: TvSettings, colors: ThemeColors, top: Modifier) {
     Text("Picture off keeps the sound playing with the screen dark. Any button on the remote brings the picture back.", color = colors.inkSoft, fontSize = 11.sp)
 }
 
+/**
+ * Sound on devices without Sony's service: this device's own volume and mute. On an HDMI stick
+ * that's the stick's output; the display's own volume is on its remote (HDMI-CEC may pass it on).
+ */
+@Composable
+private fun GenericSoundPage(colors: ThemeColors, top: Modifier) {
+    val context = LocalContext.current
+    var level by remember { mutableIntStateOf(GenericControl.volume(context)) }
+    var muted by remember { mutableStateOf(GenericControl.muted(context)) }
+    val max = remember { GenericControl.maxVolume(context) }
+    // Volume keys change it too; read it again whenever Haven comes back.
+    OnResume {
+        level = GenericControl.volume(context)
+        muted = GenericControl.muted(context)
+    }
+    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(if (muted) "Muted" else level.toString(), color = colors.ink, fontSize = 34.sp, fontWeight = FontWeight.Bold)
+        Text("Volume · this device", color = colors.inkSoft, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
+    }
+    SliderRow("Volume", level, 0, max, 1, colors, top) { n ->
+        GenericControl.setVolume(context, n)
+        level = GenericControl.volume(context)
+    }
+    Chip("Mute", muted, colors) {
+        GenericControl.toggleMute(context)
+        muted = GenericControl.muted(context)
+    }
+    Text("This changes this device's volume. Your display's own volume is on its remote.", color = colors.inkSoft, fontSize = 11.sp)
+}
+
 @Composable
 private fun SleepPage(colors: ThemeColors, top: Modifier) {
     val context = LocalContext.current
@@ -410,7 +460,7 @@ private fun SleepPage(colors: ThemeColors, top: Modifier) {
         endsAt?.let { "The TV turns off at ${timeText(it)}." } ?: "No sleep timer set.",
         color = colors.ink, fontSize = 13.sp, fontWeight = FontWeight.Bold,
     )
-    Text("Haven's own timer: when it runs out, Haven powers the TV off through its control service. A restart clears it.", color = colors.inkSoft, fontSize = 11.sp)
+    Text("Haven's own timer: when it runs out, Haven turns the TV off (or puts this device to sleep). A restart clears it.", color = colors.inkSoft, fontSize = 11.sp)
 }
 
 fun timeText(epochMs: Long): String =

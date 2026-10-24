@@ -48,6 +48,16 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+        <!-- What this TV offers (This TV): its own home screen, display settings and Sony's apps. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.DISPLAY_SETTINGS" />
+        </intent>
+        <package android:name="com.sony.dtv.configsettings" />
+        <package android:name="com.sony.dtv.settingsdisplay" />
     </queries>
 
     <application

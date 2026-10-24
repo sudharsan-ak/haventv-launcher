@@ -151,6 +151,12 @@ class MainActivity : ComponentActivity() {
             HomeOverride.reconnectIfStale(applicationContext)
         }    }
 
+    override fun onResume() {
+        super.onResume()
+        // Something may have changed while Haven was away (Accessibility, HDMI-CEC, a grant).
+        state.device.refresh()
+    }
+
     override fun onStop() {
         unregisterReceiver(packageReceiver)
         super.onStop()

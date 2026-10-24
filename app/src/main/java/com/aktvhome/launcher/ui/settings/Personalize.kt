@@ -135,6 +135,7 @@ private enum class Page(val label: String, val group: SettingsGroup, val availab
     HOME_BUTTON("Home button", SettingsGroup.SYSTEM),
     DNS("Private DNS", SettingsGroup.SYSTEM),
     TV_CONTROLS("TV controls", SettingsGroup.SYSTEM),
+    THIS_TV("This TV", SettingsGroup.ABOUT),
     BACKUP("Backup & reset", SettingsGroup.ABOUT),
     ABOUT("About Haven", SettingsGroup.ABOUT),
 }
@@ -444,14 +445,17 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                             var on by remember { mutableStateOf(HomeOverride.isOn(ctx)) }
                             SettingsRow(
                                 "Open Haven with Home",
-                                if (on) "On: Home opens Haven" else "Off: Home opens Google TV",
+                                if (on) "On: Home opens Haven" else "Off: Home opens this TV's own home screen",
                                 colors,
                             ) {
                                 Pill(
                                     if (on) "On" else "Off", colors, selected = on,
                                     focusRequester = pageFirst,
                                 ) {
+                                    // Without the one-time grant Haven can't flip it; the TV's own
+                                    // Accessibility settings can, so open those instead.
                                     if (HomeOverride.set(ctx, !on)) on = HomeOverride.isOn(ctx)
+                                    else openSystemPage(ctx, android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
                                 }
                             }
                             InfoStrip(
@@ -577,6 +581,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                             }
                         }
                         Page.ABOUT -> AboutCard(colors, first)
+                        Page.THIS_TV -> ThisTvPage(state, colors, first)
                         Page.WATCH_NOW -> {
                             fun onOff(on: Boolean) = if (on) "On" else "Off"
                             SettingsRow("NBA", "Scores, the 7-day schedule and your team. Uses ESPN and nba.com.", colors) {
