@@ -168,7 +168,7 @@ private fun dayWord(day: LocalDate, today: LocalDate): String = when (day) {
  * to the card. Back on the left closes the panel.
  *
  * Schedules swaps the games for teams: your favorite teams, then either conference; the right side
- * shows the chosen team's season, and OK on one of its games opens that game here.
+ * shows the chosen team's season, and OK on one of its games shows its details in its place.
  */
 @Composable
 fun NbaPanel(state: HavenState, colors: ThemeColors) {
@@ -198,6 +198,9 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
     var teamCard by remember { mutableStateOf<String?>(null) }
     var focusedTeam by remember { mutableStateOf<Pair<String, String>?>(null) }
     var west by remember { mutableStateOf(team?.let { it in Nba.WEST } ?: true) }
+    // A game opened from the team's schedule, shown in place of the schedule until Back.
+    var scheduleGame by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(team) { scheduleGame = null }
     /** The card focus returns to from the right side: the selected game's, or the team's in Schedules. */
     fun returnCard(): String? = if (filter == GameFilter.SCHEDULES) teamCard else selected
     fun backToCard() { returnCard()?.let { runCatching { cardFocus(it).requestFocus() } } }
@@ -384,9 +387,12 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
                     .onFocusChanged { inPane[0] = it.hasFocus }
                     .onPreviewKeyEvent { e ->
                         when (e.nativeKeyEvent.keyCode) {
-                            // Back in the details returns to the card instead of closing the panel.
+                            // Back in the details returns to the card instead of closing the panel; a
+                            // game opened from a schedule goes back to the schedule first.
                             KeyEvent.KEYCODE_BACK -> {
-                                if (e.type == KeyEventType.KeyUp) backToCard()
+                                if (e.type == KeyEventType.KeyUp) {
+                                    if (filter == GameFilter.SCHEDULES && scheduleGame != null) scheduleGame = null else backToCard()
+                                }
                                 true
                             }
                             else -> false
@@ -407,7 +413,12 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
                 val id = selected
                 val shownTeam = team
                 if (filter == GameFilter.SCHEDULES && shownTeam != null) {
-                    key(shownTeam) { TeamSchedulePane(state, colors, shownTeam, paneFocus, close) }
+                    key(shownTeam) {
+                        TeamSchedulePane(
+                            state, colors, shownTeam, paneFocus, close, openGame = scheduleGame,
+                            onOpenGame = { scheduleGame = it; toPane++ }, onBack = { scheduleGame = null },
+                        )
+                    }
                 } else if (filter != GameFilter.SCHEDULES && id != null) {
                     key(id) { GameDetailPane(state, colors, id, paneFocus, close) }
                 } else {
@@ -508,16 +519,55 @@ private val scheduleDateFmt = DateTimeFormatter.ofPattern("EEE MMM d")
 
 /**
  * A team's season on the right side of Schedules: name and season, then every game, oldest first,
- * opened at the next one (ringed, and where focus lands). OK on a game opens it in the panel.
+ * opened at the next one (ringed, and where focus lands). OK on a game shows its details right
+ * here, in place of the schedule ([openGame]); "‹ Back to schedule" or Back returns to the list,
+ * at the same place, with focus on that game.
  */
 @Composable
-private fun TeamSchedulePane(state: HavenState, colors: ThemeColors, abbr: String, focus: FocusRequester, onClose: () -> Unit) {
+private fun TeamSchedulePane(
+    state: HavenState,
+    colors: ThemeColors,
+    abbr: String,
+    focus: FocusRequester,
+    onClose: () -> Unit,
+    openGame: String?,
+    onOpenGame: (String) -> Unit,
+    onBack: () -> Unit,
+) {
     val w = state.watchNow
     LaunchedEffect(abbr) { w.loadSchedule(abbr) }
     val games = w.teamSchedules[abbr]
     val next = games?.let { all -> all.indexOfFirst { it.state != GameState.FINAL }.let { if (it < 0) all.size - 1 else it } } ?: 0
+    // Kept while a game is open, so the list comes back where it was.
     val list = rememberLazyListState()
     LaunchedEffect(abbr, games != null) { if (games != null) list.scrollToItem((next - 1).coerceAtLeast(0)) }
+    val rows = remember(abbr) { mutableMapOf<String, FocusRequester>() }
+    // The next game's row uses [focus] (where entering the schedule lands); the others their own.
+    fun rowFocus(id: String, i: Int) = if (i == next) focus else rows.getOrPut(id) { FocusRequester() }
+    var lastOpened by remember(abbr) { mutableStateOf<String?>(null) }
+    // Back from a game: its row takes focus again once the list is back.
+    LaunchedEffect(openGame) {
+        val id = lastOpened
+        if (openGame != null || id == null) return@LaunchedEffect
+        val i = games?.indexOfFirst { it.espnId == id } ?: -1
+        if (i < 0) return@LaunchedEffect
+        repeat(20) {
+            if (runCatching { rowFocus(id, i).requestFocus() }.isSuccess) return@LaunchedEffect
+            delay(50)
+        }
+    }
+
+    if (openGame != null) {
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TabChip("‹ Back to schedule", false, colors, onClick = onBack)
+                NetImage(w, Nba.logo(abbr), 18.dp)
+                Text(Nba.teamName(abbr), color = colors.inkSoft, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            key(openGame) { GameDetailPane(state, colors, openGame, focus, onClose, Modifier.weight(1f)) }
+        }
+        return
+    }
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             NetImage(w, Nba.logo(abbr), 34.dp)
@@ -538,7 +588,10 @@ private fun TeamSchedulePane(state: HavenState, colors: ThemeColors, abbr: Strin
             games.isEmpty() -> Text("No games scheduled.", color = colors.inkSoft, fontSize = 12.sp)
             else -> LazyColumn(state = list, verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth().weight(1f)) {
                 itemsIndexed(games, key = { _, g -> g.espnId }) { i, g ->
-                    ScheduleRow(g, abbr, colors, isNext = i == next, focus = if (i == next) focus else null) { state.openGame(g) }
+                    ScheduleRow(g, abbr, colors, isNext = i == next, focus = rowFocus(g.espnId, i)) {
+                        lastOpened = g.espnId
+                        onOpenGame(g.espnId)
+                    }
                 }
             }
         }
