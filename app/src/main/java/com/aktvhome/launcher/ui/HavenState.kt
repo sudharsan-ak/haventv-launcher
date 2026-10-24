@@ -47,6 +47,8 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
     val wallpapers = Wallpapers(context, scope, settingsStore)
     /** Power off / restart through the TV's own control API. */
     val sony = com.aktvhome.launcher.data.SonyControl(context)
+    /** What this TV lets Haven do; the UI shows, offers to set up or hides each feature from it. */
+    val device = com.aktvhome.launcher.data.DeviceCapabilities(context, sony)
     val watchNow = WatchNow(
         context, scope, settingsStore,
         liveApps = { layoutStore.layout.collections.firstOrNull { it.id == "livetv" }?.apps?.toSet().orEmpty() },
