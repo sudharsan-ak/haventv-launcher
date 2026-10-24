@@ -64,8 +64,15 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
     /** A game for the NBA panel to open on (its ESPN id and day), set by [openGame]; the panel clears it. */
     var nbaGame by mutableStateOf<Pair<String, java.time.LocalDate>?>(null)
 
-    /** Opens the NBA panel on [game]'s day with it selected (from the Home card, the drawer, Live TV, the schedule). */
-    fun openGame(game: com.aktvhome.launcher.data.Game) {
+    /** A game the NBA panel shows on Summary whatever tab was last chosen (the Last night recap's). */
+    var nbaSummaryFor by mutableStateOf<String?>(null)
+
+    /**
+     * Opens the NBA panel on [game]'s day with it selected (from the Home card, the drawer, Live TV,
+     * the schedule, the Last night recap). [onSummary] shows its Summary without changing the saved tab.
+     */
+    fun openGame(game: com.aktvhome.launcher.data.Game, onSummary: Boolean = false) {
+        nbaSummaryFor = if (onSummary) game.espnId else null
         nbaGame = game.espnId to game.start.atZone(java.time.ZoneId.systemDefault()).toLocalDate()
         scheduleOpen = false
         overlay = Overlay.NBA

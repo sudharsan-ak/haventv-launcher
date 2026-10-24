@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -374,6 +375,8 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
         DayMenu(colors, today, day, onPick = { day = it; choosingDay = false }, onPickDate = { choosingDay = false; picking = true }, onDismiss = { choosingDay = false })
     }
     if (picking) DatePickerDialog(colors, day, onPick = { day = it; picking = false }, onDismiss = { picking = false })
+    // The recap's "show Summary" lasts as long as the panel.
+    DisposableEffect(Unit) { onDispose { state.nbaSummaryFor = null } }
 }
 
 @Composable

@@ -155,7 +155,17 @@ fun GameDetailPane(
             delay(10_000)
         }
     }
-    var tab by remember(id) { mutableStateOf(DetailTab.SUMMARY) }
+    // One tab for the whole NBA panel, saved across restarts, so moving down the games keeps showing
+    // the same view (say, each game's Box score). Upcoming games show Summary without changing it;
+    // so does a game opened from the Last night recap.
+    val store = state.settingsStore
+    val saved = DetailTab.entries.firstOrNull { it.name == store.settings.nbaTab } ?: DetailTab.SUMMARY
+    var chosen by remember(id) { mutableStateOf<DetailTab?>(null) }
+    val tab = chosen ?: if (game?.state == GameState.PRE || state.nbaSummaryFor == id) DetailTab.SUMMARY else saved
+    fun choose(t: DetailTab) {
+        chosen = t
+        if (game?.state != GameState.PRE) store.update { it.copy(nbaTab = t.name) }
+    }
     val scrolls = remember(id) { mutableMapOf<DetailTab, ScrollState>() }
     // The player card open over the details, by ESPN athlete id.
     var playerId by remember(id) { mutableStateOf<String?>(null) }
@@ -197,7 +207,7 @@ fun GameDetailPane(
             // Scrolls sideways when the pane is too narrow for every tab, so none gets squeezed
             // (a squeezed tab wrapped its label letter by letter and pushed the content off screen).
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                DetailTab.entries.forEach { t -> TabChip(t.label, t == tab, colors) { tab = t } }
+                DetailTab.entries.forEach { t -> TabChip(t.label, t == tab, colors) { choose(t) } }
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.edge))
             val scroll = scrolls.getOrPut(tab) { ScrollState(0) }

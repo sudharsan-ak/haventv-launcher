@@ -106,6 +106,8 @@ data class Settings(
     val bannerSeconds: Int = 5,
     /** The morning "Last night" toast on Haven's Home. */
     val lastNightRecap: Boolean = true,
+    /** The game details tab last chosen in the NBA panel (Summary, Box score, …), by name. */
+    val nbaTab: String = "SUMMARY",
     /**
      * Single games with "Set alert" on: ESPN event id to tip-off (epoch ms). They get the "Your
      * team" alerts, and drop off a day after the game.
@@ -177,6 +179,7 @@ class SettingsStore(context: Context) {
             .putInt("alertCooldown", next.alertCooldown)
             .putInt("bannerSeconds", next.bannerSeconds)
             .putBoolean("lastNightRecap", next.lastNightRecap)
+            .putString("nbaTab", next.nbaTab)
             .putString("alertGames", next.alertGames.entries.joinToString("\n") { "${it.key}=${it.value}" })
             .apply()
     }
@@ -236,6 +239,7 @@ class SettingsStore(context: Context) {
         alertCooldown = prefs.getInt("alertCooldown", 10),
         bannerSeconds = prefs.getInt("bannerSeconds", 5),
         lastNightRecap = prefs.getBoolean("lastNightRecap", true),
+        nbaTab = prefs.getString("nbaTab", null) ?: "SUMMARY",
         // A game's alert ends a day after it (30 h after tip-off covers any late finish).
         alertGames = (prefs.getString("alertGames", null) ?: "").lines().mapNotNull { line ->
             line.split('=', limit = 2).takeIf { it.size == 2 }?.let { (id, at) -> at.toLongOrNull()?.let { id to it } }

@@ -89,7 +89,7 @@ fun LastNightRecap(state: HavenState, colors: ThemeColors) {
             "Haven · Last night", t.headline, "▶ See recaps", colors, w, focus,
             onPrimary = {
                 toast = null
-                state.openGame(t.game)
+                state.openGame(t.game, onSummary = true)
             },
             onDismiss = ::dismiss,
             modifier = Modifier.onPreviewKeyEvent { e ->
