@@ -113,7 +113,7 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
     )
 
     // Wallpaper view (Back on Home) fades the layout out, leaving just the background.
-    val shown = homeShown(state)
+    val homeAlpha = homeShown(state)
 
     Box(
         Modifier
@@ -122,7 +122,7 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
     ) {
         val photo = state.wallpapers.current
         if (settings.bgKingdom == Background.PHOTO && photo != null) {
-            PhotoBackdrop(photo, state.dayness(), state.wallpapers.credit.takeIf { settings.wallCredit }, tint = shown)
+            PhotoBackdrop(photo, state.dayness(), state.wallpapers.credit.takeIf { settings.wallCredit }, tint = homeAlpha)
         } else {
             KingdomBackdrop(colors, glow, settings.motion, Modifier.fillMaxSize())
         }
@@ -130,7 +130,7 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
         Column(
             Modifier
                 .fillMaxSize()
-                .graphicsLayer { alpha = shown }
+                .graphicsLayer { alpha = homeAlpha }
                 .verticalScroll(scroll)
                 .padding(top = 30.dp, bottom = 24.dp),
         ) {

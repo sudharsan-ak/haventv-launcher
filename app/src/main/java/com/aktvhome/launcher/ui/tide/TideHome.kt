@@ -98,7 +98,7 @@ fun TideHome(state: HavenState, colors: ThemeColors) {
     }
 
     // Wallpaper view (Back on Home) fades the layout out, leaving just the background.
-    val shown = homeShown(state)
+    val homeAlpha = homeShown(state)
 
     Box(
         Modifier
@@ -107,7 +107,7 @@ fun TideHome(state: HavenState, colors: ThemeColors) {
     ) {
         val photo = state.wallpapers.current
         if (settings.bgTide == Background.PHOTO && photo != null) {
-            PhotoBackdrop(photo, state.dayness(), state.wallpapers.credit.takeIf { settings.wallCredit }, tint = shown)
+            PhotoBackdrop(photo, state.dayness(), state.wallpapers.credit.takeIf { settings.wallCredit }, tint = homeAlpha)
         } else {
             TideBackdrop(colors, settings.motion)
         }
@@ -115,13 +115,13 @@ fun TideHome(state: HavenState, colors: ThemeColors) {
         // Down from the gear goes back to the collection you were on.
         GearButton(
             colors,
-            Modifier.align(Alignment.TopEnd).padding(top = 44.dp, end = 48.dp).graphicsLayer { alpha = shown }
+            Modifier.align(Alignment.TopEnd).padding(top = 44.dp, end = 48.dp).graphicsLayer { alpha = homeAlpha }
                 .focusProperties { down = if (showStrip) stripFirst else chips.requester(currentIndex) },
         ) {
             state.overlay = Overlay.QUICK
         }
 
-        Column(Modifier.fillMaxSize().graphicsLayer { alpha = shown }, horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.fillMaxSize().graphicsLayer { alpha = homeAlpha }, horizontalAlignment = Alignment.CenterHorizontally) {
             Spacer(Modifier.height(36.dp))
             Text(
                 state.greetingLine().orEmpty(),
