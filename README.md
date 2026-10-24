@@ -97,6 +97,25 @@ adb shell pm grant com.aktvhome.launcher android.permission.WRITE_SECURE_SETTING
 adb shell pm grant com.aktvhome.launcher android.permission.READ_TV_LISTINGS
 ```
 
+### Devices with only Wireless debugging
+
+Haven's on-TV setup currently uses classic ADB on port 5555. If the TV's Developer options
+offers only **Wireless debugging**, pair it once from a computer or phone with an ADB app:
+
+1. Open **Wireless debugging > Pair device with pairing code** on the TV.
+2. Pair and connect from the other device (the pairing and connection ports may differ):
+
+   ```bash
+   adb pair <tv-ip>:<pairing-port>
+   adb connect <tv-ip>:<connection-port>
+   ```
+
+3. In Haven, open **All settings > About & data > This TV > Set up** and run the commands
+   shown under **Or from a computer**.
+4. Return to **This TV** and choose **Check again**.
+
+After setup succeeds, Wireless debugging can be turned off; the granted permissions remain.
+
 ## Making Haven the home screen
 
 Google TV always opens its own launcher on Home, even when another app is set as default.
