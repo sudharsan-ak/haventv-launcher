@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -39,6 +41,7 @@ import androidx.compose.material.icons.rounded.ViewModule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,11 +50,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -84,14 +88,14 @@ import com.aktvhome.launcher.ui.CollectionPickerDialog
 import com.aktvhome.launcher.ui.GlassDialog
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.IconBadge
+import com.aktvhome.launcher.ui.LocalTvInteractionsEnabled
 import com.aktvhome.launcher.ui.Overlay
 import com.aktvhome.launcher.ui.Pill
 import com.aktvhome.launcher.ui.TextInputDialog
-import com.aktvhome.launcher.ui.clockText
-import com.aktvhome.launcher.ui.kingdom.KingdomBackdrop
+import com.aktvhome.launcher.ui.kingdom.KingdomHome
 import com.aktvhome.launcher.ui.theme.Palettes
 import com.aktvhome.launcher.ui.theme.ThemeColors
-import com.aktvhome.launcher.ui.tide.TideBackdrop
+import com.aktvhome.launcher.ui.tide.TideHome
 import com.aktvhome.launcher.ui.tvClickable
 
 private enum class SettingsGroup(
@@ -826,41 +830,34 @@ internal fun ChoicePills(
     }
 }
 
-/** Theme choice with a small preview painted by that theme's own backdrop code. */
+/** Theme choice with the real Home UI scaled down, frozen and made non-interactive. */
 @Composable
 private fun ThemeCard(theme: ThemeId, state: HavenState, chosen: Boolean, colors: ThemeColors, modifier: Modifier, onClick: () -> Unit) {
     GlassCard(colors, modifier, selected = chosen, onClick = onClick) { ink ->
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val c = Palettes.colors(theme, state.dayness())
-            Box(
+            BoxWithConstraints(
                 Modifier
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(Brush.verticalGradient(listOf(c.bgTop, c.bgMid, c.bgBottom))),
+                    .background(c.bgMid),
             ) {
-                when (theme) {
-                    ThemeId.KINGDOM -> {
-                        KingdomBackdrop(c, c.glow, Motion.OFF, Modifier.fillMaxSize())
-                        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Text("What are we watching?", color = c.ink, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                repeat(5) { Box(Modifier.size(28.dp, 18.dp).clip(RoundedCornerShape(4.dp)).background(c.glass)) }
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                state.apps.values.take(5).forEach { a ->
-                                    Box(Modifier.size(32.dp, 18.dp).clip(RoundedCornerShape(4.dp)).background(a.color))
-                                }
-                            }
+                val scale = maxWidth.value / 1280f
+                CompositionLocalProvider(LocalTvInteractionsEnabled provides false) {
+                    Box(
+                        Modifier
+                            .requiredSize(1280.dp, 720.dp)
+                            .graphicsLayer {
+                                scaleX = scale
+                                scaleY = scale
+                                transformOrigin = TransformOrigin(0f, 0f)
+                            },
+                    ) {
+                        when (theme) {
+                            ThemeId.KINGDOM -> KingdomHome(state, c, preview = true)
+                            ThemeId.TIDE -> TideHome(state, c, preview = true)
                         }
-                    }
-                    ThemeId.TIDE -> {
-                        TideBackdrop(c, Motion.OFF, Modifier.fillMaxSize())
-                        Text(
-                            clockText(state.now, state.settingsStore.settings.clock24).removeSuffix(" AM").removeSuffix(" PM"),
-                            color = c.ink, fontSize = 22.sp, fontWeight = FontWeight.Thin,
-                            modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp),
-                        )
                     }
                 }
             }

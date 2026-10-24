@@ -7,15 +7,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.TrendingUp
-import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.HourglassBottom
 import androidx.compose.material.icons.rounded.LocalFireDepartment
@@ -34,9 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -51,7 +45,6 @@ import com.aktvhome.launcher.data.Nba
 import com.aktvhome.launcher.data.NbaAlerts
 import com.aktvhome.launcher.data.OTHER_EVENTS
 import com.aktvhome.launcher.data.WatchNow
-import com.aktvhome.launcher.ui.GlassDialog
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.Pill
 import com.aktvhome.launcher.ui.theme.ThemeColors
@@ -69,7 +62,6 @@ fun NbaAlertsPage(state: HavenState, colors: ThemeColors, first: Modifier) {
     val store = state.settingsStore
     val s = store.settings
     val w = state.watchNow
-    var pickingTeams by remember { mutableStateOf(false) }
     // Status lines read live state; look again every few seconds.
     var tick by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) { while (true) { delay(5_000); tick++ } }
@@ -78,7 +70,15 @@ fun NbaAlertsPage(state: HavenState, colors: ThemeColors, first: Modifier) {
     AlertCard(
         "Your team", "Get alerts for your favorite team.", s.alertsMine, w, colors, first,
         onSwitch = { store.update { it.copy(alertsMine = !it.alertsMine) } },
-        extra = { Pill(teamsLabel(s.followedTeams, s.favoriteTeam), colors) { pickingTeams = true } },
+        extra = {
+            SettingsMultiChoiceRow(
+                "Teams you follow", "", teamsLabel(s.followedTeams, s.favoriteTeam),
+                Nba.TEAMS.map { (abbr, name) ->
+                    SettingsPickerOption(abbr, name, leading = { NetImage(w, Nba.logo(abbr), 24.dp) })
+                },
+                s.followedTeams, colors,
+            ) { abbr -> store.update { it.copy(followedTeams = it.followedTeams.toggle(abbr)) } }
+        },
     ) {
         EventTiles(AlertEvent.entries, s.alertsFavorite, colors,
             onToggle = { e -> store.update { it.copy(alertsFavorite = it.alertsFavorite.toggle(e)) } },
@@ -135,13 +135,7 @@ fun NbaAlertsPage(state: HavenState, colors: ThemeColors, first: Modifier) {
     if (!access) SettingsStatusRow("One-time setup", "So alerts skip the game you're watching: ${NbaAlerts.GRANT_COMMAND}", colors)
     if (!service) SettingsStatusRow("Needs the Home button service", "Alerts run in it. Turn it on in TV & network › Home button.", colors)
 
-    if (pickingTeams) {
-        TeamsDialog(colors, w, s.followedTeams, onToggle = { abbr ->
-            store.update { it.copy(followedTeams = it.followedTeams.toggle(abbr)) }
-        }, onDismiss = { pickingTeams = false })
-    }
 }
-
 /** "Golden State Warriors" for one team, "Warriors + 2 more" for several (your main team named first). */
 private fun teamsLabel(teams: Set<String>, main: String): String {
     if (teams.isEmpty()) return "Pick teams"
@@ -252,43 +246,4 @@ private fun AlertEvent.icon(): ImageVector = when (this) {
     AlertEvent.OVERTIME -> Icons.Rounded.MoreTime
     AlertEvent.COMEBACK -> Icons.AutoMirrored.Rounded.TrendingUp
     AlertEvent.FINAL -> Icons.Rounded.Flag
-}
-
-/** Every team, any number ticked: logo, full name and a check mark. Back or Done closes it. */
-@Composable
-private fun TeamsDialog(colors: ThemeColors, watchNow: WatchNow, chosen: Set<String>, onToggle: (String) -> Unit, onDismiss: () -> Unit) {
-    val first = remember { FocusRequester() }
-    GlassDialog(colors, "Teams you follow", onDismiss) {
-        Text("Each team you tick gets the \"Your team\" alerts.", color = colors.inkSoft, fontSize = 11.sp)
-        Column(Modifier.height(300.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Nba.TEAMS.forEachIndexed { i, (abbr, name) ->
-                TeamRow(abbr, name, abbr in chosen, colors, watchNow, if (i == 0) Modifier.focusRequester(first) else Modifier) { onToggle(abbr) }
-            }
-        }
-        Pill("Done", colors, modifier = Modifier.fillMaxWidth(), onClick = onDismiss)
-    }
-    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
-}
-
-@Composable
-private fun TeamRow(abbr: String, name: String, checked: Boolean, colors: ThemeColors, watchNow: WatchNow, modifier: Modifier, onClick: () -> Unit) {
-    var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(12.dp)
-    val ink = if (focused) colors.pillInk else colors.ink
-    Row(
-        modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(if (focused) colors.pill else colors.glass)
-            .border(1.dp, if (checked) colors.accent else colors.edge, shape)
-            .onFocusChanged { focused = it.isFocused }
-            .tvClickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) { NetImage(watchNow, Nba.logo(abbr), 24.dp) }
-        Text(name, color = ink, fontSize = 13.sp, fontWeight = if (checked) FontWeight.Bold else FontWeight.Medium, modifier = Modifier.weight(1f))
-        if (checked) Icon(Icons.Rounded.Check, "Following", tint = ink, modifier = Modifier.size(18.dp))
-    }
 }

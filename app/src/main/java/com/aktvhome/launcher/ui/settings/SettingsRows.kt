@@ -58,6 +58,7 @@ internal data class SettingsPickerOption(
     val value: String,
     val label: String = value,
     val note: String = "",
+    val leading: (@Composable () -> Unit)? = null,
 )
 
 internal data class SettingsPickerRequest(
@@ -204,6 +205,7 @@ private fun PickerOptionRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        option.leading?.invoke()
         Column(Modifier.weight(1f)) {
             Text(option.label, color = ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             if (option.note.isNotBlank()) {
