@@ -32,8 +32,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -94,37 +96,34 @@ fun NbaAlertsPage(state: HavenState, colors: ThemeColors, first: Modifier) {
         )
     }
 
-    fun onOff(on: Boolean) = if (on) "On" else "Off"
-    SettingsRow("Hide scores", "Banners say what's happening (\"Close game · tune in\"), never the score or result.", colors) {
-        Pill(onOff(s.hideScores), colors, selected = s.hideScores) { store.update { it.copy(hideScores = !it.hideScores) } }
+    SettingsToggleRow("Hide scores", "Banners say what's happening (\"Close game · tune in\"), never the score or result.", s.hideScores, colors) {
+        store.update { it.copy(hideScores = !it.hideScores) }
     }
-    SettingsRow(
+    SettingsChoiceRow(
         "Space out other-game alerts",
         "At most one per this long. Overtime and the close-game escalation always show; followed teams and games with Set alert are never held back.",
-        colors,
-    ) {
-        ChoicePills(listOf("5 min", "10 min", "15 min", "30 min"), "${s.alertCooldown} min", colors) { v ->
-            store.update { it.copy(alertCooldown = v.removeSuffix(" min").toInt()) }
-        }
+        "${s.alertCooldown} min", listOf("5 min", "10 min", "15 min", "30 min").map { SettingsPickerOption(it) },
+        "${s.alertCooldown} min", colors,
+    ) { v ->
+        store.update { it.copy(alertCooldown = v.removeSuffix(" min").toInt()) }
     }
-    SettingsRow("Banner time", "How long a banner stays up when you don't press anything.", colors) {
-        ChoicePills(listOf("5 s", "8 s", "10 s"), "${s.bannerSeconds} s", colors) { v ->
-            store.update { it.copy(bannerSeconds = v.removeSuffix(" s").toInt()) }
-        }
+    SettingsChoiceRow(
+        "Banner time", "How long a banner stays up when you don't press anything.", "${s.bannerSeconds} s",
+        listOf("5 s", "8 s", "10 s").map { SettingsPickerOption(it) }, "${s.bannerSeconds} s", colors,
+    ) { v ->
+        store.update { it.copy(bannerSeconds = v.removeSuffix(" s").toInt()) }
     }
-    SettingsRow("Last night recap", "A catch-up on Haven's Home each morning", colors) {
-        Pill(onOff(s.lastNightRecap), colors, selected = s.lastNightRecap) { store.update { it.copy(lastNightRecap = !it.lastNightRecap) } }
+    SettingsToggleRow("Last night recap", "A catch-up on Haven's Home each morning", s.lastNightRecap, colors) {
+        store.update { it.copy(lastNightRecap = !it.lastNightRecap) }
     }
-    SettingsRow("Send test alert", testNote, colors) {
-        Pill("Send", colors) {
-            testNote = if (HomeOverrideService.sendTestAlert()) "Sent. The banner shows in 10 s, over whatever's on."
-            else "Needs the Home button service. Turn it on in TV & network › Home button."
-        }
+    SettingsActionRow("Send test alert", testNote, "Send", colors) {
+        testNote = if (HomeOverrideService.sendTestAlert()) "Sent. The banner shows in 10 s, over whatever's on."
+        else "Needs the Home button service. Turn it on in TV & network › Home button."
     }
     val access = remember(tick) { NbaAlerts.canSeePlaying(ctx) }
     val updated = remember(tick) { NbaAlerts.lastUpdate(ctx) }
     val service = remember(tick) { HomeOverrideService.connected }
-    InfoStrip(
+    SettingsStatusRow(
         "Status",
         listOf(
             "Notification access: " + if (access) "granted" else "not granted",
@@ -133,8 +132,8 @@ fun NbaAlertsPage(state: HavenState, colors: ThemeColors, first: Modifier) {
         ).joinToString("\n"),
         colors,
     )
-    if (!access) InfoStrip("One-time setup", "So alerts skip the game you're watching: ${NbaAlerts.GRANT_COMMAND}", colors)
-    if (!service) InfoStrip("Needs the Home button service", "Alerts run in it. Turn it on in TV & network › Home button.", colors)
+    if (!access) SettingsStatusRow("One-time setup", "So alerts skip the game you're watching: ${NbaAlerts.GRANT_COMMAND}", colors)
+    if (!service) SettingsStatusRow("Needs the Home button service", "Alerts run in it. Turn it on in TV & network › Home button.", colors)
 
     if (pickingTeams) {
         TeamsDialog(colors, w, s.followedTeams, onToggle = { abbr ->
@@ -176,16 +175,14 @@ private fun AlertCard(
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            NetImage(watchNow, Nba.LEAGUE_LOGO, 30.dp)
-            Column(Modifier.weight(1f)) {
-                Text(title, color = colors.ink, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                Text(subtitle, color = colors.inkSoft, fontSize = 10.sp)
-            }
+        SettingsToggleRow(title, subtitle, on, colors, switchModifier, onToggle = onSwitch)
+        Column(
+            Modifier.fillMaxWidth().alpha(if (on) 1f else 0.42f).focusProperties { canFocus = on },
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             extra?.invoke()
-            SwitchButton(on, colors, switchModifier, onSwitch)
+            content()
         }
-        content()
     }
 }
 

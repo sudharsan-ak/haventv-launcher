@@ -300,11 +300,12 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                     Box(Modifier.fillMaxWidth().height(1.dp).background(colors.edge))
                 }
                 Spacer(Modifier.height(10.dp))
-                Column(
-                    Modifier.fillMaxSize().verticalScroll(contentScroll),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    when (page) {
+                SettingsPickerHost(colors, Modifier.fillMaxSize()) {
+                    Column(
+                        Modifier.fillMaxSize().verticalScroll(contentScroll),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        when (page) {
                         Page.STYLE -> {
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 ThemeId.entries.forEachIndexed { i, t ->
@@ -315,131 +316,89 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                                 }
                             }
                             Eyebrow("Appearance controls", colors)
-                            SettingsRow("Day & night", "Auto blends around 6 AM and 6 PM.", colors) {
-                                ChoicePills(
-                                    values = listOf("Auto", "Day", "Night"),
-                                    selected = when (s.dayMode) {
-                                        DayMode.AUTO -> "Auto"
-                                        DayMode.DAY -> "Day"
-                                        DayMode.NIGHT -> "Night"
-                                    },
-                                    colors = colors,
-                                ) { value ->
-                                    store.update {
-                                        it.copy(dayMode = when (value) {
-                                            "Day" -> DayMode.DAY
-                                            "Night" -> DayMode.NIGHT
-                                            else -> DayMode.AUTO
-                                        })
-                                    }
+                            val dayMode = when (s.dayMode) {
+                                DayMode.AUTO -> "Auto"
+                                DayMode.DAY -> "Day"
+                                DayMode.NIGHT -> "Night"
+                            }
+                            SettingsChoiceRow(
+                                "Day & night", "Auto blends around 6 AM and 6 PM.", dayMode,
+                                listOf("Auto", "Day", "Night").map { SettingsPickerOption(it) }, dayMode, colors,
+                            ) { value ->
+                                store.update {
+                                    it.copy(dayMode = when (value) {
+                                        "Day" -> DayMode.DAY
+                                        "Night" -> DayMode.NIGHT
+                                        else -> DayMode.AUTO
+                                    })
                                 }
                             }
-                            SettingsRow("Motion", "Controls Haven's waves, glow and theme animations.", colors) {
-                                ChoicePills(
-                                    values = listOf("Full", "Reduced", "Off"),
-                                    selected = s.motion.label,
-                                    colors = colors,
-                                ) { value ->
-                                    store.update { it.copy(motion = Motion.entries.first { motion -> motion.label == value }) }
-                                }
-                            }
+                            SettingsChoiceRow(
+                                "Motion", "Controls Haven's waves, glow and theme animations.", s.motion.label,
+                                listOf("Full", "Reduced", "Off").map { SettingsPickerOption(it) }, s.motion.label, colors,
+                            ) { value -> store.update { it.copy(motion = Motion.entries.first { motion -> motion.label == value }) } }
                         }
                         Page.DISPLAY -> {
-                            SettingsRow("Card size", "Applies to Kingdom cards and Tide dock icons.", colors) {
-                                ChoicePills(
-                                    values = CardSize.entries.map { it.label }, selected = s.cardSize.label,
-                                    colors = colors, focusRequester = pageFirst,
-                                ) { value ->
-                                    store.update { it.copy(cardSize = CardSize.entries.first { size -> size.label == value }) }
-                                }
+                            SettingsChoiceRow(
+                                "Card size", "Applies to Kingdom cards and Tide dock icons.", s.cardSize.label,
+                                CardSize.entries.map { SettingsPickerOption(it.label) }, s.cardSize.label, colors,
+                            ) { value -> store.update { it.copy(cardSize = CardSize.entries.first { size -> size.label == value }) } }
+                            SettingsToggleRow("Clock format", "Choose the way time appears.", s.clock24, colors) {
+                                store.update { it.copy(clock24 = !it.clock24) }
                             }
-                            SettingsRow("Clock format", "Choose the way time appears.", colors) {
-                                ChoicePills(
-                                    values = listOf("12-hour", "24-hour"),
-                                    selected = if (s.clock24) "24-hour" else "12-hour", colors = colors,
-                                ) { value -> store.update { it.copy(clock24 = value == "24-hour") } }
+                            SettingsToggleRow("Show greeting", "Show or hide your welcome message.", s.showGreeting, colors) {
+                                store.update { it.copy(showGreeting = !it.showGreeting) }
                             }
-                            SettingsRow("Show greeting", "Show or hide your welcome message.", colors) {
-                                Pill(if (s.showGreeting) "On" else "Off", colors, selected = s.showGreeting) {
-                                    store.update { it.copy(showGreeting = !it.showGreeting) }
-                                }
+                            SettingsToggleRow("Headline", "Kingdom's big line: follows your team's game and the time of day, or stays fixed.", s.headlineChanging, colors) {
+                                store.update { it.copy(headlineChanging = !it.headlineChanging) }
                             }
-                            SettingsRow("Headline", "Kingdom's big line: follows your team's game and the time of day, or stays fixed.", colors) {
-                                ChoicePills(
-                                    values = listOf("Changing", "Fixed"),
-                                    selected = if (s.headlineChanging) "Changing" else "Fixed", colors = colors,
-                                ) { value -> store.update { it.copy(headlineChanging = value == "Changing") } }
-                            }
-                            SettingsRow("Your name", "Used in the home screen greeting.", colors) {
-                                Pill(s.name.ifBlank { "Not set" }, colors) { editingName = true }
-                            }
-                            InfoStrip("Preview", state.greetingLine() ?: "Greeting is off", colors)
+                            SettingsActionRow("Your name", "Used in the home screen greeting.", s.name.ifBlank { "Not set" }, colors) { editingName = true }
+                            SettingsStatusRow("Preview", state.greetingLine() ?: "Greeting is off", colors)
                         }
                         Page.WALLPAPER -> {
                             val walls = state.wallpapers
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                ChoiceCard(
-                                    "Kingdom", "Background: ${s.bgKingdom.label}", Icons.Rounded.Wallpaper,
-                                    s.bgKingdom == Background.PHOTO, colors, Modifier.weight(1f).then(first), height = 92.dp,
-                                ) {
-                                    store.update { it.copy(bgKingdom = if (it.bgKingdom == Background.PHOTO) Background.SCENE else Background.PHOTO) }
-                                    walls.tick()
-                                }
-                                ChoiceCard(
-                                    "Tide", "Background: ${s.bgTide.label}", Icons.Rounded.Wallpaper,
-                                    s.bgTide == Background.PHOTO, colors, Modifier.weight(1f), height = 92.dp,
-                                ) {
-                                    store.update { it.copy(bgTide = if (it.bgTide == Background.PHOTO) Background.SCENE else Background.PHOTO) }
-                                    walls.tick()
-                                }
-                                ChoiceCard("Next photo now", "Fetch a new one", Icons.Rounded.Refresh, false, colors, Modifier.weight(1f), height = 92.dp) {
-                                    walls.tick(force = true)
-                                }
+                            SettingsToggleRow("Kingdom", "Background: ${s.bgKingdom.label}", s.bgKingdom == Background.PHOTO, colors) {
+                                store.update { it.copy(bgKingdom = if (it.bgKingdom == Background.PHOTO) Background.SCENE else Background.PHOTO) }
+                                walls.tick()
                             }
-                            InfoStrip(
+                            SettingsToggleRow("Tide", "Background: ${s.bgTide.label}", s.bgTide == Background.PHOTO, colors) {
+                                store.update { it.copy(bgTide = if (it.bgTide == Background.PHOTO) Background.SCENE else Background.PHOTO) }
+                                walls.tick()
+                            }
+                            SettingsActionRow("Next photo now", "Fetch a new one", "Next photo now", colors) { walls.tick(force = true) }
+                            SettingsStatusRow(
                                 "Wallpaper view",
                                 "Press Back on the home screen to see just the wallpaper. Press any button to bring Haven back.",
                                 colors,
                             )
                             Eyebrow("Sources", colors)
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                WallSource.entries.forEach { src ->
-                                    val on = src in s.wallSources
-                                    val sub = if (src == WallSource.UNSPLASH && s.unsplashKey.isBlank()) "Needs your key (below)" else src.note
-                                    ChoiceCard(src.label, sub, null, on, colors, Modifier.weight(1f), height = 92.dp) {
-                                        store.update { it.copy(wallSources = if (on) it.wallSources - src else it.wallSources + src) }
-                                    }
+                            WallSource.entries.forEach { src ->
+                                val on = src in s.wallSources
+                                val sub = if (src == WallSource.UNSPLASH && s.unsplashKey.isBlank()) "Needs your key (below)" else src.note
+                                SettingsToggleRow(src.label, sub, on, colors) {
+                                    store.update { it.copy(wallSources = if (on) it.wallSources - src else it.wallSources + src) }
                                 }
                             }
-                            Eyebrow("Unsplash topics", colors)
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                WALL_TOPICS.forEach { (label, _) ->
-                                    val on = label in s.wallTopics
-                                    Pill(label, colors, selected = on) {
-                                        store.update { it.copy(wallTopics = if (on) it.wallTopics - label else it.wallTopics + label) }
-                                    }
-                                }
+                            SettingsMultiChoiceRow(
+                                "Unsplash topics", "", if (s.wallTopics.isEmpty()) "None" else "${s.wallTopics.size} selected",
+                                WALL_TOPICS.map { (label, value) -> SettingsPickerOption(label, label, value) }, s.wallTopics, colors,
+                            ) { label ->
+                                val on = label in s.wallTopics
+                                store.update { it.copy(wallTopics = if (on) it.wallTopics - label else it.wallTopics + label) }
                             }
-                            Eyebrow("Change every", colors)
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                WallInterval.entries.forEach { iv ->
-                                    ChoiceCard(iv.label, "", null, s.wallInterval == iv, colors, Modifier.weight(1f), height = 72.dp) {
-                                        store.update { it.copy(wallInterval = iv) }
-                                    }
-                                }
+                            SettingsChoiceRow(
+                                "Change every", "", s.wallInterval.label,
+                                WallInterval.entries.map { SettingsPickerOption(it.name, it.label) }, s.wallInterval.name, colors,
+                            ) { value -> store.update { it.copy(wallInterval = WallInterval.valueOf(value)) } }
+                            SettingsActionRow(
+                                "Unsplash key",
+                                if (s.unsplashKey.isBlank()) "Not set. OK to paste it" else "Set (ends in ${s.unsplashKey.takeLast(4)})",
+                                s.unsplashKey.ifBlank { "Not set" }, colors,
+                            ) { editingKey = true }
+                            SettingsToggleRow("Photo credit", if (s.wallCredit) "Shown in the corner" else "Hidden", s.wallCredit, colors) {
+                                store.update { it.copy(wallCredit = !it.wallCredit) }
                             }
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                ChoiceCard(
-                                    "Unsplash key",
-                                    if (s.unsplashKey.isBlank()) "Not set. OK to paste it" else "Set (ends in ${s.unsplashKey.takeLast(4)})",
-                                    Icons.Rounded.Key, s.unsplashKey.isNotBlank(), colors, Modifier.weight(1f), height = 92.dp,
-                                ) { editingKey = true }
-                                ChoiceCard(
-                                    "Photo credit", if (s.wallCredit) "Shown in the corner" else "Hidden",
-                                    Icons.Rounded.Info, s.wallCredit, colors, Modifier.weight(1f), height = 92.dp,
-                                ) { store.update { it.copy(wallCredit = !it.wallCredit) } }
-                            }
-                            InfoStrip(
+                            SettingsStatusRow(
                                 "Now showing",
                                 listOf(walls.credit, walls.status).filter { it.isNotBlank() }.distinct().joinToString(" · ").ifBlank { "No photo yet" },
                                 colors,
@@ -448,27 +407,22 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                         Page.HOME_BUTTON -> {
                             val ctx = LocalContext.current
                             var on by remember { mutableStateOf(HomeOverride.isOn(ctx)) }
-                            SettingsRow(
+                            SettingsToggleRow(
                                 "Open Haven with Home",
                                 if (on) "On: Home opens Haven" else "Off: Home opens this TV's own home screen",
-                                colors,
+                                on, colors,
                             ) {
-                                Pill(
-                                    if (on) "On" else "Off", colors, selected = on,
-                                    focusRequester = pageFirst,
-                                ) {
-                                    // Without the one-time grant Haven can't flip it; the TV's own
-                                    // Accessibility settings can, so open those instead.
-                                    if (HomeOverride.set(ctx, !on)) on = HomeOverride.isOn(ctx)
-                                    else openSystemPage(ctx, android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                                }
+                                // Without the one-time grant Haven can't flip it; the TV's own
+                                // Accessibility settings can, so open those instead.
+                                if (HomeOverride.set(ctx, !on)) on = HomeOverride.isOn(ctx)
+                                else openSystemPage(ctx, android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
                             }
-                            InfoStrip(
+                            SettingsStatusRow(
                                 "Turn off Projectivy's override",
                                 "In Projectivy's settings, switch off \"Override current launcher\" so the two don't fight over Home.",
                                 colors,
                             )
-                            InfoStrip(
+                            SettingsStatusRow(
                                 "What it does",
                                 "Google TV always opens its own home first. This watches only for that page and opens Haven instead. Your other accessibility services are untouched.",
                                 colors,
@@ -478,29 +432,28 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                         Page.DNS -> {
                             val dns by rememberDnsView(state)
                             if (!state.canSetDns()) {
-                                InfoStrip("One-time setup needed", "Use Set up in About & data › This TV, or run on a computer: ${PrivateDns.GRANT_COMMAND}", colors)
+                                SettingsStatusRow("One-time setup needed", "Use Set up in About & data › This TV, or run on a computer: ${PrivateDns.GRANT_COMMAND}", colors)
                             }
-                            DnsChoice.entries.chunked(3).forEachIndexed { r, row ->
-                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    row.forEachIndexed { c, choice ->
-                                        val sub = when {
-                                            choice == DnsChoice.CUSTOM && s.dnsCustom.isNotBlank() -> s.dnsCustom
-                                            else -> choice.host ?: choice.note
-                                        }
-                                        ChoiceCard(
-                                            choice.label, sub, null, dns.active == choice, colors,
-                                            Modifier.weight(1f).then(if (r == 0 && c == 0) first else Modifier),
-                                            height = 92.dp,
-                                        ) { if (choice == DnsChoice.CUSTOM) editingDns = true else state.selectDns(choice) }
+                            val activeDns = dns.active ?: DnsChoice.OFF
+                            SettingsChoiceRow(
+                                "Private DNS", dns.status.text, activeDns.label,
+                                DnsChoice.entries.map { choice ->
+                                    val sub = when {
+                                        choice == DnsChoice.CUSTOM && s.dnsCustom.isNotBlank() -> s.dnsCustom
+                                        else -> choice.host ?: choice.note
                                     }
-                                }
+                                    SettingsPickerOption(choice.name, choice.label, sub)
+                                }, activeDns.name, colors,
+                            ) { value ->
+                                val choice = DnsChoice.valueOf(value)
+                                if (choice == DnsChoice.CUSTOM) editingDns = true else state.selectDns(choice)
                             }
-                            ChoiceCard(
+                            SettingsToggleRow(
                                 "Keep enforced",
                                 if (s.dnsEnforce) "On: restores ${s.dnsChoice.label} at startup and whenever Haven opens" else "Off",
-                                Icons.Rounded.Shield, s.dnsEnforce, colors, Modifier.fillMaxWidth(), height = 92.dp,
+                                s.dnsEnforce, colors,
                             ) { store.update { it.copy(dnsEnforce = !it.dnsEnforce) } }
-                            InfoStrip("Status", dns.status.text, colors)
+                            SettingsStatusRow("Status", dns.status.text, colors)
                         }
                         Page.COLLECTIONS -> if (opened == null) {
                             CollectionsGrid(
@@ -518,21 +471,14 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                                 onNew = { creating = true },
                             )
                         } else if (opened.isInputs) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                ChoiceCard(
-                                    "Show on home", if (opened.hidden) "Hidden" else "Shown",
-                                    CollectionIcons.of(opened.icon), !opened.hidden, colors, Modifier.weight(1f).then(first),
-                                ) { layout.setCollectionHidden(opened.id, !opened.hidden) }
-                                ChoiceCard("Icon", "Change the row's icon", CollectionIcons.of(opened.icon), false, colors, Modifier.weight(1f)) {
-                                    iconFor = opened
-                                }
+                            SettingsToggleRow("Show on home", if (opened.hidden) "Hidden" else "Shown", !opened.hidden, colors) {
+                                layout.setCollectionHidden(opened.id, !opened.hidden)
                             }
-                            InfoStrip("Your inputs", state.inputs.joinToString(" · ") { it.label }.ifBlank { "None found" }, colors)
+                            SettingsActionRow("Icon", "Change the row's icon", "Change icon", colors) { iconFor = opened }
+                            SettingsStatusRow("Your inputs", state.inputs.joinToString(" · ") { it.label }.ifBlank { "None found" }, colors)
                         } else {
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Pill("Change icon", colors, focusRequester = pageFirst, icon = CollectionIcons.of(opened.icon)) { iconFor = opened }
-                                Pill("Rename", colors) { renaming = opened }
-                            }
+                            SettingsActionRow("Change icon", "", "Change icon", colors) { iconFor = opened }
+                            SettingsActionRow("Rename", "", "Rename", colors) { renaming = opened }
                             val apps = opened.apps.filter { it !in layout.layout.hidden }.mapNotNull { state.apps[it] }
                             if (apps.isEmpty()) {
                                 Text("Empty. Hold OK on any app on the home screen and choose \"Move to collection\".", color = colors.inkSoft, fontSize = 12.sp)
@@ -563,7 +509,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                                 Text("Nothing hidden. Hold OK on an app and choose Hide.", color = colors.inkSoft, fontSize = 12.sp,
                                     modifier = first.then(Modifier.tvClickable { }))
                             }
-                            listed.chunked(2).forEachIndexed { r, pair ->
+                            listed.chunked(1).forEachIndexed { r, pair ->
                                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     pair.forEachIndexed { c, app ->
                                         val isHidden = app.pkg in layout.layout.hidden
@@ -581,31 +527,26 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                                             }
                                         }
                                     }
-                                    if (pair.size == 1) Spacer(Modifier.weight(1f))
                                 }
                             }
                         }
                         Page.ABOUT -> AboutCard(colors, first)
                         Page.THIS_TV -> ThisTvPage(state, colors, first)
                         Page.WATCH_NOW -> {
-                            fun onOff(on: Boolean) = if (on) "On" else "Off"
-                            SettingsRow("NBA", "Scores, the 7-day schedule and your team. Uses ESPN and nba.com.", colors) {
-                                Pill(onOff(s.watchNba), colors, selected = s.watchNba, focusRequester = pageFirst) {
-                                    store.update { it.copy(watchNba = !it.watchNba) }
-                                }
+                            SettingsToggleRow("NBA", "Scores, the 7-day schedule and your team. Uses ESPN and nba.com.", s.watchNba, colors) {
+                                store.update { it.copy(watchNba = !it.watchNba) }
                             }
-                            SettingsRow("Favorite team", "Shown first on Home and in Watch Now, with its full schedule.", colors) {
-                                Pill(if (s.favoriteTeam.isBlank()) "None" else Nba.teamName(s.favoriteTeam), colors) { pickingTeam = true }
+                            SettingsChoiceRow(
+                                "Favorite team", "Shown first on Home and in Watch Now, with its full schedule.",
+                                if (s.favoriteTeam.isBlank()) "None" else Nba.teamName(s.favoriteTeam),
+                                listOf(SettingsPickerOption("", "None")) + Nba.TEAMS.map { (abbr, name) -> SettingsPickerOption(abbr, name) },
+                                s.favoriteTeam, colors,
+                            ) { abbr -> store.update { it.copy(favoriteTeam = abbr) } }
+                            SettingsToggleRow("Continue watching", "Shows from apps that share progress with the TV.", s.watchContinue, colors) {
+                                store.update { it.copy(watchContinue = !it.watchContinue) }
                             }
-                            SettingsRow("Continue watching", "Shows from apps that share progress with the TV.", colors) {
-                                Pill(onOff(s.watchContinue), colors, selected = s.watchContinue) {
-                                    store.update { it.copy(watchContinue = !it.watchContinue) }
-                                }
-                            }
-                            SettingsRow("Live channels", "Live rows from TV apps, such as YouTube TV or ESPN.", colors) {
-                                Pill(onOff(s.watchLive), colors, selected = s.watchLive) {
-                                    store.update { it.copy(watchLive = !it.watchLive) }
-                                }
+                            SettingsToggleRow("Live channels", "Live rows from TV apps, such as YouTube TV or ESPN.", s.watchLive, colors) {
+                                store.update { it.copy(watchLive = !it.watchLive) }
                             }
                             // Order of the Home strip cards and the drawer sections.
                             s.watchOrder.forEachIndexed { i, id ->
@@ -626,11 +567,19 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                             // Live TV apps name local network stations by call sign (ABC = "WFAA 8"),
                             // so tune-in needs to know which shared channel is which network.
                             LOCAL_NETWORKS.forEach { net ->
-                                SettingsRow("Local $net station", "Which live channel carries $net where you are, for game tune-in.", colors) {
-                                    Pill(s.localStations[net] ?: "Not set", colors) { pickingStation = net }
+                                val channels = state.watchNow.live.flatMap { g ->
+                                    g.items.map { it.title to "${it.title} · ${state.apps[g.pkg]?.label ?: g.provider}" }
+                                }.distinctBy { it.first }
+                                SettingsChoiceRow(
+                                    "Local $net station", "Which live channel carries $net where you are, for game tune-in.",
+                                    s.localStations[net] ?: "Not set",
+                                    listOf(SettingsPickerOption("", "Not set")) + channels.map { (title, note) -> SettingsPickerOption(title, title, note) },
+                                    s.localStations[net] ?: "", colors,
+                                ) { title ->
+                                    store.update { it.copy(localStations = if (title.isBlank()) it.localStations - net else it.localStations + (net to title)) }
                                 }
                             }
-                            InfoStrip(
+                            SettingsStatusRow(
                                 "One-time setup",
                                 "Continue watching and Live channels need the one-time setup: Set up in About & data › This TV, or on a computer: adb shell pm grant com.aktvhome.launcher android.permission.READ_TV_LISTINGS",
                                 colors,
@@ -638,24 +587,22 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                         }
                         Page.BACKUP -> {
                             val b = state.backup
-                            SettingsRow("Automatic backup", "Saved to Download/Haven on this TV whenever you change something. Last saved: ${backupTimeText(b.lastSaved)}.", colors) {
-                                Pill("Back up now", colors, focusRequester = pageFirst) { b.backupNow() }
-                            }
-                            SettingsRow("Restore", if (b.backupExists()) "Bring back the setup saved ${backupTimeText(b.backupTime())}." else "No backup found yet.", colors) {
-                                Pill("Restore", colors) { b.restore() }
-                            }
-                            SettingsRow("Reset Haven", "Back to first-run settings. Your backup is kept, so you can restore it.", colors) {
-                                Pill(if (confirmReset) "Press again to reset" else "Reset", colors, selected = confirmReset) {
-                                    if (confirmReset) { b.reset(); confirmReset = false } else confirmReset = true
-                                }
+                            SettingsActionRow("Automatic backup", "Saved to Download/Haven on this TV whenever you change something. Last saved: ${backupTimeText(b.lastSaved)}.", "Back up now", colors) { b.backupNow() }
+                            SettingsActionRow("Restore", if (b.backupExists()) "Bring back the setup saved ${backupTimeText(b.backupTime())}." else "No backup found yet.", "Restore", colors) { b.restore() }
+                            SettingsActionRow(
+                                "Reset Haven", "Back to first-run settings. Your backup is kept, so you can restore it.",
+                                if (confirmReset) "Press again to reset" else "Reset", colors,
+                            ) {
+                                if (confirmReset) { b.reset(); confirmReset = false } else confirmReset = true
                             }
                             if (!b.canAccessFiles()) {
-                                InfoStrip("One-time setup", "So Haven can read its backup after a reinstall: use Set up in About & data › This TV, or run on a computer: adb shell appops set com.aktvhome.launcher MANAGE_EXTERNAL_STORAGE allow", colors)
+                                SettingsStatusRow("One-time setup", "So Haven can read its backup after a reinstall: use Set up in About & data › This TV, or run on a computer: adb shell appops set com.aktvhome.launcher MANAGE_EXTERNAL_STORAGE allow", colors)
                             }
-                            if (b.problem.isNotBlank()) InfoStrip("Backup problem", b.problem, colors)
+                            if (b.problem.isNotBlank()) SettingsStatusRow("Backup problem", b.problem, colors)
                         }
                         Page.NBA_ALERTS -> NbaAlertsPage(state, colors, first)
-                        Page.LIVE_CHANNELS -> Unit
+                            Page.LIVE_CHANNELS -> Unit
+                        }
                     }
                 }
             }
@@ -947,7 +894,7 @@ private fun SizeCard(size: CardSize, chosen: Boolean, colors: ThemeColors, modif
 }
 
 /**
- * The Collections page: two columns of tiles. Each tile is OK to open (hold for options),
+ * The Collections page: one column of rows. Each row is OK to open (hold for options),
  * and right arrow walks onto its ↑ ↓ buttons, which move it immediately.
  */
 @Composable
@@ -988,7 +935,7 @@ private fun CollectionsGrid(
 @Composable
 private fun TwoColumns(content: @Composable FlowRowScope.() -> Unit) {
     FlowRow(
-        maxItemsInEachRow = 2,
+        maxItemsInEachRow = 1,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
         content = content,
@@ -1092,18 +1039,10 @@ private fun AboutCard(colors: ThemeColors, first: Modifier) {
     val version = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?"
     }
-    GlassCard(colors, Modifier.fillMaxWidth().then(first), onClick = {}) { ink ->
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Image(painterResource(R.drawable.ic_haven), null, Modifier.size(52.dp))
-            Text("Haven", color = ink, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Text("Your TV. Your space. Your way.", color = ink.copy(alpha = 0.75f), fontSize = 12.sp)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip("Version $version", colors)
-                Chip(context.packageName, colors)
-                Chip("Designed for Android TV", colors)
-            }
-        }
-    }
+    SettingsStatusRow("Haven", "Your TV. Your space. Your way.", colors, first)
+    SettingsStatusRow("Version", version, colors)
+    SettingsStatusRow("Package", context.packageName, colors)
+    SettingsStatusRow("Android TV", "Designed for Android TV", colors)
 }
 
 @Composable

@@ -64,13 +64,14 @@ fun ThisTvPage(state: HavenState, colors: ThemeColors, first: Modifier) {
     }
     Capability.entries.forEach { c ->
         val st = status.getValue(c)
-        SettingsRow(c.label, listOfNotNull(st.reason, st.fix).joinToString(" "), colors) {
-            if (c == Capability.HOME_SERVICE && st.state == CapState.NEEDS_SETUP) {
-                // The one item anyone can fix on the TV itself, without the one-time grant.
-                Pill("Open Accessibility", colors) { openSystemPage(ctx, Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
-            } else {
-                StateBadge(st.state, colors)
+        val note = listOfNotNull(st.reason, st.fix).joinToString(" ")
+        if (c == Capability.HOME_SERVICE && st.state == CapState.NEEDS_SETUP) {
+            // The one item anyone can fix on the TV itself, without the one-time grant.
+            SettingsActionRow(c.label, note, "Open Accessibility", colors) {
+                openSystemPage(ctx, Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             }
+        } else {
+            SettingsStatusRow(c.label, listOf(note, stateLabel(st.state)).filter { it.isNotBlank() }.joinToString(" · "), colors)
         }
     }
     if (listOf(Capability.SECURE_SETTINGS, Capability.TV_LISTINGS, Capability.NOTIFICATIONS, Capability.FILES).any { device.state(it) == CapState.NEEDS_SETUP }) {
@@ -89,6 +90,12 @@ fun ThisTvPage(state: HavenState, colors: ThemeColors, first: Modifier) {
             )
         }
     }
+}
+
+private fun stateLabel(state: CapState): String = when (state) {
+    CapState.AVAILABLE -> "Available"
+    CapState.NEEDS_SETUP -> "Set up"
+    CapState.UNSUPPORTED -> "Not supported"
 }
 
 /**
