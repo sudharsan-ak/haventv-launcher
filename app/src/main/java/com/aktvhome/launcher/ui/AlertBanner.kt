@@ -15,6 +15,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -265,9 +266,39 @@ private fun Banner(
 ) {
     val game = alert.game
     val primary = remember { FocusRequester() }
-    // A toast just under the gear: top right, inside the TV-safe area, a quarter of the screen wide.
+    NbaToast("Haven · NBA", alert.event.headline, "▶ Watch on ${option.app}", colors, watchNow, primary, onOpen, onDismiss) {
+        TeamLine(game.away, hideScores, colors)
+        TeamLine(game.home, hideScores, colors)
+        val detail = if (hideScores) "${alert.event.label} · tune in" else statusText(game)
+        Text(
+            listOfNotNull(detail, game.network).joinToString(" · "),
+            color = colors.inkSoft, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
+    }
+    LaunchedEffect(Unit) { runCatching { primary.requestFocus() } }
+}
+
+/**
+ * The small glass toast under the gear, top right in the TV-safe area, a quarter of the screen
+ * wide: NBA logo and [eyebrow] with a small close, the [headline], then [body] on the left and the
+ * main action ([primary], focused through [focus]) over a quiet Dismiss on the right. Shared by
+ * the alert banners and the Last night recap.
+ */
+@Composable
+fun NbaToast(
+    eyebrow: String,
+    headline: String,
+    primary: String,
+    colors: ThemeColors,
+    watchNow: WatchNow,
+    focus: FocusRequester,
+    onPrimary: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    body: @Composable ColumnScope.() -> Unit,
+) {
     Column(
-        Modifier
+        modifier
             .padding(top = 76.dp, end = 40.dp)
             .width(240.dp)
             .glassPanel(colors, RoundedCornerShape(18.dp))
@@ -276,27 +307,18 @@ private fun Banner(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             NetImage(watchNow, Nba.LEAGUE_LOGO, 14.dp)
-            Box(Modifier.weight(1f)) { Eyebrow("Haven · NBA", colors) }
+            Box(Modifier.weight(1f)) { Eyebrow(eyebrow, colors) }
             SmallClose(colors, onDismiss)
         }
-        Text(alert.event.headline, color = colors.ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(headline, color = colors.ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                TeamLine(game.away, hideScores, colors)
-                TeamLine(game.home, hideScores, colors)
-                val detail = if (hideScores) "${alert.event.label} · tune in" else statusText(game)
-                Text(
-                    listOfNotNull(detail, game.network).joinToString(" · "),
-                    color = colors.inkSoft, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
-            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp), content = body)
             Column(Modifier.width(104.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                WatchPill("▶ Watch on ${option.app}", colors, primary, onOpen)
+                WatchPill(primary, colors, focus, onPrimary)
                 TextButton("Dismiss", colors, onDismiss)
             }
         }
     }
-    LaunchedEffect(Unit) { runCatching { primary.requestFocus() } }
 }
 
 @Composable

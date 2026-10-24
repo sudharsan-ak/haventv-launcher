@@ -109,6 +109,9 @@ class WatchNow(
         }
     }
 
+    /** When [date]'s games were last fetched, or 0. */
+    fun fetchedAt(date: LocalDate): Long = loadedAt[date] ?: 0L
+
     /** True when [date]'s games were fetched in the last 3 minutes (the alerts' rule for fresh). */
     fun fresh(date: LocalDate): Boolean = System.currentTimeMillis() - (loadedAt[date] ?: 0L) <= 3 * 60_000L
 

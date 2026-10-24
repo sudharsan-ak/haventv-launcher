@@ -27,6 +27,7 @@ import com.aktvhome.launcher.data.PrivateDns
 import kotlinx.coroutines.launch
 import com.aktvhome.launcher.data.SettingsStore
 import com.aktvhome.launcher.data.ThemeId
+import com.aktvhome.launcher.ui.LastNightRecap
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.Overlay
 import com.aktvhome.launcher.ui.kingdom.KingdomHome
@@ -99,6 +100,9 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+
+            // The morning catch-up toast, on Home only.
+            LastNightRecap(state, colors)
 
             // Settings float over the home, which stays live behind them.
             when (state.overlay) {
