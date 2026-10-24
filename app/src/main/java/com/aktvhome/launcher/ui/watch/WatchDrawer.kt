@@ -138,7 +138,7 @@ private fun TeamCard(state: HavenState, colors: ThemeColors, fav: String, focus:
     val w = state.watchNow
     val next = w.nextFavorite()
     val last = w.lastFavorite()
-    GlassCard(colors, Modifier.fillMaxWidth(), focusRequester = focus, onClick = { state.scheduleOpen = true }) { ink ->
+    GlassCard(colors, Modifier.fillMaxWidth(), focusRequester = focus, onClick = { state.openSchedule(fav) }) { ink ->
         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(Nba.teamName(fav), color = ink, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))

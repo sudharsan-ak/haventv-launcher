@@ -186,6 +186,31 @@ class WatchNow(
         }
     }
 
+    /** Any team's season schedule (ESPN abbreviation to games, oldest first), for the Schedules tab. */
+    val teamSchedules = mutableStateMapOf<String, List<Game>>()
+    private val teamScheduleAt = mutableMapOf<String, Long>()
+    private val teamScheduleLoading = mutableSetOf<String>()
+    /** Teams whose last schedule fetch failed, so the tab can say so instead of "Loading". */
+    val teamScheduleFailed = mutableStateMapOf<String, Boolean>()
+
+    /** Loads [abbr]'s schedule if it's missing or more than 10 minutes old (scores change during games). */
+    fun loadSchedule(abbr: String) {
+        val age = System.currentTimeMillis() - (teamScheduleAt[abbr] ?: 0L)
+        if (abbr in teamScheduleLoading || (abbr in teamSchedules && age < 10 * 60_000L)) return
+        teamScheduleLoading += abbr
+        scope.launch(Dispatchers.IO) {
+            val list = runCatching { Nba.schedule(abbr) }.getOrNull()
+            withContext(Dispatchers.Main) {
+                teamScheduleLoading -= abbr
+                teamScheduleFailed[abbr] = list == null
+                if (list != null) {
+                    teamSchedules[abbr] = list
+                    teamScheduleAt[abbr] = System.currentTimeMillis()
+                }
+            }
+        }
+    }
+
     fun nextFavorite(): Game? = schedule.firstOrNull { it.state != GameState.FINAL }
     fun lastFavorite(): Game? = schedule.lastOrNull { it.state == GameState.FINAL }
 
