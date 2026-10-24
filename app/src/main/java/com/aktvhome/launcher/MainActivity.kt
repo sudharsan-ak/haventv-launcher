@@ -36,6 +36,8 @@ import com.aktvhome.launcher.ui.kingdom.KingdomHome
 import com.aktvhome.launcher.ui.settings.Personalize
 import com.aktvhome.launcher.ui.settings.QuickSettings
 import com.aktvhome.launcher.ui.settings.RestorePrompt
+import com.aktvhome.launcher.ui.settings.SetupOffer
+import com.aktvhome.launcher.ui.settings.SetupWizard
 import com.aktvhome.launcher.ui.watch.ContinuePanel
 import com.aktvhome.launcher.ui.watch.LivePanel
 import com.aktvhome.launcher.ui.watch.NbaPanel
@@ -119,9 +121,12 @@ class MainActivity : ComponentActivity() {
                 Overlay.NBA -> NbaPanel(state, colors)
                 Overlay.LIVE -> LivePanel(state, colors)
                 Overlay.CONTINUE -> ContinuePanel(state, colors)
+                Overlay.SETUP -> SetupWizard(state, colors)
                 Overlay.NONE -> Unit
             }
             if (state.backup.offerRestore) RestorePrompt(state, colors)
+            // Once, on a TV that still needs the one-time setup.
+            SetupOffer(state, colors)
         }
     }
 

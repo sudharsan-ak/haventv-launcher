@@ -52,7 +52,7 @@ data class DeviceFacts(
 
 object Capabilities {
 
-    private const val ADB = "Needs the one-time setup (a grant only ADB can give)."
+    private const val ADB = "Needs the one-time setup: Set up, at the top of This TV."
 
     fun evaluate(f: DeviceFacts): Map<Capability, CapStatus> = Capability.entries.associateWith { c ->
         when (c) {

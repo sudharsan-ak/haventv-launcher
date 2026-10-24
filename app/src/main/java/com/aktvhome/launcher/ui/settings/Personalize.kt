@@ -478,7 +478,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                         Page.DNS -> {
                             val dns by rememberDnsView(state)
                             if (!state.canSetDns()) {
-                                InfoStrip("One-time setup needed", "Run on your PC: ${PrivateDns.GRANT_COMMAND}", colors)
+                                InfoStrip("One-time setup needed", "Use Set up in About & data › This TV, or run on a computer: ${PrivateDns.GRANT_COMMAND}", colors)
                             }
                             DnsChoice.entries.chunked(3).forEachIndexed { r, row ->
                                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -632,7 +632,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                             }
                             InfoStrip(
                                 "One-time setup",
-                                "Continue watching and Live channels need: adb shell pm grant com.aktvhome.launcher android.permission.READ_TV_LISTINGS",
+                                "Continue watching and Live channels need the one-time setup: Set up in About & data › This TV, or on a computer: adb shell pm grant com.aktvhome.launcher android.permission.READ_TV_LISTINGS",
                                 colors,
                             )
                         }
@@ -650,7 +650,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                                 }
                             }
                             if (!b.canAccessFiles()) {
-                                InfoStrip("One-time setup", "So Haven can read its backup after a reinstall: adb shell appops set com.aktvhome.launcher MANAGE_EXTERNAL_STORAGE allow", colors)
+                                InfoStrip("One-time setup", "So Haven can read its backup after a reinstall: use Set up in About & data › This TV, or run on a computer: adb shell appops set com.aktvhome.launcher MANAGE_EXTERNAL_STORAGE allow", colors)
                             }
                             if (b.problem.isNotBlank()) InfoStrip("Backup problem", b.problem, colors)
                         }
