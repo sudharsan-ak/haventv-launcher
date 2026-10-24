@@ -82,6 +82,7 @@ private val TEAM_STATS = listOf(
 
 private val BOX_COLUMNS = listOf("MIN", "PTS", "REB", "AST", "FG", "3PT")
 private val clockFmt = DateTimeFormatter.ofPattern("h:mm a")
+private val headerDateFmt = DateTimeFormatter.ofPattern("EEE, MMM d")
 
 /** A game's summary, kept fresh while its details are open. */
 private class SummaryFeed {
@@ -165,7 +166,8 @@ fun GameDetailPane(
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Eyebrow("NBA ·", colors)
+                    // The game's date up top, so a game opened from a schedule says when it is.
+                    Eyebrow(game?.let { "NBA · ${it.start.atZone(ZoneId.systemDefault()).format(headerDateFmt)} ·" } ?: "NBA ·", colors)
                     game?.let { StatusPill(it, colors) }
                 }
                 Text(
