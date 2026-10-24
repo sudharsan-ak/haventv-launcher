@@ -332,6 +332,8 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
                             GameFilter.ALL -> "No NBA games on ${day.format(dateLineFmt)}."
                             GameFilter.MINE -> "Your teams don't play on ${day.format(dateLineFmt)}."
                             GameFilter.ALERTS -> "No games with Set alert on this day. Open a game and press Set alert."
+                            // Shows the team picker above instead; never reaches here.
+                            GameFilter.SCHEDULES -> ""
                         },
                         color = colors.inkSoft, fontSize = 12.sp,
                     )
