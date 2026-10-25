@@ -84,7 +84,7 @@ private const val SMARTTUBE_MIN_QUERY = 3
 
 private sealed interface SearchTarget {
     data class App(val app: AppEntry) : SearchTarget
-    data class Setting(val destination: SettingsDestination) : SearchTarget
+    data class Setting(val destination: SettingsDestination, val settingId: String) : SearchTarget
     data class Collection(val id: String) : SearchTarget
     data class Input(val input: TvInput) : SearchTarget
     data class Tv(val item: TvItem) : SearchTarget
@@ -100,50 +100,6 @@ private data class SearchItem(
     val app: AppEntry? = null,
     val imageUrl: String? = null,
     val collectionIcon: String? = null,
-)
-
-private data class SettingSpec(
-    val name: String,
-    val destination: SettingsDestination,
-    val path: String,
-    val description: String,
-    val keywords: String = "",
-)
-
-private val SETTINGS = listOf(
-    SettingSpec("Theme", SettingsDestination.STYLE, "Appearance · Theme & motion", "Choose between Kingdom and Tide.", "look visual color skin"),
-    SettingSpec("Day & night", SettingsDestination.STYLE, "Appearance · Theme & motion", "Choose automatic, day or night appearance.", "sunset sunrise auto lighting"),
-    SettingSpec("Motion", SettingsDestination.STYLE, "Appearance · Theme & motion", "Control Haven's waves, glow and animations.", "animation reduced off"),
-    SettingSpec("Wallpaper", SettingsDestination.WALLPAPER, "Appearance · Wallpaper", "Choose photo sources and wallpaper behavior.", "background Bing Earth View Wikimedia Unsplash"),
-    SettingSpec("Change every", SettingsDestination.WALLPAPER, "Appearance · Wallpaper", "Choose how often photo wallpaper changes.", "interval hours"),
-    SettingSpec("Unsplash topics", SettingsDestination.WALLPAPER, "Appearance · Wallpaper", "Choose the topics used for Unsplash photos.", "photos multi select"),
-    SettingSpec("Unsplash key", SettingsDestination.WALLPAPER, "Appearance · Wallpaper", "Set the access key used for Unsplash.", "API access"),
-    SettingSpec("Photo credit", SettingsDestination.WALLPAPER, "Appearance · Wallpaper", "Show or hide wallpaper attribution.", "photographer attribution"),
-    SettingSpec("Card size", SettingsDestination.DISPLAY, "Home & layout · Display", "Adjust collection and app card size.", "small medium large tiles"),
-    SettingSpec("Clock format", SettingsDestination.DISPLAY, "Home & layout · Display", "Choose 12-hour or 24-hour time.", "time 24 hour"),
-    SettingSpec("Show greeting", SettingsDestination.DISPLAY, "Home & layout · Display", "Show or hide the welcome message.", "welcome home"),
-    SettingSpec("Changing headline", SettingsDestination.DISPLAY, "Home & layout · Display", "Control the changing Home headline.", "headline greeting"),
-    SettingSpec("Your name", SettingsDestination.DISPLAY, "Home & layout · Display", "Change the name used in the greeting.", "profile greeting"),
-    SettingSpec("Collections", SettingsDestination.COLLECTIONS, "Home & layout · Collections", "Reorder, rename and organize app collections.", "manage move apps rows"),
-    SettingSpec("Hidden apps", SettingsDestination.HIDDEN, "Home & layout · Hidden apps", "Choose which installed apps appear on Home.", "hide visibility"),
-    SettingSpec("NBA alerts", SettingsDestination.NBA_ALERTS, "Watching & alerts · NBA alerts", "Choose teams, alert types and score visibility.", "basketball notifications close game overtime"),
-    SettingSpec("Teams you follow", SettingsDestination.NBA_ALERTS, "Watching & alerts · NBA alerts", "Choose the NBA teams whose games you follow.", "basketball favorite logos"),
-    SettingSpec("Hide scores", SettingsDestination.NBA_ALERTS, "Watching & alerts · NBA alerts", "Hide scores until games are opened.", "spoilers"),
-    SettingSpec("Last night recap", SettingsDestination.NBA_ALERTS, "Watching & alerts · NBA alerts", "Control the morning NBA recap.", "yesterday results"),
-    SettingSpec("Watch Now", SettingsDestination.WATCH_NOW, "Watching & alerts · Watch Now", "Configure NBA, Continue watching and Live channels.", "home strip TV"),
-    SettingSpec("Favorite team", SettingsDestination.WATCH_NOW, "Watching & alerts · Watch Now", "Choose the NBA team shown first.", "basketball Warriors"),
-    SettingSpec("Continue watching", SettingsDestination.WATCH_NOW, "Watching & alerts · Watch Now", "Show programs shared by installed TV apps.", "resume progress"),
-    SettingSpec("Live channels", SettingsDestination.WATCH_NOW, "Watching & alerts · Watch Now", "Show channels shared by Live TV apps.", "television listings"),
-    SettingSpec("Home button", SettingsDestination.HOME_BUTTON, "TV & network · Home button", "Choose whether the remote Home button opens Haven.", "launcher accessibility remote"),
-    SettingSpec("Private DNS", SettingsDestination.DNS, "TV & network · Private DNS", "Configure encrypted DNS and enforcement.", "AdGuard Cloudflare Quad9 network privacy"),
-    SettingSpec("Picture controls", SettingsDestination.TV_CONTROLS, "TV & network · TV controls", "Open picture settings supported by this TV.", "brightness display screen color"),
-    SettingSpec("Sound output", SettingsDestination.TV_CONTROLS, "TV & network · TV controls", "Choose speakers and adjust supported sound controls.", "volume mute audio"),
-    SettingSpec("Power saving", SettingsDestination.TV_CONTROLS, "TV & network · TV controls", "Configure supported TV power saving.", "energy eco"),
-    SettingSpec("Sleep timer", SettingsDestination.TV_CONTROLS, "TV & network · TV controls", "Turn the TV off after a chosen duration.", "power minutes hour"),
-    SettingSpec("Wi-Fi & Bluetooth", SettingsDestination.TV_CONTROLS, "TV & network · TV controls", "Check connectivity and open wireless settings.", "internet network devices"),
-    SettingSpec("This TV", SettingsDestination.THIS_TV, "About & data · This TV", "Review this TV's available Haven capabilities.", "setup permissions device"),
-    SettingSpec("Backup & reset", SettingsDestination.BACKUP, "About & data · Backup & reset", "Back up, restore or reset Haven.", "data export import"),
-    SettingSpec("About Haven", SettingsDestination.ABOUT, "About & data · About Haven", "View Haven version and package information.", "version Android TV"),
 )
 
 @Composable
@@ -193,7 +149,7 @@ fun SearchOverlay(state: HavenState, colors: ThemeColors) {
         keyboard?.hide()
         when (val target = item.target) {
             is SearchTarget.App -> { state.overlay = Overlay.NONE; state.launch(target.app) }
-            is SearchTarget.Setting -> state.openSettings(target.destination)
+            is SearchTarget.Setting -> state.openSettings(target.destination, target.settingId)
             is SearchTarget.Collection -> { state.selectedCollection = target.id; state.overlay = Overlay.NONE }
             is SearchTarget.Input -> { state.overlay = Overlay.NONE; state.switchTo(target.input) }
             is SearchTarget.Tv -> { state.overlay = Overlay.NONE; state.watchNow.open(target.item) }
@@ -502,11 +458,11 @@ private fun searchItems(state: HavenState): List<SearchItem> = buildList {
             ),
         )
     }
-    SETTINGS.forEach { spec ->
+    HAVEN_SETTINGS.forEach { spec ->
         add(
             SearchItem(
-                SearchDocument("setting:${spec.name}", spec.name, spec.path, spec.description, spec.keywords),
-                SearchCategory.SETTINGS, SearchTarget.Setting(spec.destination),
+                SearchDocument("setting:${spec.id}", spec.name, spec.path, spec.description, spec.keywords),
+                SearchCategory.SETTINGS, SearchTarget.Setting(spec.destination, spec.id),
             ),
         )
     }
@@ -582,9 +538,9 @@ private fun suggestions(state: HavenState, all: List<SearchItem>): List<SearchIt
     val favorite = state.settingsStore.settings.favoriteTeam
     val wanted = listOfNotNull(
         all.firstOrNull { it.category == SearchCategory.APPS },
-        all.firstOrNull { it.document.id == "setting:Theme" },
-        all.firstOrNull { it.document.id == "setting:NBA alerts" },
-        all.firstOrNull { it.document.id == "setting:Private DNS" },
+        all.firstOrNull { it.document.id == "setting:theme_kingdom" },
+        all.firstOrNull { it.document.id == "setting:alerts_your_team" },
+        all.firstOrNull { it.document.id == "setting:private_dns" },
         all.firstOrNull { it.document.id == "team:$favorite" },
         all.firstOrNull { it.target is SearchTarget.Tv },
         all.firstOrNull { it.target is SearchTarget.Input },

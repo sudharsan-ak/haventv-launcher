@@ -52,8 +52,19 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aktvhome.launcher.ui.Pill
+import com.aktvhome.launcher.ui.havenSetting
 import com.aktvhome.launcher.ui.theme.ThemeColors
 import com.aktvhome.launcher.ui.tvClickable
+
+internal data class SettingSearchTarget(val settingId: String, val focus: FocusRequester)
+
+internal val LocalSettingSearchTarget = compositionLocalOf<SettingSearchTarget?> { null }
+
+@Composable
+internal fun Modifier.settingSearchTarget(focusTitle: String): Modifier {
+    val target = LocalSettingSearchTarget.current ?: return this
+    return if (havenSetting(target.settingId)?.focusTitle == focusTitle) focusRequester(target.focus) else this
+}
 
 internal data class SettingsPickerOption(
     val value: String,
@@ -355,6 +366,7 @@ private fun SettingsInteractiveRow(
     val shape = RoundedCornerShape(16.dp)
     Row(
         modifier
+            .settingSearchTarget(title)
             .fillMaxWidth()
             .alpha(if (enabled) 1f else 0.42f)
             .focusProperties { canFocus = enabled }

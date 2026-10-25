@@ -34,6 +34,11 @@ enum class SettingsDestination {
     HOME_BUTTON, DNS, TV_CONTROLS, THIS_TV, BACKUP, ABOUT,
 }
 
+data class SettingsRequest(
+    val destination: SettingsDestination,
+    val settingId: String? = null,
+)
+
 /** A collection as shown on screen: only installed, non-hidden apps, in the user's order. */
 data class ShownCollection(val collection: AppCollection, val apps: List<AppEntry>) {
     val isInputs get() = collection.isInputs
@@ -72,10 +77,10 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
         private set
 
     var overlay by mutableStateOf(Overlay.NONE)
-    var settingsDestination by mutableStateOf<SettingsDestination?>(null)
+    var settingsDestination by mutableStateOf<SettingsRequest?>(null)
 
-    fun openSettings(destination: SettingsDestination) {
-        settingsDestination = destination
+    fun openSettings(destination: SettingsDestination, settingId: String? = null) {
+        settingsDestination = SettingsRequest(destination, settingId)
         overlay = Overlay.PERSONALIZE
     }
     /** A game for the NBA panel to open on (its ESPN id and day), set by [openGame]; the panel clears it. */

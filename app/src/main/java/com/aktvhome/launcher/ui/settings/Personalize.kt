@@ -100,6 +100,7 @@ import com.aktvhome.launcher.ui.theme.ThemeColors
 import com.aktvhome.launcher.ui.tide.TideHome
 import com.aktvhome.launcher.ui.tvClickable
 import com.aktvhome.launcher.ui.watch.NetImage
+import kotlinx.coroutines.delay
 
 private enum class SettingsGroup(
     val label: String,
@@ -162,8 +163,9 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
     val layout = state.layoutStore
     val close = { state.overlay = Overlay.NONE }
 
-    val initialPage = state.settingsDestination?.let { destination ->
-        Page.entries.firstOrNull { it.name == destination.name }
+    val initialRequest = remember { state.settingsDestination }
+    val initialPage = initialRequest?.let { request ->
+        Page.entries.firstOrNull { it.name == request.destination.name }
     } ?: Page.STYLE
     var group by remember { mutableStateOf(initialPage.group) }
     var page by remember { mutableStateOf(initialPage) }
@@ -173,10 +175,20 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
     // Right/OK from the menu lands on the selected tab. Content has its own first target.
     val contentFirst = remember { FocusRequester() }
     val pageFirst = remember { FocusRequester() }
+    val settingFocus = remember { FocusRequester() }
+    val settingTarget = initialRequest?.settingId?.let { SettingSearchTarget(it, settingFocus) }
     val first = Modifier.focusRequester(pageFirst)
     val contentScroll = rememberScrollState()
 
     LaunchedEffect(Unit) { state.settingsDestination = null }
+
+    LaunchedEffect(initialRequest?.settingId) {
+        if (initialRequest?.settingId == null) return@LaunchedEffect
+        repeat(20) {
+            delay(if (it == 0) 180 else 250)
+            if (runCatching { settingFocus.requestFocus() }.isSuccess) return@LaunchedEffect
+        }
+    }
 
     LaunchedEffect(page, openId) { contentScroll.scrollTo(0) }
 
@@ -312,12 +324,13 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                     Box(Modifier.fillMaxWidth().height(1.dp).background(colors.edge))
                 }
                 Spacer(Modifier.height(10.dp))
-                SettingsPickerHost(colors, Modifier.fillMaxSize()) {
-                    Column(
-                        Modifier.fillMaxSize().verticalScroll(contentScroll),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        when (page) {
+                CompositionLocalProvider(LocalSettingSearchTarget provides settingTarget) {
+                    SettingsPickerHost(colors, Modifier.fillMaxSize()) {
+                        Column(
+                            Modifier.fillMaxSize().verticalScroll(contentScroll),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            when (page) {
                         Page.STYLE -> {
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 ThemeId.entries.forEachIndexed { i, t ->
@@ -618,8 +631,9 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                             }
                             if (b.problem.isNotBlank()) SettingsStatusRow("Backup problem", b.problem, colors)
                         }
-                        Page.NBA_ALERTS -> NbaAlertsPage(state, colors, first)
+                            Page.NBA_ALERTS -> NbaAlertsPage(state, colors, first)
                             Page.LIVE_CHANNELS -> Unit
+                            }
                         }
                     }
                 }
@@ -847,7 +861,7 @@ internal fun ChoicePills(
 /** Theme choice with the real Home UI scaled down, frozen and made non-interactive. */
 @Composable
 private fun ThemeCard(theme: ThemeId, state: HavenState, chosen: Boolean, colors: ThemeColors, modifier: Modifier, onClick: () -> Unit) {
-    GlassCard(colors, modifier, selected = chosen, onClick = onClick) { ink ->
+    GlassCard(colors, modifier.settingSearchTarget(theme.label), selected = chosen, onClick = onClick) { ink ->
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val c = Palettes.colors(theme, state.dayness())
             BoxWithConstraints(
