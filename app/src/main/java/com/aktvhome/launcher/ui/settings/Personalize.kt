@@ -91,6 +91,7 @@ import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.IconBadge
 import com.aktvhome.launcher.ui.LocalTvInteractionsEnabled
 import com.aktvhome.launcher.ui.Overlay
+import com.aktvhome.launcher.ui.SettingsDestination
 import com.aktvhome.launcher.ui.Pill
 import com.aktvhome.launcher.ui.TextInputDialog
 import com.aktvhome.launcher.ui.kingdom.KingdomHome
@@ -161,8 +162,11 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
     val layout = state.layoutStore
     val close = { state.overlay = Overlay.NONE }
 
-    var group by remember { mutableStateOf(SettingsGroup.APPEARANCE) }
-    var page by remember { mutableStateOf(Page.STYLE) }
+    val initialPage = state.settingsDestination?.let { destination ->
+        Page.entries.firstOrNull { it.name == destination.name }
+    } ?: Page.STYLE
+    var group by remember { mutableStateOf(initialPage.group) }
+    var page by remember { mutableStateOf(initialPage) }
     var contentFocused by remember { mutableStateOf(false) }
     var openId by remember { mutableStateOf<String?>(null) }
     val navFocus = remember { visibleGroups.associateWith { FocusRequester() } }
@@ -171,6 +175,8 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
     val pageFirst = remember { FocusRequester() }
     val first = Modifier.focusRequester(pageFirst)
     val contentScroll = rememberScrollState()
+
+    LaunchedEffect(Unit) { state.settingsDestination = null }
 
     LaunchedEffect(page, openId) { contentScroll.scrollTo(0) }
 

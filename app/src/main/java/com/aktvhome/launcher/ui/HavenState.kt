@@ -24,7 +24,13 @@ import java.time.LocalTime
 
 /** What floats over the home screen. The home itself always stays drawn behind. */
 /** WATCH is the full Watch Now drawer; NBA, LIVE and CONTINUE are the single-card panels. */
-enum class Overlay { NONE, QUICK, PERSONALIZE, WATCH, NBA, LIVE, CONTINUE, SETUP }
+enum class Overlay { NONE, QUICK, SEARCH, PERSONALIZE, WATCH, NBA, LIVE, CONTINUE, SETUP }
+
+/** The All settings page requested by search. Names intentionally mirror Personalize's pages. */
+enum class SettingsDestination {
+    STYLE, WALLPAPER, DISPLAY, COLLECTIONS, HIDDEN, NBA_ALERTS, WATCH_NOW,
+    HOME_BUTTON, DNS, TV_CONTROLS, THIS_TV, BACKUP, ABOUT,
+}
 
 /** A collection as shown on screen: only installed, non-hidden apps, in the user's order. */
 data class ShownCollection(val collection: AppCollection, val apps: List<AppEntry>) {
@@ -64,6 +70,12 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
         private set
 
     var overlay by mutableStateOf(Overlay.NONE)
+    var settingsDestination by mutableStateOf<SettingsDestination?>(null)
+
+    fun openSettings(destination: SettingsDestination) {
+        settingsDestination = destination
+        overlay = Overlay.PERSONALIZE
+    }
     /** A game for the NBA panel to open on (its ESPN id and day), set by [openGame]; the panel clears it. */
     var nbaGame by mutableStateOf<Pair<String, java.time.LocalDate>?>(null)
 

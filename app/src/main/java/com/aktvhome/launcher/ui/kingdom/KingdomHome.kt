@@ -60,6 +60,7 @@ import com.aktvhome.launcher.ui.homeShown
 import com.aktvhome.launcher.ui.AppCard
 import com.aktvhome.launcher.ui.AppMenuOverlays
 import com.aktvhome.launcher.ui.GearButton
+import com.aktvhome.launcher.ui.SearchButton
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.IconBadge
 import com.aktvhome.launcher.ui.InputCard
@@ -139,6 +140,10 @@ fun KingdomHome(state: HavenState, colors: ThemeColors, preview: Boolean = false
                 Spacer(Modifier.weight(1f))
                 Text(clockText(state.now, settings.clock24), color = colors.ink, fontSize = 16.sp, fontWeight = FontWeight.Medium)
                 Spacer(Modifier.width(16.dp))
+                SearchButton(colors, Modifier.focusProperties { down = if (showStrip) stripFirst else tiles.requester(currentIndex) }) {
+                    state.overlay = Overlay.SEARCH
+                }
+                Spacer(Modifier.width(8.dp))
                 // Down from the gear: the Watch Now strip if shown, else the collection you were on.
                 GearButton(colors, Modifier.focusProperties { down = if (showStrip) stripFirst else tiles.requester(currentIndex) }) {
                     state.overlay = Overlay.QUICK

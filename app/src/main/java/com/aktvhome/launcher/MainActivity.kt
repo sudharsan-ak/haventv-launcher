@@ -31,6 +31,7 @@ import com.aktvhome.launcher.data.ThemeId
 import com.aktvhome.launcher.ui.LastNightRecap
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.Overlay
+import com.aktvhome.launcher.ui.SearchOverlay
 import com.aktvhome.launcher.ui.WallpaperHint
 import com.aktvhome.launcher.ui.kingdom.KingdomHome
 import com.aktvhome.launcher.ui.settings.Personalize
@@ -61,6 +62,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         state = HavenState(applicationContext, lifecycleScope)
         state.isHome = intent?.hasCategory(Intent.CATEGORY_HOME) == true
+        handleExternalAction(intent)
 
         setContent {
             val s = state.settingsStore.settings
@@ -116,6 +118,7 @@ class MainActivity : ComponentActivity() {
             // Settings float over the home, which stays live behind them.
             when (state.overlay) {
                 Overlay.QUICK -> QuickSettings(state, colors)
+                Overlay.SEARCH -> SearchOverlay(state, colors)
                 Overlay.PERSONALIZE -> Personalize(state, colors)
                 Overlay.WATCH -> WatchDrawer(state, colors)
                 Overlay.NBA -> NbaPanel(state, colors)
@@ -148,12 +151,21 @@ class MainActivity : ComponentActivity() {
             if (event.action == KeyEvent.ACTION_UP) swallowKey = null
             return true
         }
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 &&
+            (event.keyCode == KeyEvent.KEYCODE_SEARCH || event.keyCode == KeyEvent.KEYCODE_SLASH)
+        ) {
+            state.wallpaperView = false
+            state.overlay = Overlay.SEARCH
+            return true
+        }
         return super.dispatchKeyEvent(event)
     }
 
     /** Home pressed while Haven is already open: close whatever is up and go back to the first row. */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
+        if (handleExternalAction(intent)) return
         if (!intent.hasCategory(Intent.CATEGORY_HOME)) return
         state.isHome = true
         state.wallpaperView = false
@@ -164,6 +176,18 @@ class MainActivity : ComponentActivity() {
         state.moving = null
         state.focusedApp = null
         state.homePresses++
+    }
+
+    private fun handleExternalAction(intent: Intent?): Boolean {
+        val overlay = when (intent?.action) {
+            ACTION_OPEN_SEARCH -> Overlay.SEARCH
+            ACTION_OPEN_SETTINGS -> Overlay.QUICK
+            else -> return false
+        }
+        state.isHome = false
+        state.wallpaperView = false
+        state.overlay = overlay
+        return true
     }
 
     override fun onStart() {
@@ -200,6 +224,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private companion object {
+        const val ACTION_OPEN_SEARCH = "com.aktvhome.launcher.action.OPEN_SEARCH"
+        const val ACTION_OPEN_SETTINGS = "com.aktvhome.launcher.action.OPEN_SETTINGS"
         val VOLUME_KEYS = setOf(KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_MUTE)
     }
 }
