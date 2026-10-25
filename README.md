@@ -132,6 +132,18 @@ off by default: turn it on in **All settings › Watching & alerts › Watch Now
 favorite team there. Scores and schedules come from ESPN's public (unofficial) API; NBA's own
 game IDs come from nba.com's games page so games open directly in the NBA app.
 
+### Support for other sports and leagues
+
+Haven ships with NBA support built in. Other sports and leagues are not included automatically,
+but the existing NBA implementation can be used as a reference to add the ones you follow. You can
+develop support with your preferred AI coding agent for sports such as cricket, football, soccer,
+baseball or Formula 1.
+
+When suitable public data sources are available, similar modules can provide live scores,
+schedules, standings, player statistics and game alerts. Each sport may require its own data
+retrieval logic, formatting and app links, and all data usage must follow the source provider's
+terms.
+
 ## Unsplash topics
 
 Unsplash needs a free Access Key: create an app at <https://unsplash.com/oauth/applications>
