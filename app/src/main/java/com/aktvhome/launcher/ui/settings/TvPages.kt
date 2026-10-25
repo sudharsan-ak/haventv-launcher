@@ -78,6 +78,7 @@ import com.aktvhome.launcher.data.SonyControl
 import com.aktvhome.launcher.data.SonySetting
 import com.aktvhome.launcher.data.SonyVolume
 import com.aktvhome.launcher.ui.HavenState
+import com.aktvhome.launcher.ui.havenSetting
 import com.aktvhome.launcher.ui.theme.ThemeColors
 import com.aktvhome.launcher.ui.tvClickable
 import kotlinx.coroutines.delay
@@ -273,7 +274,9 @@ fun TvControlsPage(state: HavenState, colors: ThemeColors, first: Modifier) {
             else -> true
         }
     }
-    var section by remember { mutableStateOf(chips.first()) }
+    val requestedSubsection = LocalSettingSearchTarget.current?.settingId?.let(::havenSetting)?.subsection
+    val initialSection = chips.firstOrNull { it.name == requestedSubsection } ?: chips.first()
+    var section by remember(requestedSubsection) { mutableStateOf(initialSection) }
     LaunchedEffect(Unit) { tv.load() }
 
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -713,6 +716,7 @@ private fun Chip(text: String, selected: Boolean, colors: ThemeColors, modifier:
     val ink = if (focused) colors.pillInk else colors.ink
     Box(
         modifier
+            .settingSearchTarget(text)
             .clip(shape)
             .background(
                 when {
@@ -786,6 +790,7 @@ private fun SliderRow(
     val ink = colors.ink
     Row(
         modifier
+            .settingSearchTarget(label)
             .fillMaxWidth()
             .height(44.dp)
             .focusRequester(focus)

@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -142,6 +143,17 @@ fun AppCard(
 /** Round glass gear at the top right that opens quick settings. */
 @Composable
 fun GearButton(colors: ThemeColors, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    TopActionButton(Icons.Rounded.Settings, "Settings", colors, modifier, onClick)
+}
+
+/** Round glass search button beside the gear on both themes. */
+@Composable
+fun SearchButton(colors: ThemeColors, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    TopActionButton(Icons.Rounded.Search, "Search Haven", colors, modifier, onClick)
+}
+
+@Composable
+private fun TopActionButton(icon: ImageVector, label: String, colors: ThemeColors, modifier: Modifier, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     Box(
         modifier
@@ -153,7 +165,7 @@ fun GearButton(colors: ThemeColors, modifier: Modifier = Modifier, onClick: () -
             .tvClickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(Icons.Rounded.Settings, "Settings", tint = if (focused) colors.pillInk else colors.ink, modifier = Modifier.size(22.dp))
+        Icon(icon, label, tint = if (focused) colors.pillInk else colors.ink, modifier = Modifier.size(22.dp))
     }
 }
 

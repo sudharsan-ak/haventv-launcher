@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Haven</string>
+    <string name="haven_search">Haven Search</string>
+    <string name="haven_settings">Haven Settings</string>
+    <string name="haven_search_long">Search apps, settings, TV and sports in Haven</string>
+    <string name="haven_settings_long">Open Haven Quick Settings</string>
     <string name="home_override_label">Haven Home button</string>
     <string name="home_override_description">Opens Haven when the Home button is pressed. Uses only the Home key and which app is in front; it never reads what\'s on screen.</string>
 </resources>

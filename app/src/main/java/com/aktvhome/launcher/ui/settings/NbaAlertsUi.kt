@@ -80,7 +80,7 @@ fun NbaAlertsPage(state: HavenState, colors: ThemeColors, first: Modifier) {
             ) { abbr -> store.update { it.copy(followedTeams = it.followedTeams.toggle(abbr)) } }
         },
     ) {
-        EventTiles(AlertEvent.entries, s.alertsFavorite, colors,
+        EventTiles(AlertEvent.entries, s.alertsFavorite, colors, "favorite",
             onToggle = { e -> store.update { it.copy(alertsFavorite = it.alertsFavorite.toggle(e)) } },
             onAll = { store.update { it.copy(alertsFavorite = AlertEvent.entries.toSet()) } },
         )
@@ -90,7 +90,7 @@ fun NbaAlertsPage(state: HavenState, colors: ThemeColors, first: Modifier) {
         onSwitch = { store.update { it.copy(alertsOthers = !it.alertsOthers) } },
     ) {
         val events = AlertEvent.entries.filter { it in OTHER_EVENTS }
-        EventTiles(events, s.alertsOther, colors,
+        EventTiles(events, s.alertsOther, colors, "other",
             onToggle = { e -> store.update { it.copy(alertsOther = it.alertsOther.toggle(e)) } },
             onAll = { store.update { it.copy(alertsOther = events.toSet()) } },
         )
@@ -203,6 +203,7 @@ private fun EventTiles(
     events: List<AlertEvent>,
     on: Set<AlertEvent>,
     colors: ThemeColors,
+    focusPrefix: String,
     onToggle: (AlertEvent) -> Unit,
     onAll: () -> Unit,
 ) {
@@ -212,7 +213,9 @@ private fun EventTiles(
             Pill("Select all", colors, selected = events.all { it in on }, onClick = onAll)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            events.forEach { e -> EventTile(e, e in on, colors, Modifier.weight(1f)) { onToggle(e) } }
+            events.forEach { e ->
+                EventTile(e, e in on, colors, Modifier.weight(1f).settingSearchTarget("$focusPrefix:${e.name}")) { onToggle(e) }
+            }
         }
     }
 }

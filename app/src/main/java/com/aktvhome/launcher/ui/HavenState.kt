@@ -1,6 +1,8 @@
 package com.aktvhome.launcher.ui
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,7 +26,18 @@ import java.time.LocalTime
 
 /** What floats over the home screen. The home itself always stays drawn behind. */
 /** WATCH is the full Watch Now drawer; NBA, LIVE and CONTINUE are the single-card panels. */
-enum class Overlay { NONE, QUICK, PERSONALIZE, WATCH, NBA, LIVE, CONTINUE, SETUP }
+enum class Overlay { NONE, QUICK, SEARCH, PERSONALIZE, WATCH, NBA, LIVE, CONTINUE, SETUP }
+
+/** The All settings page requested by search. Names intentionally mirror Personalize's pages. */
+enum class SettingsDestination {
+    STYLE, WALLPAPER, DISPLAY, COLLECTIONS, HIDDEN, NBA_ALERTS, WATCH_NOW,
+    HOME_BUTTON, DNS, TV_CONTROLS, THIS_TV, BACKUP, ABOUT,
+}
+
+data class SettingsRequest(
+    val destination: SettingsDestination,
+    val settingId: String? = null,
+)
 
 /** A collection as shown on screen: only installed, non-hidden apps, in the user's order. */
 data class ShownCollection(val collection: AppCollection, val apps: List<AppEntry>) {
@@ -64,6 +77,12 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
         private set
 
     var overlay by mutableStateOf(Overlay.NONE)
+    var settingsDestination by mutableStateOf<SettingsRequest?>(null)
+
+    fun openSettings(destination: SettingsDestination, settingId: String? = null) {
+        settingsDestination = SettingsRequest(destination, settingId)
+        overlay = Overlay.PERSONALIZE
+    }
     /** A game for the NBA panel to open on (its ESPN id and day), set by [openGame]; the panel clears it. */
     var nbaGame by mutableStateOf<Pair<String, java.time.LocalDate>?>(null)
 
@@ -182,6 +201,23 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
     fun switchTo(input: TvInput) {
         runCatching { context.startActivity(inputRepo.switchIntent(input)) }
             .onFailure { toast("Can't switch to ${input.label}") }
+    }
+
+    fun searchSmartTube(query: String) {
+        val uri = Uri.Builder()
+            .scheme("https")
+            .authority("www.youtube.com")
+            .appendPath("results")
+            .appendQueryParameter("search_query", query.trim())
+            .build()
+        val search = Intent(Intent.ACTION_VIEW, uri)
+            .setPackage("org.smarttube.stable")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val fallback = context.packageManager.getLeanbackLaunchIntentForPackage("org.smarttube.stable")
+            ?: context.packageManager.getLaunchIntentForPackage("org.smarttube.stable")
+        runCatching { context.startActivity(search) }
+            .recoverCatching { context.startActivity(fallback ?: error("SmartTube is not installed")) }
+            .onFailure { toast("Can't open SmartTube") }
     }
 
     private fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()

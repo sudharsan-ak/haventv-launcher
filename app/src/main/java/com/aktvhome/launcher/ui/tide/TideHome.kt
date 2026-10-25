@@ -53,6 +53,7 @@ import com.aktvhome.launcher.ui.homeShown
 import com.aktvhome.launcher.ui.AppMenuOverlays
 import com.aktvhome.launcher.ui.CollectionIcons
 import com.aktvhome.launcher.ui.GearButton
+import com.aktvhome.launcher.ui.SearchButton
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.Overlay
 import com.aktvhome.launcher.ui.Pill
@@ -113,13 +114,14 @@ fun TideHome(state: HavenState, colors: ThemeColors, preview: Boolean = false) {
             TideBackdrop(colors, motion)
         }
 
-        // Down from the gear goes back to the collection you were on.
-        GearButton(
-            colors,
-            Modifier.align(Alignment.TopEnd).padding(top = 44.dp, end = 48.dp).graphicsLayer { alpha = homeAlpha }
-                .focusProperties { down = if (showStrip) stripFirst else chips.requester(currentIndex) },
+        // Search and settings share the same top-right entry points in every theme.
+        Row(
+            Modifier.align(Alignment.TopEnd).padding(top = 44.dp, end = 48.dp).graphicsLayer { alpha = homeAlpha },
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            state.overlay = Overlay.QUICK
+            val downTarget = if (showStrip) stripFirst else chips.requester(currentIndex)
+            SearchButton(colors, Modifier.focusProperties { down = downTarget }) { state.overlay = Overlay.SEARCH }
+            GearButton(colors, Modifier.focusProperties { down = downTarget }) { state.overlay = Overlay.QUICK }
         }
 
         Column(Modifier.fillMaxSize().graphicsLayer { alpha = homeAlpha }, horizontalAlignment = Alignment.CenterHorizontally) {

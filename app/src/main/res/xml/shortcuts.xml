@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="haven_search"
+        android:enabled="true"
+        android:icon="@mipmap/ic_haven"
+        android:shortcutShortLabel="@string/haven_search"
+        android:shortcutLongLabel="@string/haven_search_long">
+        <intent
+            android:action="com.aktvhome.launcher.action.OPEN_SEARCH"
+            android:targetPackage="com.aktvhome.launcher"
+            android:targetClass="com.aktvhome.launcher.MainActivity" />
+        <categories android:name="com.aktvhome.launcher.SHORTCUT" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="haven_settings"
+        android:enabled="true"
+        android:icon="@mipmap/ic_haven"
+        android:shortcutShortLabel="@string/haven_settings"
+        android:shortcutLongLabel="@string/haven_settings_long">
+        <intent
+            android:action="com.aktvhome.launcher.action.OPEN_SETTINGS"
+            android:targetPackage="com.aktvhome.launcher"
+            android:targetClass="com.aktvhome.launcher.MainActivity" />
+        <categories android:name="com.aktvhome.launcher.SHORTCUT" />
+    </shortcut>
+</shortcuts>
