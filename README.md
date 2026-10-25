@@ -7,7 +7,7 @@ customizable launcher: your apps sorted into collections, themes that shift betw
 night, rotating photo wallpapers, and a few power tools like a Private DNS switch. Built for
 and tested on a Sony BRAVIA running Google TV (Android 12).
 
-![Kingdom theme, day](docs/screenshots/kingdom-day.jpg)
+![Kingdom theme, day](docs/screenshots/kingdom-day.jpg?v=20261024)
 
 ## Features
 
@@ -38,11 +38,11 @@ and tested on a Sony BRAVIA running Google TV (Android 12).
 
 | | |
 |---|---|
-| ![Kingdom, night](docs/screenshots/kingdom-night.jpg) | ![Tide, day](docs/screenshots/tide-day.jpg) |
+| ![Kingdom, night](docs/screenshots/kingdom-night.jpg?v=20261024) | ![Tide, day](docs/screenshots/tide-day.jpg) |
 | *Kingdom at night* | *Tide during the day* |
 | ![Tide with a Bing photo](docs/screenshots/tide-photo-bing.jpg) | ![Tide with Earth View](docs/screenshots/tide-photo-earthview.jpg) |
 | *Photo wallpaper (Bing)* | *Photo wallpaper (Google Earth View)* |
-| ![Quick settings](docs/screenshots/quick-settings.jpg) | |
+| ![Quick settings](docs/screenshots/quick-settings.jpg?v=20261024) | |
 | *Quick settings* | |
 
 ## Build and install
