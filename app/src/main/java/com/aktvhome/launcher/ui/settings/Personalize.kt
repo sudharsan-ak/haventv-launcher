@@ -177,17 +177,25 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
     val pageFirst = remember { FocusRequester() }
     val settingFocus = remember { FocusRequester() }
     val settingTarget = initialRequest?.settingId?.let { SettingSearchTarget(it, settingFocus) }
+    var searchFocusPending by remember { mutableStateOf(initialRequest?.settingId != null) }
     val first = Modifier.focusRequester(pageFirst)
     val contentScroll = rememberScrollState()
 
     LaunchedEffect(Unit) { state.settingsDestination = null }
 
     LaunchedEffect(initialRequest?.settingId) {
-        if (initialRequest?.settingId == null) return@LaunchedEffect
+        if (initialRequest?.settingId == null) {
+            searchFocusPending = false
+            return@LaunchedEffect
+        }
         repeat(20) {
             delay(if (it == 0) 180 else 250)
-            if (runCatching { settingFocus.requestFocus() }.isSuccess) return@LaunchedEffect
+            if (runCatching { settingFocus.requestFocus() }.isSuccess) {
+                searchFocusPending = false
+                return@LaunchedEffect
+            }
         }
+        searchFocusPending = false
     }
 
     LaunchedEffect(page, openId) { contentScroll.scrollTo(0) }
@@ -268,7 +276,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                             .focusRequester(navFocus.getValue(g))
                             .focusProperties { right = contentFirst },
                         onFocused = {
-                            if (g != group) {
+                            if (!searchFocusPending && g != group) {
                                 group = g
                                 page = g.pages().first()
                                 openId = null
