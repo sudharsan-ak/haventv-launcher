@@ -5,6 +5,7 @@ app/build/
 local.properties
 .idea/
 *.iml
+/Build-Git Executions Steps.md
 # Signing secrets: back these up somewhere safe, never commit them
 keystore/
 keystore.properties
