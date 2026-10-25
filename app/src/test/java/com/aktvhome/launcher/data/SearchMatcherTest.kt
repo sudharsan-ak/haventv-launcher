@@ -31,4 +31,9 @@ class SearchMatcherTest {
     @Test fun unrelatedQueryIsEmpty() {
         assertTrue(SearchMatcher.ranked(documents, "Formula One").isEmpty())
     }
+
+    @Test fun duplicateResultIdsAreRemovedBeforeFiltering() {
+        val duplicate = SearchDocument("tv:disney:Nikki Glaser", "Nikki Glaser: Good Girl")
+        assertEquals(1, SearchMatcher.ranked(listOf(duplicate, duplicate), "Nikki").size)
+    }
 }

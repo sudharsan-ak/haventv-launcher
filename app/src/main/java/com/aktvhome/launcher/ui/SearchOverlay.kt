@@ -159,7 +159,8 @@ fun SearchOverlay(state: HavenState, colors: ThemeColors) {
         keyboard?.show()
     }
 
-    val allItems = searchItems(state)
+    // The TV can publish the same program in Watch Next and a preview row.
+    val allItems = searchItems(state).distinctBy { it.document.id }
     val categoryItems = allItems.filter { category == SearchCategory.ALL || it.category == category }
     val results = if (query.isBlank()) {
         if (category == SearchCategory.ALL) suggestions(state, allItems) else categoryItems

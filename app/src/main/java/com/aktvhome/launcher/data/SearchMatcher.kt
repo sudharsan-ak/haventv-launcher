@@ -11,9 +11,10 @@ data class SearchDocument(
 
 object SearchMatcher {
     fun ranked(documents: List<SearchDocument>, query: String): List<SearchDocument> {
+        val uniqueDocuments = documents.distinctBy { it.id }
         val words = normalize(query).split(' ').filter { it.isNotBlank() }
-        if (words.isEmpty()) return documents
-        return documents.mapNotNull { document ->
+        if (words.isEmpty()) return uniqueDocuments
+        return uniqueDocuments.mapNotNull { document ->
             score(document, words)?.let { document to it }
         }.sortedWith(compareByDescending<Pair<SearchDocument, Int>> { it.second }.thenBy { it.first.name.lowercase() })
             .map { it.first }
