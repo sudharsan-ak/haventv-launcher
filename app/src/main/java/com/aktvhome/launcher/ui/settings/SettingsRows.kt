@@ -177,17 +177,38 @@ private fun SettingsPicker(
                     verticalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
                     request.options.forEachIndexed { index, option ->
+                        val currentFocus = focusers[index]
                         PickerOptionRow(
                             option = option,
                             selected = option.value in request.selected,
                             showSaved = !request.multi,
                             colors = colors,
-                            modifier = Modifier.focusRequester(focusers[index]),
+                            modifier = Modifier
+                                .focusRequester(currentFocus)
+                                .focusProperties {
+                                    up = focusers.getOrNull(index - 1) ?: currentFocus
+                                    down = focusers.getOrNull(index + 1)
+                                        ?: if (request.multi) doneFocus else currentFocus
+                                    left = currentFocus
+                                    right = currentFocus
+                                },
                         ) { controller.toggle(option.value) }
                     }
                 }
                 if (request.multi) {
-                    Pill("Done", colors, modifier = Modifier.fillMaxWidth().focusRequester(doneFocus)) { controller.close() }
+                    Pill(
+                        "Done",
+                        colors,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(doneFocus)
+                            .focusProperties {
+                                up = focusers.lastOrNull() ?: doneFocus
+                                down = doneFocus
+                                left = doneFocus
+                                right = doneFocus
+                            },
+                    ) { controller.close() }
                 }
             }
         }

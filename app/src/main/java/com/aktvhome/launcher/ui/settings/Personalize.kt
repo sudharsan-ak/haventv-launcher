@@ -98,6 +98,7 @@ import com.aktvhome.launcher.ui.theme.Palettes
 import com.aktvhome.launcher.ui.theme.ThemeColors
 import com.aktvhome.launcher.ui.tide.TideHome
 import com.aktvhome.launcher.ui.tvClickable
+import com.aktvhome.launcher.ui.watch.NetImage
 
 private enum class SettingsGroup(
     val label: String,
@@ -544,7 +545,13 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                             SettingsChoiceRow(
                                 "Favorite team", "Shown first on Home and in Watch Now, with its full schedule.",
                                 if (s.favoriteTeam.isBlank()) "None" else Nba.teamName(s.favoriteTeam),
-                                listOf(SettingsPickerOption("", "None")) + Nba.TEAMS.map { (abbr, name) -> SettingsPickerOption(abbr, name) },
+                                listOf(SettingsPickerOption("", "None")) + Nba.TEAMS.map { (abbr, name) ->
+                                    SettingsPickerOption(
+                                        abbr,
+                                        name,
+                                        leading = { NetImage(state.watchNow, Nba.logo(abbr), 24.dp) },
+                                    )
+                                },
                                 s.favoriteTeam, colors,
                             ) { abbr -> store.update { it.copy(favoriteTeam = abbr) } }
                             SettingsToggleRow("Continue watching", "Shows from apps that share progress with the TV.", s.watchContinue, colors) {
