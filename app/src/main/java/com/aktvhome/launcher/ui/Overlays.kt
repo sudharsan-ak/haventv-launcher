@@ -21,6 +21,7 @@ fun AppMenuOverlays(state: HavenState, colors: ThemeColors) {
             onMove = { state.menuFor = null; state.moving = app.pkg },
             onMoveTo = { state.menuFor = null; pickerFor = app },
             onHide = { state.menuFor = null; store.hide(app.pkg) },
+            onAppSettings = { state.menuFor = null; state.openAppSettings(app) },
             onDismiss = { state.menuFor = null },
         )
     }

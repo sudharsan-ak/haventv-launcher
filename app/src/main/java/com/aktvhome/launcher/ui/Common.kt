@@ -280,6 +280,7 @@ fun AppMenuDialog(
     onMove: () -> Unit,
     onMoveTo: () -> Unit,
     onHide: () -> Unit,
+    onAppSettings: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val first = remember { FocusRequester() }
@@ -287,6 +288,7 @@ fun AppMenuDialog(
         Pill("Move", colors, modifier = Modifier.fillMaxWidth(), focusRequester = first, onClick = onMove)
         Pill("Move to collection…", colors, modifier = Modifier.fillMaxWidth(), onClick = onMoveTo)
         Pill("Hide", colors, modifier = Modifier.fillMaxWidth(), onClick = onHide)
+        Pill("App settings", colors, modifier = Modifier.fillMaxWidth(), onClick = onAppSettings)
         Pill("Cancel", colors, modifier = Modifier.fillMaxWidth(), onClick = onDismiss)
     }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }

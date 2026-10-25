@@ -3,6 +3,7 @@ package com.aktvhome.launcher.ui
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -196,6 +197,13 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
         val intent = appRepo.launchIntent(app.pkg)
         if (intent == null) toast("Can't open ${app.label}") else runCatching { context.startActivity(intent) }
             .onFailure { toast("Can't open ${app.label}") }
+    }
+
+    fun openAppSettings(app: AppEntry) {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${app.pkg}"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { context.startActivity(intent) }
+            .onFailure { toast("Can't open settings for ${app.label}") }
     }
 
     fun switchTo(input: TvInput) {
