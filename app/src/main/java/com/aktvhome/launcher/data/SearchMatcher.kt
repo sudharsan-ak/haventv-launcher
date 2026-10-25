@@ -10,14 +10,15 @@ data class SearchDocument(
 )
 
 object SearchMatcher {
-    fun ranked(documents: List<SearchDocument>, query: String): List<SearchDocument> {
+    fun ranked(documents: List<SearchDocument>, query: String, limit: Int = Int.MAX_VALUE): List<SearchDocument> {
         val uniqueDocuments = documents.distinctBy { it.id }
         val words = normalize(query).split(' ').filter { it.isNotBlank() }
-        if (words.isEmpty()) return uniqueDocuments
+        if (words.isEmpty()) return uniqueDocuments.take(limit.coerceAtLeast(0))
         return uniqueDocuments.mapNotNull { document ->
             score(document, words)?.let { document to it }
         }.sortedWith(compareByDescending<Pair<SearchDocument, Int>> { it.second }.thenBy { it.first.name.lowercase() })
             .map { it.first }
+            .take(limit.coerceAtLeast(0))
     }
 
     private fun score(document: SearchDocument, words: List<String>): Int? {

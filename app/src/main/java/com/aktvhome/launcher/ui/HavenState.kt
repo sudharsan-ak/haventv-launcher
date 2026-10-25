@@ -1,6 +1,8 @@
 package com.aktvhome.launcher.ui
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -194,6 +196,23 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
     fun switchTo(input: TvInput) {
         runCatching { context.startActivity(inputRepo.switchIntent(input)) }
             .onFailure { toast("Can't switch to ${input.label}") }
+    }
+
+    fun searchSmartTube(query: String) {
+        val uri = Uri.Builder()
+            .scheme("https")
+            .authority("www.youtube.com")
+            .appendPath("results")
+            .appendQueryParameter("search_query", query.trim())
+            .build()
+        val search = Intent(Intent.ACTION_VIEW, uri)
+            .setPackage("org.smarttube.stable")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val fallback = context.packageManager.getLeanbackLaunchIntentForPackage("org.smarttube.stable")
+            ?: context.packageManager.getLaunchIntentForPackage("org.smarttube.stable")
+        runCatching { context.startActivity(search) }
+            .recoverCatching { context.startActivity(fallback ?: error("SmartTube is not installed")) }
+            .onFailure { toast("Can't open SmartTube") }
     }
 
     private fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()

@@ -78,12 +78,17 @@ private enum class SearchCategory(val label: String) {
     ALL("All"), APPS("Apps"), SETTINGS("Settings"), TV("TV"), SPORTS("Sports"),
 }
 
+private const val MAX_RESULTS = 15
+private const val SMARTTUBE_PACKAGE = "org.smarttube.stable"
+private const val SMARTTUBE_MIN_QUERY = 3
+
 private sealed interface SearchTarget {
     data class App(val app: AppEntry) : SearchTarget
     data class Setting(val destination: SettingsDestination) : SearchTarget
     data class Collection(val id: String) : SearchTarget
     data class Input(val input: TvInput) : SearchTarget
     data class Tv(val item: TvItem) : SearchTarget
+    data class SmartTube(val query: String) : SearchTarget
     data class Team(val abbr: String) : SearchTarget
     data class NbaGame(val game: Game) : SearchTarget
 }
@@ -162,18 +167,26 @@ fun SearchOverlay(state: HavenState, colors: ThemeColors) {
     // The TV can publish the same program in Watch Next and a preview row.
     val allItems = searchItems(state).distinctBy { it.document.id }
     val categoryItems = allItems.filter { category == SearchCategory.ALL || it.category == category }
-    val results = if (query.isBlank()) {
-        if (category == SearchCategory.ALL) suggestions(state, allItems) else categoryItems
+    val smartTube = query.trim().takeIf {
+        category == SearchCategory.ALL && it.length >= SMARTTUBE_MIN_QUERY && SMARTTUBE_PACKAGE in state.apps
+    }?.let { smartTubeItem(it, state.apps.getValue(SMARTTUBE_PACKAGE)) }
+    val localLimit = MAX_RESULTS - if (smartTube == null) 0 else 1
+    val localResults = if (query.isBlank()) {
+        if (category == SearchCategory.ALL) suggestions(state, allItems) else categoryItems.take(MAX_RESULTS)
     } else {
         val byId = categoryItems.associateBy { it.document.id }
-        SearchMatcher.ranked(categoryItems.map { it.document }, query).mapNotNull { byId[it.id] }
+        SearchMatcher.ranked(categoryItems.map { it.document }, query, localLimit).mapNotNull { byId[it.id] }
     }
-    if (selected !in results.indices) selected = 0
-    val resultFocus = remember(results.map { it.document.id }) { results.map { FocusRequester() } }
-    val detailFocus = remember(results.getOrNull(selected)?.document?.id) { FocusRequester() }
+    val results = listOfNotNull(smartTube) + localResults
     val listState = rememberLazyListState()
-    LaunchedEffect(selected, results.size) {
-        if (results.isNotEmpty()) listState.animateScrollToItem(selected)
+    LaunchedEffect(selected, results.map { it.document.id }) {
+        if (results.isEmpty()) {
+            selected = 0
+        } else {
+            val safeSelected = selected.coerceIn(results.indices)
+            if (selected != safeSelected) selected = safeSelected
+            listState.animateScrollToItem(safeSelected)
+        }
     }
 
     fun activate(item: SearchItem) {
@@ -184,6 +197,7 @@ fun SearchOverlay(state: HavenState, colors: ThemeColors) {
             is SearchTarget.Collection -> { state.selectedCollection = target.id; state.overlay = Overlay.NONE }
             is SearchTarget.Input -> { state.overlay = Overlay.NONE; state.switchTo(target.input) }
             is SearchTarget.Tv -> { state.overlay = Overlay.NONE; state.watchNow.open(target.item) }
+            is SearchTarget.SmartTube -> { state.overlay = Overlay.NONE; state.searchSmartTube(target.query) }
             is SearchTarget.Team -> state.openSchedule(target.abbr)
             is SearchTarget.NbaGame -> state.openGame(target.game)
         }
@@ -227,7 +241,6 @@ fun SearchOverlay(state: HavenState, colors: ThemeColors) {
                         tab.label, tab == category, colors,
                         Modifier.focusRequester(tabFocus.getValue(tab)).focusProperties {
                             up = queryFocus
-                            if (results.isNotEmpty()) down = resultFocus.first()
                         },
                     ) {
                         category = tab
@@ -243,7 +256,7 @@ fun SearchOverlay(state: HavenState, colors: ThemeColors) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Eyebrow(if (query.isBlank()) "Suggested" else "Search results", colors)
                         Spacer(Modifier.weight(1f))
-                        Text("${results.size} results", color = colors.inkSoft, fontSize = 10.sp)
+                        Text(resultCountLabel(query, results.size), color = colors.inkSoft, fontSize = 10.sp)
                     }
                     Spacer(Modifier.height(8.dp))
                     if (results.isEmpty()) {
@@ -256,11 +269,7 @@ fun SearchOverlay(state: HavenState, colors: ThemeColors) {
                             itemsIndexed(results, key = { _, item -> item.document.id }) { index, item ->
                                 SearchResultRow(
                                     item, state, colors, index == selected,
-                                    Modifier.focusRequester(resultFocus[index]).focusProperties {
-                                        up = if (index == 0) tabFocus.getValue(category) else resultFocus[index - 1]
-                                        down = if (index == results.lastIndex) resultFocus[index] else resultFocus[index + 1]
-                                        right = detailFocus
-                                    },
+                                    Modifier,
                                     onFocused = { selected = index },
                                     onClick = { activate(item) },
                                 )
@@ -272,7 +281,6 @@ fun SearchOverlay(state: HavenState, colors: ThemeColors) {
                 SearchDetail(
                     results.getOrNull(selected), state, colors,
                     Modifier.weight(0.42f).fillMaxHeight().padding(22.dp),
-                    detailFocus,
                     onOpen = { results.getOrNull(selected)?.let(::activate) },
                 )
             }
@@ -377,7 +385,6 @@ private fun SearchDetail(
     state: HavenState,
     colors: ThemeColors,
     modifier: Modifier,
-    actionFocus: FocusRequester,
     onOpen: () -> Unit,
 ) {
     if (item == null) {
@@ -387,7 +394,7 @@ private fun SearchDetail(
         return
     }
     Column(modifier) {
-        Eyebrow("${item.category.label} / Result", colors)
+        Eyebrow("Selected result", colors)
         Spacer(Modifier.height(14.dp))
         SearchArtwork(item, state, colors, 64)
         Spacer(Modifier.height(12.dp))
@@ -398,12 +405,12 @@ private fun SearchDetail(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(11.dp)).background(colors.glass).padding(11.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("LOCATION", color = colors.accent, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Text("OPENS IN", color = colors.accent, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
             Spacer(Modifier.width(9.dp))
-            Text(item.document.subtitle, color = colors.ink, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(destinationLabel(item, state), color = colors.ink, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         Spacer(Modifier.weight(1f))
-        DetailAction(actionLabel(item), colors, Modifier.fillMaxWidth().focusRequester(actionFocus), onOpen)
+        DetailAction(actionLabel(item, state), colors, Modifier.fillMaxWidth(), onOpen)
     }
 }
 
@@ -412,13 +419,14 @@ private fun DetailAction(label: String, colors: ThemeColors, modifier: Modifier,
     var focused by remember { mutableStateOf(false) }
     Box(
         modifier.clip(RoundedCornerShape(14.dp))
-            .background(colors.pill)
+            .background(if (focused) colors.pill else colors.glass)
             .border(if (focused) 2.dp else 1.dp, if (focused) colors.accent else colors.edge, RoundedCornerShape(14.dp))
             .onFocusChanged { focused = it.isFocused }
             .tvClickable(onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 13.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = colors.pillInk, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = if (focused) colors.pillInk else colors.ink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -441,6 +449,7 @@ private fun SearchArtwork(item: SearchItem, state: HavenState, colors: ThemeColo
 private fun iconFor(category: SearchCategory, target: SearchTarget): ImageVector = when {
     target is SearchTarget.Input -> Icons.Rounded.SettingsInputHdmi
     target is SearchTarget.Collection -> Icons.Rounded.Apps
+    target is SearchTarget.SmartTube -> Icons.Rounded.Search
     category == SearchCategory.APPS -> Icons.Rounded.Apps
     category == SearchCategory.SETTINGS -> Icons.Rounded.Settings
     category == SearchCategory.SPORTS -> Icons.Rounded.SportsBasketball
@@ -448,15 +457,40 @@ private fun iconFor(category: SearchCategory, target: SearchTarget): ImageVector
     else -> Icons.Rounded.Tv
 }
 
-private fun actionLabel(item: SearchItem): String = when (item.target) {
+private fun actionLabel(item: SearchItem, state: HavenState): String = when (val target = item.target) {
     is SearchTarget.App -> "Launch ${item.document.name}"
     is SearchTarget.Setting -> "Open in Settings"
     is SearchTarget.Collection -> "Open collection"
     is SearchTarget.Input -> "Switch to ${item.document.name}"
-    is SearchTarget.Tv -> "Open ${item.document.name}"
+    is SearchTarget.Tv -> "Open in ${state.apps[target.item.pkg]?.label ?: "TV app"}"
+    is SearchTarget.SmartTube -> "Search in SmartTube"
     is SearchTarget.Team -> "Open team schedule"
     is SearchTarget.NbaGame -> "Open game"
 }
+
+private fun destinationLabel(item: SearchItem, state: HavenState): String = when (val target = item.target) {
+    is SearchTarget.App -> target.app.label
+    is SearchTarget.Setting -> "Haven Settings"
+    is SearchTarget.Collection -> "Haven Home"
+    is SearchTarget.Input -> "TV input"
+    is SearchTarget.Tv -> state.apps[target.item.pkg]?.label ?: "TV app"
+    is SearchTarget.SmartTube -> "SmartTube · YouTube results"
+    is SearchTarget.Team, is SearchTarget.NbaGame -> "Haven NBA"
+}
+
+private fun resultCountLabel(query: String, count: Int): String = when {
+    query.isBlank() -> "$count suggestions"
+    count == MAX_RESULTS -> "Top $MAX_RESULTS results"
+    else -> "$count results"
+}
+
+private fun smartTubeItem(query: String, app: AppEntry) = SearchItem(
+    SearchDocument(
+        "smarttube:$query", "Search YouTube for “$query”", "YouTube results · SmartTube",
+        "Open current YouTube results for “$query” in SmartTube.", "YouTube video search SmartTube",
+    ),
+    SearchCategory.TV, SearchTarget.SmartTube(query), app = app,
+)
 
 private fun searchItems(state: HavenState): List<SearchItem> = buildList {
     state.apps.values.sortedBy { it.label.lowercase() }.forEach { app ->

@@ -36,4 +36,10 @@ class SearchMatcherTest {
         val duplicate = SearchDocument("tv:disney:Nikki Glaser", "Nikki Glaser: Good Girl")
         assertEquals(1, SearchMatcher.ranked(listOf(duplicate, duplicate), "Nikki").size)
     }
+
+    @Test fun resultLimitKeepsOnlyHighestRankedMatches() {
+        val many = (1..20).map { SearchDocument("app:$it", "Game $it") }
+        val results = SearchMatcher.ranked(many, "Game", limit = 15)
+        assertEquals(15, results.size)
+    }
 }
