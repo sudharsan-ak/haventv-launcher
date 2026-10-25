@@ -90,7 +90,7 @@ private val SIDE = 48.dp
 
 @OptIn(ExperimentalFoundationApi::class) // bringIntoViewRequester for lower app lines
 @Composable
-fun KingdomHome(state: HavenState, colors: ThemeColors) {
+fun KingdomHome(state: HavenState, colors: ThemeColors, preview: Boolean = false) {
     val settings = state.settingsStore.settings
     val shown = state.shownCollections()
     val current = state.currentCollection(shown)
@@ -113,7 +113,7 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
     )
 
     // Wallpaper view (Back on Home) fades the layout out, leaving just the background.
-    val homeAlpha = homeShown(state)
+    val homeAlpha = if (preview) 1f else homeShown(state)
 
     Box(
         Modifier
@@ -124,7 +124,7 @@ fun KingdomHome(state: HavenState, colors: ThemeColors) {
         if (settings.bgKingdom == Background.PHOTO && photo != null) {
             PhotoBackdrop(photo, state.dayness(), state.wallpapers.credit.takeIf { settings.wallCredit }, tint = homeAlpha)
         } else {
-            KingdomBackdrop(colors, glow, settings.motion, Modifier.fillMaxSize())
+            KingdomBackdrop(colors, glow, if (preview) Motion.OFF else settings.motion, Modifier.fillMaxSize())
         }
 
         Column(

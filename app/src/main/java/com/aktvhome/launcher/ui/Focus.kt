@@ -4,6 +4,7 @@ import android.view.KeyEvent
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -20,6 +21,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 private fun isSelectKey(code: Int) =
     code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER
 
+/** False while rendering a display-only preview of the real Home UI. */
+val LocalTvInteractionsEnabled = compositionLocalOf { true }
+
 /**
  * Remote-friendly click: OK fires on release, holding OK fires [onLongClick] once.
  * A release only counts if the press started here, so the release that follows a
@@ -29,6 +33,7 @@ private fun isSelectKey(code: Int) =
  * clicks it, a long press opens [onLongClick].
  */
 fun Modifier.tvClickable(onLongClick: (() -> Unit)? = null, onClick: () -> Unit): Modifier = composed {
+    if (!LocalTvInteractionsEnabled.current) return@composed this
     var pressed by remember { mutableStateOf(false) }
     var longFired by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }

@@ -74,8 +74,9 @@ import kotlin.math.PI
 import kotlin.math.sin
 
 @Composable
-fun TideHome(state: HavenState, colors: ThemeColors) {
+fun TideHome(state: HavenState, colors: ThemeColors, preview: Boolean = false) {
     val settings = state.settingsStore.settings
+    val motion = if (preview) Motion.OFF else settings.motion
     val shown = state.shownCollections()
     val current = state.currentCollection(shown)
     // Chips: every shown collection, Inputs included. Settings is the gear at the top right, as on every theme.
@@ -88,8 +89,8 @@ fun TideHome(state: HavenState, colors: ThemeColors) {
 
     // The greeting fades in each time home comes back into view; with Motion off it just appears.
     val greetAlpha = remember { Animatable(1f) }
-    LaunchedEffect(state.arrivals, settings.motion) {
-        if (settings.motion == Motion.OFF) {
+    LaunchedEffect(state.arrivals, motion) {
+        if (motion == Motion.OFF) {
             greetAlpha.snapTo(1f)
         } else {
             greetAlpha.snapTo(0f)
@@ -98,7 +99,7 @@ fun TideHome(state: HavenState, colors: ThemeColors) {
     }
 
     // Wallpaper view (Back on Home) fades the layout out, leaving just the background.
-    val homeAlpha = homeShown(state)
+    val homeAlpha = if (preview) 1f else homeShown(state)
 
     Box(
         Modifier
@@ -109,7 +110,7 @@ fun TideHome(state: HavenState, colors: ThemeColors) {
         if (settings.bgTide == Background.PHOTO && photo != null) {
             PhotoBackdrop(photo, state.dayness(), state.wallpapers.credit.takeIf { settings.wallCredit }, tint = homeAlpha)
         } else {
-            TideBackdrop(colors, settings.motion)
+            TideBackdrop(colors, motion)
         }
 
         // Down from the gear goes back to the collection you were on.

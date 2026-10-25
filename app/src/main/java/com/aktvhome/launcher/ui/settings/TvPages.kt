@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -219,12 +220,14 @@ fun TvPageBody(page: TvPage, state: HavenState, tv: TvSettings, colors: ThemeCol
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
     val top = Modifier.focusRequester(first).onFocusChanged { if (it.isFocused) scope.launch { scroll.animateScrollTo(0) } }
-    Column(
-        Modifier.fillMaxWidth().heightIn(max = 390.dp).verticalScroll(scroll),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        tv.problem?.let { Text(it, color = colors.ink, fontSize = 11.sp) }
-        TvSection(page, state, tv, colors, top)
+    SettingsPickerHost(colors, Modifier.fillMaxWidth().height(390.dp)) {
+        Column(
+            Modifier.fillMaxSize().verticalScroll(scroll),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            tv.problem?.let { Text(it, color = colors.ink, fontSize = 11.sp) }
+            TvSection(page, state, tv, colors, top)
+        }
     }
 }
 
@@ -693,24 +696,13 @@ private fun ipAddress(context: Context): String? {
 
 @Composable
 private fun InfoLine(label: String, value: String, colors: ThemeColors) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(label, color = colors.inkSoft, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(130.dp))
-        Text(value, color = colors.ink, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
+    SettingsStatusRow(label, value, colors)
 }
 
 /** A full-width row that opens something: name, its value, and where OK goes. */
 @Composable
 private fun LinkRow(title: String, value: String, hint: String, colors: ThemeColors, modifier: Modifier, onClick: () -> Unit) {
-    GlassCard(colors, modifier.fillMaxWidth(), onClick = onClick) { ink ->
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(title, color = ink, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(hint, color = ink.copy(alpha = 0.7f), fontSize = 10.sp, maxLines = 1)
-            }
-            Text(value, color = ink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-        }
-    }
+    SettingsActionRow(title, hint, value, colors, modifier, onClick = onClick)
 }
 
 /** A small pill; [selected] gets the accent ring, focus fills it. */
@@ -748,14 +740,11 @@ private fun ChipRow(
     first: Modifier,
     onPick: (String) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(label, color = colors.inkSoft, fontSize = 11.sp)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            choices.forEachIndexed { i, (value, text) ->
-                Chip(text, value == current, colors, if (i == 0) first else Modifier) { onPick(value) }
-            }
-        }
-    }
+    SettingsChoiceRow(
+        label, "", choices.firstOrNull { it.first == current }?.second ?: pretty(current),
+        choices.map { (value, text) -> SettingsPickerOption(value, text) }, current, colors, first,
+        onChoose = onPick,
+    )
 }
 
 /**
@@ -794,14 +783,14 @@ private fun SliderRow(
     fun at(x: Float) = set(min + (((x / trackWidth).coerceIn(0f, 1f) * (max - min)) / step).roundToInt() * step)
 
     val shape = RoundedCornerShape(14.dp)
-    val ink = if (focused) colors.pillInk else colors.ink
+    val ink = colors.ink
     Row(
         modifier
             .fillMaxWidth()
             .height(44.dp)
             .focusRequester(focus)
             .clip(shape)
-            .background(if (focused) colors.pill else colors.glass)
+            .background(colors.glass)
             .border(if (focused) 2.dp else 1.dp, if (focused) colors.accent else colors.edge, shape)
             .onFocusChanged { focused = it.isFocused }
             .onPreviewKeyEvent { e ->
