@@ -281,7 +281,7 @@ fun TvControlsPage(state: HavenState, colors: ThemeColors, first: Modifier) {
 
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         chips.forEachIndexed { i, c ->
-            Chip(c.label, c == section, colors, if (i == 0) first else Modifier) {
+            SectionChip(c.label, c == section, colors, if (i == 0) first else Modifier) {
                 when (c) {
                     TvSectionChip.SCREEN -> openSystemPage(context, screenPage(context, device.isSony))
                     TvSectionChip.ACCESSIBILITY -> openSystemPage(context, Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -376,10 +376,10 @@ private fun SoundPage(tv: TvSettings, colors: ThemeColors, top: Modifier) {
     }
     // Mute and where the sound goes, as one row of chips.
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (v != null) Chip("Mute", v.mute, colors) { scope.launch { tv.toggleMute() } }
+        if (v != null) SectionChip("Mute", v.mute, colors) { scope.launch { tv.toggleMute() } }
         tv.output?.let { current ->
             OUTPUTS.forEachIndexed { i, (value, text) ->
-                Chip(text, speaker == null && value == current, colors, if (v == null && i == 0) top else Modifier) {
+                SectionChip(text, speaker == null && value == current, colors, if (v == null && i == 0) top else Modifier) {
                     // A connected speaker keeps the sound until it's disconnected.
                     if (speaker != null) {
                         nextOutput = value
@@ -392,10 +392,10 @@ private fun SoundPage(tv: TvSettings, colors: ThemeColors, top: Modifier) {
         }
         // Paired Bluetooth speakers and headphones: one press connects through the TV's own page.
         if (!bt.allowed) {
-            Chip("Show paired devices", false, colors) { ask.launch(Manifest.permission.BLUETOOTH_CONNECT) }
+            SectionChip("Show paired devices", false, colors) { ask.launch(Manifest.permission.BLUETOOTH_CONNECT) }
         } else {
             speakers.forEach { d ->
-                Chip(d.name, d == speaker, colors) {
+                SectionChip(d.name, d == speaker, colors) {
                     if (d == speaker) openSystemPage(context, devicePage(d)) else device(d, "Connect")
                 }
             }
@@ -446,7 +446,7 @@ private fun GenericSoundPage(colors: ThemeColors, top: Modifier) {
         GenericControl.setVolume(context, n)
         level = GenericControl.volume(context)
     }
-    Chip("Mute", muted, colors) {
+    SectionChip("Mute", muted, colors) {
         GenericControl.toggleMute(context)
         muted = GenericControl.muted(context)
     }
@@ -517,7 +517,7 @@ private fun WifiPage(state: HavenState, colors: ThemeColors, top: Modifier) {
     InfoLine("Private DNS", dns.label, colors)
 
     if (!allowed) {
-        Chip("Show nearby networks", false, colors) { ask.launch(Manifest.permission.ACCESS_FINE_LOCATION) }
+        SectionChip("Show nearby networks", false, colors) { ask.launch(Manifest.permission.ACCESS_FINE_LOCATION) }
         return
     }
     Eyebrow("Nearby", colors)
@@ -541,8 +541,8 @@ private fun WifiPage(state: HavenState, colors: ThemeColors, top: Modifier) {
 private fun NetworkPage(state: HavenState, colors: ThemeColors, top: Modifier) {
     var tab by remember { mutableStateOf(TvPage.WIFI) }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Chip("Wi-Fi", tab == TvPage.WIFI, colors, if (tab == TvPage.WIFI) top else Modifier) { tab = TvPage.WIFI }
-        Chip("Bluetooth", tab == TvPage.BLUETOOTH, colors, if (tab == TvPage.BLUETOOTH) top else Modifier) { tab = TvPage.BLUETOOTH }
+        SectionChip("Wi-Fi", tab == TvPage.WIFI, colors, if (tab == TvPage.WIFI) top else Modifier) { tab = TvPage.WIFI }
+        SectionChip("Bluetooth", tab == TvPage.BLUETOOTH, colors, if (tab == TvPage.BLUETOOTH) top else Modifier) { tab = TvPage.BLUETOOTH }
     }
     Box(Modifier.fillMaxWidth().height(1.dp).background(colors.edge))
     if (tab == TvPage.WIFI) WifiPage(state, colors, Modifier) else BluetoothPage(colors, Modifier)
@@ -570,7 +570,7 @@ private fun BluetoothPage(colors: ThemeColors, top: Modifier) {
         openSystemPage(context, slicePage("general"))
     }
     if (!bt.allowed) {
-        Chip("Show paired devices", false, colors) { ask.launch(Manifest.permission.BLUETOOTH_CONNECT) }
+        SectionChip("Show paired devices", false, colors) { ask.launch(Manifest.permission.BLUETOOTH_CONNECT) }
         return
     }
     Eyebrow("Paired", colors)
@@ -710,7 +710,7 @@ private fun LinkRow(title: String, value: String, hint: String, colors: ThemeCol
 
 /** A small pill; [selected] gets the accent ring, focus fills it. */
 @Composable
-private fun Chip(text: String, selected: Boolean, colors: ThemeColors, modifier: Modifier = Modifier, onClick: () -> Unit) {
+internal fun SectionChip(text: String, selected: Boolean, colors: ThemeColors, modifier: Modifier = Modifier, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(50)
     val ink = if (focused) colors.pillInk else colors.ink

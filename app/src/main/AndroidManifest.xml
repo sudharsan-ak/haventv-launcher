@@ -35,6 +35,10 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <!-- Bluetooth section of TV controls: paired devices and which are connected (asked once). -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Cleanup: Scan and Privacy list every installed package, including ones that are switched off. -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
     <!-- Lets "Keep enforced" restore Private DNS after a restart. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 

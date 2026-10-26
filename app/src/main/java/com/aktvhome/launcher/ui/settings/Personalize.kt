@@ -121,7 +121,7 @@ private enum class SettingsGroup(
         "Stay close to games and pick up where you left off.",
     ),
     SYSTEM(
-        "TV & network", Icons.Rounded.Home, "Home button, DNS, TV controls",
+        "TV & network", Icons.Rounded.Home, "Home button, DNS, TV controls, cleanup",
         "Connect Haven with the rest of your TV.",
     ),
     ABOUT(
@@ -143,6 +143,7 @@ private enum class Page(val label: String, val group: SettingsGroup, val availab
     HOME_BUTTON("Home button", SettingsGroup.SYSTEM),
     DNS("Private DNS", SettingsGroup.SYSTEM),
     TV_CONTROLS("TV controls", SettingsGroup.SYSTEM),
+    CLEANUP("Cleanup", SettingsGroup.SYSTEM),
     THIS_TV("This TV", SettingsGroup.ABOUT),
     BACKUP("Backup & reset", SettingsGroup.ABOUT),
     ABOUT("About Haven", SettingsGroup.ABOUT),
@@ -462,6 +463,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                             )
                         }
                         Page.TV_CONTROLS -> TvControlsPage(state, colors, first)
+                        Page.CLEANUP -> CleanupPage(state, colors, first)
                         Page.DNS -> {
                             val dns by rememberDnsView(state)
                             if (!state.canSetDns()) {
