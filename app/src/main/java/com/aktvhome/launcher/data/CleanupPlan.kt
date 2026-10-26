@@ -11,6 +11,7 @@ enum class GuardReason(val label: String) {
     HOME("Runs Home"),
     WIFI_SETUP("Wi-Fi setup: switching it off can delete the saved Wi-Fi network"),
     HAVEN("Haven needs it"),
+    TV("The TV relies on it: picture, sound, inputs, the remote or updates"),
     INPUT("Keyboard or accessibility service in use"),
 }
 
@@ -82,8 +83,33 @@ object CleanupPlan {
         "com.google.android.tv",
     )
 
-    /** Name parts of Sony packages that run the TV's settings, inputs or remote control: all left alone. */
-    private val SONY_NEEDS = listOf("settings", "config", "service", "system", "tvinput", "tvplayer", "webapi", "scalar", "ircc", "remote", "hdmi", "cec", "input")
+    /**
+     * Sony's own parts the TV runs on (and Haven's TV controls talk to): settings, the control
+     * service, picture and sound, inputs and Bravia Sync (HDMI-CEC), the remote, IR blaster and updates.
+     */
+    private val SONY_TV = setOf(
+        "com.sony.dtv.tvapi", "com.sony.dtv.webapi.core", "com.sony.dtv.sonysystemservice", "com.sony.dtv.sonyvendorservice",
+        "com.sony.dtv.systemcontrolproxy", "com.sony.dtv.devicecontrolservice", "com.sony.dtv.settings", "com.sony.dtv.settings.overlay",
+        "com.sony.dtv.settingsprovider", "com.sony.dtv.panelsettings", "com.sony.dtv.networksettings", "com.sony.dtv.audiooutput",
+        "com.sony.dtv.audiosysteminfoprovider", "com.sony.dtv.imeproxy", "com.sony.dtv.globalkeyoverlay",
+        "com.sony.dtv.osdplanevisibilitymanager", "com.sony.dtv.videoframeserver", "com.sony.dtv.provider.modelvariation",
+        "com.sony.dtv.countrysetting", "com.sony.dtv.remotecontrolsettings", "com.sony.dtv.braviasyncmenu",
+        "com.sony.dtv.braviasyncservice", "com.sony.dtv.braviasyncsetting", "com.sony.dtv.irblaster", "com.sony.dtv.irbservice",
+        "com.sony.dtv.update", "com.sony.dtv.systemupdate", "com.sony.dtv.otaurlprovisioning", "com.sony.dtv.upgradesetup",
+        "com.sony.dtv.broadcastservicesetup", "com.sony.dtv.tvsettingsbroadcast", "com.sony.dtv.tvpositionscreen",
+        "com.sony.dtv.pictureaudio.autoadjustsettings", "com.sony.dtv.connecteddevicesettings", "com.sony.dtv.usbmsgservice",
+        "com.sony.dtv.wifi.resources.overlay", "com.sony.dtv.dhcpophostname.overlay", "com.sony.dtv.accessibilityshortcutframeworkoverlay",
+        "com.sony.dtv.tvx.overlay.sortui", "com.uei.quicksetsdk.sony", "com.dolby.android.audio.service",
+    )
+
+    /** Whole families the TV runs on: Sony's broadcast clock and pro (hotel) mode, and the MediaTek chip's services. */
+    private val TV_PREFIXES = listOf("com.sony.dtv.broadcastclock.", "com.sony.dtv.b2b.", "com.mediatek.", "mtktvapi.")
+
+    /**
+     * Other Sony packages Haven has no note for are left alone when their name says they run
+     * settings, a service, inputs or the remote: Sony makes many models, and Haven can't know them all.
+     */
+    private val SONY_UNKNOWN_NEEDS = listOf("settings", "config", "service", "system", "tvinput", "tvplayer", "webapi", "scalar", "ircc", "remote", "hdmi", "cec", "input")
 
     /** Name parts of the TV's input (HDMI, tuner, CEC) services on any maker's TV. */
     private val INPUT_PARTS = setOf("tvinput", "hdmi", "cec", "tvinputservice")
@@ -110,9 +136,11 @@ object CleanupPlan {
         val parts = p.lowercase().split('.')
         return when {
             p == WIFI_SETUP -> GuardReason.WIFI_SETUP
-            p == ctx.self || p in HAVEN_NEEDS || p in ctx.tvInputs || parts.any { it in INPUT_PARTS } ||
-                (p.startsWith("com.sony.dtv.") && SONY_NEEDS.any { p.substringAfter("com.sony.dtv.").contains(it) }) -> GuardReason.HAVEN
+            p == ctx.self || p in HAVEN_NEEDS || p in ctx.tvInputs || parts.any { it in INPUT_PARTS } -> GuardReason.HAVEN
             p in ctx.home || p in KNOWN_HOMES -> GuardReason.HOME
+            p in SONY_TV || TV_PREFIXES.any { p.startsWith(it) } ||
+                (p.startsWith("com.sony.dtv.") && CleanupNotes.lookup(p) == null &&
+                    SONY_UNKNOWN_NEEDS.any { p.substringAfter("com.sony.dtv.").contains(it) }) -> GuardReason.TV
             p in ctx.keyboards || p in ctx.accessibility -> GuardReason.INPUT
             p in CORE || Cleanup.looksCore(f) || isOverlay(p) -> GuardReason.CORE
             else -> null

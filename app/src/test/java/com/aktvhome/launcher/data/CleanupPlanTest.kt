@@ -49,8 +49,31 @@ class CleanupPlanTest {
         assertEquals(GuardReason.HAVEN, blocked(self))
         listOf(
             "com.sony.dtv.configsettings", "com.sony.dtv.settingsdisplay", "com.sony.dtv.tvx", "com.android.providers.tv",
-            "com.mediatek.tvinput", "com.maker.tuner", "com.droidlogic.tvinput", "com.maker.hdmi.service", "com.sony.dtv.scalarwebapi",
+            "com.mediatek.tvinput", "com.maker.tuner", "com.droidlogic.tvinput", "com.maker.hdmi.service", "com.sony.dtv.tvinput.external",
         ).forEach { assertEquals(it, GuardReason.HAVEN, blocked(it)) }
+    }
+
+    /** From a BRAVIA's own package list. */
+    @Test fun sonysOwnPartsAreNeverSwitchedOff() {
+        listOf(
+            "com.sony.dtv.tvapi", "com.sony.dtv.webapi.core", "com.sony.dtv.sonysystemservice", "com.sony.dtv.braviasyncservice",
+            "com.sony.dtv.braviasyncsetting", "com.sony.dtv.globalkeyoverlay", "com.sony.dtv.irblaster", "com.sony.dtv.systemupdate",
+            "com.sony.dtv.broadcastclock.clocksyncservice", "com.sony.dtv.b2b.prosettings", "com.mediatek.agent", "mtktvapi.agent",
+            "com.uei.quicksetsdk.sony", "com.dolby.android.audio.service",
+            // Not known to Haven, but named like a service or settings: left alone.
+            "com.sony.dtv.someotherservice", "com.sony.dtv.newsettings",
+        ).forEach { assertEquals(it, GuardReason.TV, blocked(it)) }
+    }
+
+    @Test fun sonysJunkAndOptionalFeaturesCanBeSwitchedOff() {
+        listOf(
+            "com.sony.dtv.promos", "com.sonyericsson.idd.agent", "com.sony.dtv.sonybugreportsys", "com.sony.dtv.multiscreendemo",
+            "com.sony.dtv.airplayapp", "com.sony.dtv.voicesearch",
+            // Haven knows these, so their names ("service", "remote", "settings") don't hide them.
+            "com.sony.dtv.sensingfusionservice", "com.sony.dtv.seeds.iot.remotestart", "com.sony.dtv.sensingcamera.settings",
+        ).forEach { assertNull(it, blocked(it)) }
+        val scan = Cleanup.scan(listOf(pkg("com.sony.dtv.promos"), pkg("com.sonyericsson.idd.agent"), pkg("com.sony.dtv.voicesearch")))
+        assertEquals(3, CleanupPlan.offers(scan, tv).size)
     }
 
     @Test fun keyboardsAndAccessibilityInUseAreNeverSwitchedOff() {
