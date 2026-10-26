@@ -20,7 +20,7 @@ and tested on a Sony BRAVIA running Google TV (Android 12).
 - **Quick settings and Personalize**: a gear opens quick toggles; *All settings* opens a glass
   panel over the live home, so every change previews instantly. Settings are grouped into
   *Appearance* (theme, motion, wallpaper), *Home & layout* (cards, greeting, collections),
-  *TV & network* (Home button, Private DNS) and *About & data*.
+  *TV & network* (Home button, Private DNS, TV controls, Cleanup) and *About & data*.
 - **Photo wallpapers**: per theme, swap the animated scene for rotating photos from Bing,
   Google Earth View, Wikimedia Commons or Unsplash (topics like nature, animals, cities, sports).
   Changes every 1, 6, 12 or 24 hours.
@@ -31,6 +31,14 @@ and tested on a Sony BRAVIA running Google TV (Android 12).
 - **Private DNS**: one switch for encrypted DNS (AdGuard by default, also Cloudflare, Quad9 or
   any hostname), with live status and an optional "keep enforced".
 - **Home button**: makes the remote's Home button open Haven on Google TV.
+- **Cleanup**: *All settings › TV & network › Cleanup* lists every installed package, sorted
+  into ads and promos, telemetry, viewing trackers, preloaded apps, features, your own apps and
+  system parts. *Privacy* shows trackers, telemetry and packages that ask for the microphone, with
+  the evidence. *Disable* switches off the ones you choose (disabled for the user, never
+  uninstalled) after saving each one's state, and never offers core Android, whatever runs Home,
+  Wi-Fi setup or anything Haven or the TV relies on. *Restore* puts them back, and after a
+  firmware update offers to switch off again anything that came back on. Disable and Restore use
+  the one-time setup's route (root or the TV's own USB/ADB debugging).
 - **Remote-first**: hold OK for options, rows wrap around end to end, greeting with your name,
   card size, motion level, 12/24-hour clock.
 
@@ -152,7 +160,8 @@ and paste the key in **All settings › Appearance › Wallpaper › Unsplash ke
 ## Project layout
 
 - `data/` app list, HDMI inputs, collections (`LayoutStore`), settings, first-run sorting
-  (`Defaults`), Private DNS, wallpapers, Home override
+  (`Defaults`), Private DNS, wallpapers, Home override, Cleanup (`Cleanup`, `CleanupNotes`,
+  `CleanupPlan`, `CleanupRunner`) and the shared root/ADB route (`ShellRoute`, `Adb`)
 - `ui/kingdom/`, `ui/tide/` one folder per theme; each puts the settings gear at the top right
 - `ui/settings/` Quick settings card and the Personalize panel (both float over the live home)
 - `ui/theme/` theme colors and the day/night blend
@@ -165,6 +174,12 @@ and paste the key in **All settings › Appearance › Wallpaper › Unsplash ke
   in *Other* and can be moved.
 - Photo credits are shown on screen (required by Unsplash); Earth View's photo list comes from
   a public mirror of Google's retired feed.
+- Cleanup was inspired by [CleanYourTV](https://github.com/Gathin23/cleanyourtv) by Gathin
+  (MIT License), which strips bloatware from Android TV and Google TV sets. Haven follows its
+  approach: disable rather than uninstall, record each package's state before changing it so
+  everything can be restored, and never touch core packages, Home or Wi-Fi setup (CleanYourTV's
+  notes are where the Wi-Fi setup warning comes from). Haven's code and package classifications
+  are its own; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 - Licensed under the [MIT License](LICENSE).
 - Not affiliated with Google, Sony or any streaming service. App names and logos shown in
   screenshots belong to their owners.
