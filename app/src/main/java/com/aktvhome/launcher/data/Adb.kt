@@ -160,7 +160,10 @@ class AdbConnection private constructor(private val socket: Socket) {
     private var maxData = 4096
     private var nextId = 1
 
-    /** Runs [command] in the TV's shell and returns what it printed. */
+    /**
+     * Runs [command] in the TV's shell and returns what it printed. Throws [AdbException] when the
+     * TV won't open a shell for it.
+     */
     fun shell(command: String): String {
         val local = nextId++
         AdbMessage(AdbMessage.OPEN, local, 0, "shell:$command".toByteArray() + 0).write(output)
@@ -168,6 +171,8 @@ class AdbConnection private constructor(private val socket: Socket) {
         var remote = 0
         while (true) {
             val m = AdbMessage.read(input)
+            // Only this command's messages: a late close from an earlier one would end this one unrun.
+            if (m.arg1 != local) continue
             when (m.command) {
                 AdbMessage.OKAY -> remote = m.arg0
                 AdbMessage.WRTE -> {
@@ -175,8 +180,9 @@ class AdbConnection private constructor(private val socket: Socket) {
                     AdbMessage(AdbMessage.OKAY, local, m.arg0).write(output)
                 }
                 AdbMessage.CLSE -> {
-                    // A refused OPEN closes with remote 0; only answer a stream that opened.
-                    if (remote != 0) AdbMessage(AdbMessage.CLSE, local, remote).write(output)
+                    // A refused OPEN closes before it's answered: the command never ran.
+                    if (remote == 0) throw AdbException("The TV's debugging service wouldn't run the command.")
+                    AdbMessage(AdbMessage.CLSE, local, remote).write(output)
                     return out.toString()
                 }
             }

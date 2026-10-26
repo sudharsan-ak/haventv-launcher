@@ -288,7 +288,7 @@ private fun RunStatus(runner: CleanupRunner, colors: ThemeColors) {
 
 @Composable
 private fun RunLog(runner: CleanupRunner, colors: ThemeColors) {
-    if (runner.logLines.isNotEmpty()) SettingsStatusRow("Log", runner.logLines.takeLast(10).joinToString("\n"), colors, traversable = true)
+    if (runner.logLines.isNotEmpty()) SettingsStatusRow("Log", runner.logLines.takeLast(30).joinToString("\n"), colors, traversable = true)
 }
 
 /**

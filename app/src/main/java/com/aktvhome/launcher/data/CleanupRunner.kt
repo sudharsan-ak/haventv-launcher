@@ -143,7 +143,11 @@ class CleanupRunner(private val context: Context, private val packages: PackageS
         }
         try {
             plan.forEach { p ->
-                val out = io { shell.run(CleanupPlan.disableCommand(p)) }
+                val out = try {
+                    io { shell.run(CleanupPlan.disableCommand(p)) }
+                } catch (e: AdbException) {
+                    " ${e.message}"
+                }
                 if (io { packages.state(p) }?.on == false) log("$p: off.") else log("$p: still on.${output(out)}")
             }
         } catch (e: Exception) {
@@ -187,7 +191,11 @@ class CleanupRunner(private val context: Context, private val packages: PackageS
             plan.forEach { e ->
                 var out = ""
                 for (c in CleanupPlan.restoreCommands(e.pkg, e.prior)) {
-                    out = io { shell.run(c) }
+                    out = try {
+                        io { shell.run(c) }
+                    } catch (ex: AdbException) {
+                        " ${ex.message}"
+                    }
                     if (io { packages.state(e.pkg) }?.on == true) break
                 }
                 if (io { packages.state(e.pkg) }?.on == true) {
@@ -263,8 +271,8 @@ class CleanupRunner(private val context: Context, private val packages: PackageS
         logPrefs.edit().putString("log", logLines.joinToString("\n")).apply()
     }
 
-    /** A command's output for the log, on one line; blank when it printed nothing. */
-    private fun output(out: String): String = out.trim().lines().joinToString(" ").trim().let { if (it.isEmpty()) "" else " $it" }
+    /** A command's output for the log, on one line. */
+    private fun output(out: String): String = out.trim().lines().joinToString(" ").trim().let { if (it.isEmpty()) " The TV's shell sent nothing back." else " $it" }
 
     private suspend fun <T> io(block: () -> T): T = withContext(Dispatchers.IO) { block() }
 
