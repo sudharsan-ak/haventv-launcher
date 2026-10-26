@@ -100,6 +100,13 @@ internal val HAVEN_SETTINGS = listOf(
     setting("wifi", "Wi-Fi", SettingsDestination.TV_CONTROLS, "TV & network · TV controls · Wi-Fi & network", "Open Wi-Fi controls and nearby networks.", "internet wireless", subsection = "WIFI"),
     setting("bluetooth", "Bluetooth", SettingsDestination.TV_CONTROLS, "TV & network · TV controls · Bluetooth", "Open Bluetooth pairing and device controls.", "wireless accessories", subsection = "BLUETOOTH"),
 
+    setting("cleanup_scan", "Scan packages", SettingsDestination.CLEANUP, "TV & network · Cleanup · Scan", "See every installed package, sorted by kind, and whether it's on.", "bloatware debloat apps ads promos telemetry preloaded system", "Category", "SCAN"),
+    setting("cleanup_installed_by_you", "Installed by you", SettingsDestination.CLEANUP, "TV & network · Cleanup · Scan", "See the apps you added yourself.", "user apps sideloaded downloaded", "Category", "SCAN"),
+    setting("cleanup_privacy", "Privacy check", SettingsDestination.CLEANUP, "TV & network · Cleanup · Privacy", "See trackers, telemetry and packages that ask for the microphone.", "microphone voice assistant ACR tracking telemetry permissions", "Show", "PRIVACY"),
+    setting("cleanup_disable", "Disable packages", SettingsDestination.CLEANUP, "TV & network · Cleanup · Disable", "Switch off ads, telemetry and preloaded apps you choose, without uninstalling them.", "debloat turn off bloatware ads promos telemetry trackers preloaded", "Disable selected", "DISABLE"),
+    setting("cleanup_restore_all", "Restore everything", SettingsDestination.CLEANUP, "TV & network · Cleanup · Restore", "Put every package Cleanup switched off back the way it was.", "undo enable re-enable put back", "Restore everything", "RESTORE"),
+    setting("cleanup_recheck", "Check after an update", SettingsDestination.CLEANUP, "TV & network · Cleanup · Restore", "Find packages that came back on after a firmware update and switch them off again.", "firmware update came back re-enabled disable again", "Check after an update", "RESTORE"),
+
     setting("this_tv", "This TV", SettingsDestination.THIS_TV, "About & data · This TV", "Review this TV's available Haven capabilities.", "setup permissions device", null),
     setting("automatic_backup", "Automatic backup", SettingsDestination.BACKUP, "About & data · Backup & reset", "Back up Haven settings now.", "data export save"),
     setting("restore", "Restore", SettingsDestination.BACKUP, "About & data · Backup & reset", "Restore Haven from the saved backup.", "data import"),

@@ -19,6 +19,10 @@ import java.io.File
  * - On a fresh start (no settings yet) with a backup on disk, automatic backup pauses and
  *   [offerRestore] is set, so an empty Haven never overwrites a good backup.
  *
+ * The Cleanup record (what Haven switched off, and each package's state from before) is backed up
+ * too, so it survives a reinstall. Restoring merges it rather than replacing it, and Reset leaves
+ * it alone: it's what puts switched-off packages back.
+ *
  * Reading a backup written by an earlier install needs "All files access", granted once over ADB.
  */
 class Backup(private val context: Context, private val onRestored: () -> Unit) {
@@ -74,10 +78,13 @@ class Backup(private val context: Context, private val onRestored: () -> Unit) {
             return false
         }
         val prefs = json.optJSONObject("prefs") ?: return false
-        for (name in PREFS) {
+        for (name in BACKED_UP) {
             val values = prefs.optJSONObject(name) ?: continue
-            val editor = context.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear()
+            val target = context.getSharedPreferences(name, Context.MODE_PRIVATE)
+            val merge = name in MERGED
+            val editor = if (merge) target.edit() else target.edit().clear()
             for (key in values.keys()) {
+                if (merge && target.contains(key)) continue
                 val v = values.getJSONObject(key)
                 when (v.getString("t")) {
                     "s" -> editor.putString(key, v.getString("v"))
@@ -137,7 +144,7 @@ class Backup(private val context: Context, private val onRestored: () -> Unit) {
     /** Every saved preference as JSON, without the time stamp, so unchanged settings compare equal. */
     private fun snapshot(): String {
         val prefs = JSONObject()
-        for (name in PREFS) prefs.put(name, encode(context.getSharedPreferences(name, Context.MODE_PRIVATE)))
+        for (name in BACKED_UP) prefs.put(name, encode(context.getSharedPreferences(name, Context.MODE_PRIVATE)))
         return JSONObject().put("app", "Haven").put("version", 1).put("prefs", prefs).toString()
     }
 
@@ -161,5 +168,11 @@ class Backup(private val context: Context, private val onRestored: () -> Unit) {
     private companion object {
         /** Haven's saved settings: theme, wallpaper, DNS, Watch Now… and the home layout. */
         val PREFS = listOf("settings", "layout")
+
+        /** What the backup file keeps: the settings and the Cleanup record. */
+        val BACKED_UP = PREFS + CleanupRunner.PREFS
+
+        /** Restored by adding what's missing, never by clearing what's there. */
+        val MERGED = setOf(CleanupRunner.PREFS)
     }
 }

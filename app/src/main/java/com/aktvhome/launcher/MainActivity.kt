@@ -37,6 +37,7 @@ import com.aktvhome.launcher.ui.kingdom.KingdomHome
 import com.aktvhome.launcher.ui.settings.Personalize
 import com.aktvhome.launcher.ui.settings.QuickSettings
 import com.aktvhome.launcher.ui.settings.RestorePrompt
+import com.aktvhome.launcher.ui.settings.CleanupUpdateOffer
 import com.aktvhome.launcher.ui.settings.SetupOffer
 import com.aktvhome.launcher.ui.settings.SetupWizard
 import com.aktvhome.launcher.ui.watch.ContinuePanel
@@ -130,6 +131,8 @@ class MainActivity : ComponentActivity() {
             if (state.backup.offerRestore) RestorePrompt(state, colors)
             // Once, on a TV that still needs the one-time setup.
             SetupOffer(state, colors)
+            // Once per firmware update, if something Cleanup switched off came back on.
+            CleanupUpdateOffer(state, colors)
         }
     }
 
@@ -214,6 +217,8 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         // Something may have changed while Haven was away (Accessibility, HDMI-CEC, a grant).
         state.device.refresh()
+        // A firmware update can switch back on what Cleanup switched off.
+        state.cleanup.check()
     }
 
     override fun onStop() {

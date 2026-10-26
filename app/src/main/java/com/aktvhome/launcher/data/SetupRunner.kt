@@ -11,17 +11,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.net.ConnectException
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
-import java.util.concurrent.TimeUnit
 
 /**
  * The one-time setup, from the TV itself. It tries, in order: nothing to do (already granted),
- * root, then this TV's own debugging (ADB on port 5555, after you allow Haven once on screen). It
- * runs only [Setup]'s fixed commands, then turns on the Home button service itself. Every step goes
- * in a short log kept between runs.
+ * then [ShellRoute] (root, then this TV's own debugging). It runs only [Setup]'s fixed commands,
+ * then turns on the Home button service itself. Every step goes in a short log kept between runs.
  */
 class SetupRunner(private val context: Context, private val device: DeviceCapabilities, private val scope: CoroutineScope) {
 
@@ -40,6 +36,7 @@ class SetupRunner(private val context: Context, private val device: DeviceCapabi
     enum class Route { ALREADY, ROOT, ADB }
 
     private val prefs = context.getSharedPreferences("setup", Context.MODE_PRIVATE)
+    private val shellRoute = ShellRoute(context)
 
     var phase by mutableStateOf(Phase.IDLE)
         private set
@@ -93,47 +90,34 @@ class SetupRunner(private val context: Context, private val device: DeviceCapabi
             return finish()
         }
 
-        message = "Checking for root access…"
-        if (io { Root.available() }) {
-            log("Root access found.")
-            route = Route.ROOT
-            commands.forEach { c -> log("$ $c${result(io { Root.run(c) })}") }
-            return finish()
-        }
-        log("No root access.")
-
-        message = "Connecting to this TV's debugging…"
-        val adb = try {
-            io {
-                AdbConnection.connect(LOCALHOST, ADB_PORT, AdbKey.loadOrCreate(File(context.filesDir, "adb")), keyName()) {
-                    scope.launch {
-                        phase = Phase.ALLOW
-                        message = "Allow Haven in the box on screen."
-                        log("Asked the TV to allow Haven.")
-                    }
+        val opened = shellRoute.open(
+            progress = { message = it },
+            log = ::log,
+            onAllowPrompt = {
+                scope.launch {
+                    phase = Phase.ALLOW
+                    message = "Allow Haven in the box on screen."
+                    log("Asked the TV to allow Haven.")
                 }
+            },
+        )
+        val shell = when (opened) {
+            is ShellRoute.Opened.Unreachable -> {
+                message = opened.message
+                phase = Phase.NEEDS_DEBUGGING
+                return
             }
-        } catch (e: ConnectException) {
-            log("Debugging is off (nothing on port $ADB_PORT).")
-            message = "Haven couldn't reach this TV's debugging."
-            phase = Phase.NEEDS_DEBUGGING
-            return
-        } catch (e: Exception) {
-            log("Debugging: ${e.message ?: e.javaClass.simpleName}")
-            message = e.message ?: "Haven couldn't reach this TV's debugging."
-            phase = Phase.NEEDS_DEBUGGING
-            return
+            is ShellRoute.Opened.Ready -> opened.shell
         }
         phase = Phase.WORKING
-        message = "Setting up…"
-        route = Route.ADB
-        log("Connected to this TV's debugging.")
+        route = if (shell.kind == ShellRoute.Kind.ROOT) Route.ROOT else Route.ADB
+        if (route == Route.ADB) message = "Setting up…"
         try {
-            commands.forEach { c -> log("$ $c${result(io { adb.shell("$c; echo exit=\$?") })}") }
+            commands.forEach { c -> log("$ $c${result(io { shell.run(c) })}") }
         } catch (e: Exception) {
             log("The connection dropped: ${e.message ?: e.javaClass.simpleName}")
         } finally {
-            io { adb.close() }
+            io { shell.close() }
         }
         finish()
     }
@@ -166,31 +150,10 @@ class SetupRunner(private val context: Context, private val device: DeviceCapabi
         return if (text.isEmpty()) "  (ok)" else "\n    " + text.lines().joinToString("\n    ")
     }
 
-    private fun keyName() = "haven@" + Build.MODEL.replace(Regex("[^A-Za-z0-9_-]"), "")
-
     private suspend fun <T> io(block: () -> T): T = withContext(Dispatchers.IO) { block() }
 
     private companion object {
-        const val LOCALHOST = "127.0.0.1"
-        const val ADB_PORT = 5555
         const val MAX_LOG = 80
         val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
     }
-}
-
-/** Root through su, if the device has it and you allow Haven when it asks. */
-private object Root {
-
-    fun available(): Boolean = run("id").contains("uid=0")
-
-    /** Runs [command] as root; empty when there's no su or it isn't allowed in time. */
-    fun run(command: String): String = runCatching {
-        val p = ProcessBuilder("su", "-c", command).redirectErrorStream(true).start()
-        // A root manager may ask you first.
-        if (!p.waitFor(20, TimeUnit.SECONDS)) {
-            p.destroy()
-            return ""
-        }
-        p.inputStream.bufferedReader().readText() + if (p.exitValue() == 0) "" else "exit=${p.exitValue()}"
-    }.getOrDefault("")
 }

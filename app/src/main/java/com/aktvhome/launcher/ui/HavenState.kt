@@ -32,7 +32,7 @@ enum class Overlay { NONE, QUICK, SEARCH, PERSONALIZE, WATCH, NBA, LIVE, CONTINU
 /** The All settings page requested by search. Names intentionally mirror Personalize's pages. */
 enum class SettingsDestination {
     STYLE, WALLPAPER, DISPLAY, COLLECTIONS, HIDDEN, NBA_ALERTS, WATCH_NOW,
-    HOME_BUTTON, DNS, TV_CONTROLS, THIS_TV, BACKUP, ABOUT,
+    HOME_BUTTON, DNS, TV_CONTROLS, CLEANUP, THIS_TV, BACKUP, ABOUT,
 }
 
 data class SettingsRequest(
@@ -56,6 +56,7 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
     val backup = Backup(context) {
         settingsStore.reload()
         layoutStore.reload()
+        cleanup.reload()
         refresh()
     }
     val wallpapers = Wallpapers(context, scope, settingsStore)
@@ -64,6 +65,10 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
     /** What this TV lets Haven do; the UI shows, offers to set up or hides each feature from it. */
     val device = com.aktvhome.launcher.data.DeviceCapabilities(context, sony)
     val setup = com.aktvhome.launcher.data.SetupRunner(context, device, scope)
+    /** Every installed package, sorted for Cleanup; scanned when the Cleanup tab opens. */
+    val packages = com.aktvhome.launcher.data.PackageScan(context)
+    /** Cleanup's Disable and Restore, and the record of what it switched off. */
+    val cleanup = com.aktvhome.launcher.data.CleanupRunner(context, packages, scope)
     val watchNow = WatchNow(
         context, scope, settingsStore,
         liveApps = { layoutStore.layout.collections.firstOrNull { it.id == "livetv" }?.apps?.toSet().orEmpty() },

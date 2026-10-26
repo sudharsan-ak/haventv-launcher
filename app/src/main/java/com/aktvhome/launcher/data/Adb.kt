@@ -68,7 +68,10 @@ class AdbMessage(val command: Int, val arg0: Int, val arg1: Int, val data: ByteA
     }
 }
 
-class AdbException(message: String) : Exception(message)
+open class AdbException(message: String) : Exception(message)
+
+/** The TV answered with Wireless debugging's TLS, which Haven can't use yet. */
+class AdbTlsRequired : AdbException("This TV only takes Wireless debugging, which Haven can't use yet.")
 
 /**
  * Haven's ADB key: made once and kept in [dir]. The TV remembers it after you choose "Always
@@ -157,7 +160,10 @@ class AdbConnection private constructor(private val socket: Socket) {
     private var maxData = 4096
     private var nextId = 1
 
-    /** Runs [command] in the TV's shell and returns what it printed. */
+    /**
+     * Runs [command] in the TV's shell and returns what it printed. Throws [AdbException] when the
+     * TV won't open a shell for it.
+     */
     fun shell(command: String): String {
         val local = nextId++
         AdbMessage(AdbMessage.OPEN, local, 0, "shell:$command".toByteArray() + 0).write(output)
@@ -165,6 +171,8 @@ class AdbConnection private constructor(private val socket: Socket) {
         var remote = 0
         while (true) {
             val m = AdbMessage.read(input)
+            // Only this command's messages: a late close from an earlier one would end this one unrun.
+            if (m.arg1 != local) continue
             when (m.command) {
                 AdbMessage.OKAY -> remote = m.arg0
                 AdbMessage.WRTE -> {
@@ -172,8 +180,9 @@ class AdbConnection private constructor(private val socket: Socket) {
                     AdbMessage(AdbMessage.OKAY, local, m.arg0).write(output)
                 }
                 AdbMessage.CLSE -> {
-                    // A refused OPEN closes with remote 0; only answer a stream that opened.
-                    if (remote != 0) AdbMessage(AdbMessage.CLSE, local, remote).write(output)
+                    // A refused OPEN closes before it's answered: the command never ran.
+                    if (remote == 0) throw AdbException("The TV's debugging service wouldn't run the command.")
+                    AdbMessage(AdbMessage.CLSE, local, remote).write(output)
                     return out.toString()
                 }
             }
@@ -189,7 +198,8 @@ class AdbConnection private constructor(private val socket: Socket) {
 
         /**
          * Connects to [host]:[port]. Throws [java.net.ConnectException] when debugging is off (nothing
-         * listening) and [AdbException] when the TV refuses or asks for Wireless debugging's TLS.
+         * listening), [AdbTlsRequired] when the TV asks for Wireless debugging's TLS and [AdbException]
+         * when it refuses.
          */
         fun connect(
             host: String,
@@ -229,7 +239,7 @@ class AdbConnection private constructor(private val socket: Socket) {
                     socket.soTimeout = 30_000
                     return
                 }
-                AdbMessage.STLS -> throw AdbException("This TV only takes Wireless debugging, which Haven can't use yet.")
+                AdbMessage.STLS -> throw AdbTlsRequired()
                 AdbMessage.AUTH -> {
                     if (m.arg0 != AdbMessage.AUTH_TOKEN) throw AdbException("The TV's debugging service asked for something unexpected.")
                     if (!signed) {

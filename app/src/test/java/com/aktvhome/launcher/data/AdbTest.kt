@@ -35,9 +35,10 @@ class AdbTest {
 
     /**
      * A fake adbd: [knows] says whether it already trusts the key; [allow] is your answer to the
-     * "Allow debugging?" box. Shell commands are echoed back as output.
+     * "Allow debugging?" box. Shell commands are echoed back as output. [lateClose] repeats the
+     * previous command's close before answering the next; [refuse] won't open any shell.
      */
-    private fun fakeAdbd(knows: Boolean, allow: Boolean = true, tls: Boolean = false) = thread {
+    private fun fakeAdbd(knows: Boolean, allow: Boolean = true, tls: Boolean = false, lateClose: Boolean = false, refuse: Boolean = false) = thread {
         server.accept().use { s ->
             val input = s.getInputStream()
             val out = s.getOutputStream()
@@ -63,9 +64,16 @@ class AdbTest {
                 assertTrue(verifies(keys.public, token, sig.data))
             }
             AdbMessage(AdbMessage.CNXN, 0x01000000, 4096, "device::\u0000".toByteArray()).write(out)
+            var previous: Int? = null
             while (true) {
                 val open = runCatching { AdbMessage.read(input) }.getOrNull() ?: return@thread
                 assertEquals(AdbMessage.OPEN, open.command)
+                if (refuse) {
+                    AdbMessage(AdbMessage.CLSE, 0, open.arg0).write(out)
+                    continue
+                }
+                if (lateClose) previous?.let { AdbMessage(AdbMessage.CLSE, 77, it).write(out) }
+                previous = open.arg0
                 val cmd = String(open.data).trimEnd('\u0000').removePrefix("shell:")
                 val remote = 77
                 AdbMessage(AdbMessage.OKAY, remote, open.arg0).write(out)
@@ -98,6 +106,29 @@ class AdbTest {
         assertTrue(!prompted)
     }
 
+    @Test fun aLateCloseFromTheLastCommandDoesntEndTheNext() {
+        val t = fakeAdbd(knows = true, lateClose = true)
+        val c = AdbConnection.connect("127.0.0.1", server.localPort, keys, "haven@test")
+        assertEquals("ran pm disable-user --user 0 a.b\n", c.shell("pm disable-user --user 0 a.b"))
+        assertEquals("ran pm disable-user --user 0 c.d\n", c.shell("pm disable-user --user 0 c.d"))
+        assertEquals("ran pm disable-user --user 0 e.f\n", c.shell("pm disable-user --user 0 e.f"))
+        c.close()
+        t.join(5_000)
+    }
+
+    @Test fun aRefusedCommandIsAnErrorNotEmptyOutput() {
+        val t = fakeAdbd(knows = true, refuse = true)
+        val c = AdbConnection.connect("127.0.0.1", server.localPort, keys, "haven@test")
+        try {
+            c.shell("id")
+            fail("a refused command came back as output")
+        } catch (e: AdbException) {
+            assertTrue(e.message!!.contains("wouldn't run"))
+        }
+        c.close()
+        t.join(5_000)
+    }
+
     @Test fun newKeyAsksAndContinuesWhenAllowed() {
         val t = fakeAdbd(knows = false)
         var prompted = false
@@ -126,6 +157,8 @@ class AdbTest {
             fail("connected over TLS")
         } catch (e: AdbException) {
             assertTrue(e.message!!.contains("Wireless debugging"))
+            // Cleanup tells Wireless-debugging-only TVs apart by the type, not the wording.
+            assertTrue(e is AdbTlsRequired)
         }
         t.join(5_000)
     }
