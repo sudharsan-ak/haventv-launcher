@@ -50,8 +50,8 @@ and tested on a Sony BRAVIA running Google TV (Android 12).
 | *Kingdom at night* | *Tide during the day* |
 | ![Tide with a Bing photo](docs/screenshots/tide-photo-bing.jpg) | ![Tide with Earth View](docs/screenshots/tide-photo-earthview.jpg) |
 | *Photo wallpaper (Bing)* | *Photo wallpaper (Google Earth View)* |
-| ![Quick settings](docs/screenshots/quick-settings-20261024.jpg) | |
-| *Quick settings* | |
+| ![Quick settings](docs/screenshots/quick-settings-20261024.jpg) | ![All settings](docs/screenshots/settings.jpg) |
+| *Quick settings* | *All settings (Appearance › Theme & motion)* |
 
 ## Build and install
 
