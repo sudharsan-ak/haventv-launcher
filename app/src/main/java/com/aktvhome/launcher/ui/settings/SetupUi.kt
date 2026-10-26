@@ -128,7 +128,7 @@ fun SetupWizard(state: HavenState, colors: ThemeColors) {
                     Body(
                         if (needed.isEmpty()) "Everything Haven can set up is done. Anything else is on This TV."
                         else "${thingsNeed(needed.size)} setting up. Haven tries root first, then this TV's own debugging, " +
-                            "and only runs its fixed setup commands.",
+                            "and only runs fixed setup commands, plus the Cleanup changes you choose.",
                         colors,
                     )
                     Buttons {

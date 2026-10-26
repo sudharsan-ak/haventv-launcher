@@ -56,6 +56,7 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
     val backup = Backup(context) {
         settingsStore.reload()
         layoutStore.reload()
+        cleanup.reload()
         refresh()
     }
     val wallpapers = Wallpapers(context, scope, settingsStore)
@@ -66,6 +67,8 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
     val setup = com.aktvhome.launcher.data.SetupRunner(context, device, scope)
     /** Every installed package, sorted for Cleanup; scanned when the Cleanup tab opens. */
     val packages = com.aktvhome.launcher.data.PackageScan(context)
+    /** Cleanup's Disable and Restore, and the record of what it switched off. */
+    val cleanup = com.aktvhome.launcher.data.CleanupRunner(context, packages, scope)
     val watchNow = WatchNow(
         context, scope, settingsStore,
         liveApps = { layoutStore.layout.collections.firstOrNull { it.id == "livetv" }?.apps?.toSet().orEmpty() },

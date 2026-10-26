@@ -126,6 +126,8 @@ class AdbTest {
             fail("connected over TLS")
         } catch (e: AdbException) {
             assertTrue(e.message!!.contains("Wireless debugging"))
+            // Cleanup tells Wireless-debugging-only TVs apart by the type, not the wording.
+            assertTrue(e is AdbTlsRequired)
         }
         t.join(5_000)
     }

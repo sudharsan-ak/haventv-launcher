@@ -1,7 +1,8 @@
 package com.aktvhome.launcher.data
 
 // The one-time setup's plan: which capabilities it can fix and the fixed shell commands it runs
-// for them. Haven never runs anything but these. Plain Kotlin, unit tested.
+// for them. The setup never runs anything but these; Cleanup has its own fixed commands, for the
+// packages you choose (CleanupPlan). Plain Kotlin, unit tested.
 
 object Setup {
 

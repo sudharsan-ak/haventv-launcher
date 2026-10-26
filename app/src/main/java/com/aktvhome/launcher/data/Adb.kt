@@ -68,7 +68,10 @@ class AdbMessage(val command: Int, val arg0: Int, val arg1: Int, val data: ByteA
     }
 }
 
-class AdbException(message: String) : Exception(message)
+open class AdbException(message: String) : Exception(message)
+
+/** The TV answered with Wireless debugging's TLS, which Haven can't use yet. */
+class AdbTlsRequired : AdbException("This TV only takes Wireless debugging, which Haven can't use yet.")
 
 /**
  * Haven's ADB key: made once and kept in [dir]. The TV remembers it after you choose "Always
@@ -189,7 +192,8 @@ class AdbConnection private constructor(private val socket: Socket) {
 
         /**
          * Connects to [host]:[port]. Throws [java.net.ConnectException] when debugging is off (nothing
-         * listening) and [AdbException] when the TV refuses or asks for Wireless debugging's TLS.
+         * listening), [AdbTlsRequired] when the TV asks for Wireless debugging's TLS and [AdbException]
+         * when it refuses.
          */
         fun connect(
             host: String,
@@ -229,7 +233,7 @@ class AdbConnection private constructor(private val socket: Socket) {
                     socket.soTimeout = 30_000
                     return
                 }
-                AdbMessage.STLS -> throw AdbException("This TV only takes Wireless debugging, which Haven can't use yet.")
+                AdbMessage.STLS -> throw AdbTlsRequired()
                 AdbMessage.AUTH -> {
                     if (m.arg0 != AdbMessage.AUTH_TOKEN) throw AdbException("The TV's debugging service asked for something unexpected.")
                     if (!signed) {

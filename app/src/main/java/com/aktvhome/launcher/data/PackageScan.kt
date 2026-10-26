@@ -6,7 +6,9 @@ import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.media.tv.TvInputManager
 import android.provider.Settings
+import android.view.inputmethod.InputMethodManager
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -37,6 +39,34 @@ class PackageScan(private val context: Context) {
         val info = runCatching { pm.getPackageInfo(pkg, FLAGS) }.getOrNull() ?: return null
         return toFacts(info, launcherPackages(pm), voiceService())
     }
+
+    /** Just [pkg]'s enabled state now (cheap), or null when it isn't installed. */
+    fun state(pkg: String): PkgState? {
+        val app = runCatching { context.packageManager.getApplicationInfo(pkg, PackageManager.MATCH_DISABLED_COMPONENTS) }.getOrNull() ?: return null
+        return state(pkg, app)
+    }
+
+    /** What Disable must leave alone on this TV right now: Home, keyboards, accessibility, inputs, Haven. */
+    fun guardContext(): GuardContext {
+        val pm = context.packageManager
+        val cr = context.contentResolver
+        val home = pm.queryIntentActivities(
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),
+            PackageManager.MATCH_DISABLED_COMPONENTS or PackageManager.MATCH_ALL,
+        ).map { it.activityInfo.packageName }.toSet()
+        val keyboards = runCatching {
+            context.getSystemService(InputMethodManager::class.java)?.enabledInputMethodList?.map { it.packageName }
+        }.getOrNull().orEmpty().toSet() + listOfNotNull(packageOf(Settings.Secure.getString(cr, Settings.Secure.DEFAULT_INPUT_METHOD)))
+        val accessibility = Settings.Secure.getString(cr, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
+            .split(':').mapNotNull(::packageOf).toSet()
+        val inputs = runCatching {
+            context.getSystemService(TvInputManager::class.java)?.tvInputList?.map { it.serviceInfo.packageName }
+        }.getOrNull().orEmpty().toSet()
+        return GuardContext(context.packageName, home, keyboards, accessibility, inputs)
+    }
+
+    private fun packageOf(component: String?): String? =
+        component?.takeIf { it.isNotBlank() }?.let { ComponentName.unflattenFromString(it)?.packageName }
 
     private fun facts(): List<PackageFacts> {
         val pm = context.packageManager
@@ -79,8 +109,7 @@ class PackageScan(private val context: Context) {
         }.toSet()
 
     private fun voiceService(): String? =
-        Settings.Secure.getString(context.contentResolver, "voice_interaction_service")
-            ?.let { ComponentName.unflattenFromString(it)?.packageName }
+        packageOf(Settings.Secure.getString(context.contentResolver, "voice_interaction_service"))
 
     private companion object {
         const val FLAGS = PackageManager.GET_PERMISSIONS or PackageManager.MATCH_DISABLED_COMPONENTS
