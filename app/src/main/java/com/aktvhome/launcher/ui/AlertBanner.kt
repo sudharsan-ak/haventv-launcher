@@ -43,7 +43,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -315,7 +314,7 @@ fun NbaToast(
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp), content = body)
             Column(Modifier.width(104.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 WatchPill(primary, colors, focus, onPrimary)
-                TextButton("Dismiss", colors, onDismiss)
+                DismissButton(colors, onDismiss)
             }
         }
     }
@@ -351,18 +350,23 @@ private fun WatchPill(text: String, colors: ThemeColors, focus: FocusRequester, 
     )
 }
 
-/** Plain text that underlines when focused; for the quieter action. */
+/** Secondary banner action, styled as a proper compact TV button. */
 @Composable
-private fun TextButton(text: String, colors: ThemeColors, onClick: () -> Unit) {
+private fun DismissButton(colors: ThemeColors, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(50)
     Text(
-        text, color = if (focused) colors.ink else colors.inkSoft, fontSize = 10.sp,
+        "Dismiss", color = if (focused) colors.pillInk else colors.ink, fontSize = 10.sp,
         fontWeight = if (focused) FontWeight.Bold else FontWeight.Medium,
-        textDecoration = if (focused) TextDecoration.Underline else null,
+        textAlign = TextAlign.Center,
         modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(if (focused) colors.pill else colors.glass)
+            .border(if (focused) 2.dp else 1.dp, if (focused) colors.accent else colors.edge, shape)
             .onFocusChanged { focused = it.isFocused }
             .tvClickable(onClick = onClick)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
+            .padding(horizontal = 8.dp, vertical = 5.dp),
     )
 }
 
