@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalTime
@@ -155,8 +156,13 @@ class CleanupRunner(private val context: Context, private val packages: PackageS
         } finally {
             io { shell.close() }
         }
-        // Whatever didn't change has nothing to restore.
-        val stillOn = plan.filter { io { packages.state(it) }?.on != false }
+        // Whatever didn't change has nothing to restore. A change can land a moment after the
+        // command returns, so look again before dropping its record.
+        var stillOn = plan.filter { io { packages.state(it) }?.on != false }
+        if (stillOn.isNotEmpty()) {
+            delay(RECHECK_MS)
+            stillOn = stillOn.filter { io { packages.state(it) }?.on != false }
+        }
         stillOn.filter { it in added }.forEach(::forget)
         done(
             if (stillOn.isEmpty()) "Switched off ${plan.size}."
@@ -168,8 +174,15 @@ class CleanupRunner(private val context: Context, private val packages: PackageS
         message = "Checking…"
         val plan = mutableListOf<CleanupEntry>()
         for (p in pkgs) {
-            val entry = record[p] ?: continue
+            if (!CleanupPlan.validName(p)) continue
             val now = io { packages.state(p) }
+            // Not in the record: only something switched off for the user is turned on, plainly.
+            val entry = record[p] ?: if (now != null && CleanupPlan.canTurnOn(now)) {
+                CleanupEntry(p, PkgState.ENABLED, 0, "")
+            } else {
+                log("$p: off as the TV came; Haven leaves it off.")
+                continue
+            }
             when {
                 now == null -> {
                     log("$p: no longer installed; dropped from the record.")
@@ -282,6 +295,7 @@ class CleanupRunner(private val context: Context, private val packages: PackageS
         private const val KEY = "pkg:"
         private const val OFFERED = "offeredFingerprint"
         private const val MAX_LOG = 80
+        private const val RECHECK_MS = 1_500L
         private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
     }
 }

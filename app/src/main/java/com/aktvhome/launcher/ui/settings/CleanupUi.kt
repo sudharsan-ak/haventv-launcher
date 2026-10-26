@@ -232,11 +232,19 @@ private fun RestoreSection(state: HavenState, scan: List<Classified>, colors: Th
     LaunchedEffect(Unit) { runner.check() }
     val labels = remember(scan) { scan.associate { it.facts.pkg to it.facts.label } }
     val restoreAll = remember { FocusRequester() }
+    val record = runner.record.values.sortedBy { (labels[it.pkg] ?: it.pkg).lowercase() }
+    val (elsewhere, asShipped) = remember(scan, runner.record) { CleanupPlan.offOutsideRecord(scan, runner.record.keys) }
     SettingsStatusRow(
         "How restore works",
         "Restore puts each package back the way it was before Haven switched it off. Like Disable, it needs root or this TV's " +
             "own USB/ADB debugging. Without either, use the TV's own Settings › Apps: open the app (system apps are under " +
             "See all apps) and choose Enable.",
+        colors, traversable = true,
+    )
+    SettingsStatusRow(
+        "Off on this TV",
+        "${scan.count { !it.facts.state.on }} packages: ${record.size} switched off by Haven, ${elsewhere.size} switched off " +
+            "somewhere else, ${asShipped.size} off as the TV came",
         colors, traversable = true,
     )
     val back = runner.cameBack
@@ -253,7 +261,6 @@ private fun RestoreSection(state: HavenState, scan: List<Classified>, colors: Th
             else -> runner.disableAgain()
         }
     }
-    val record = runner.record.values.sortedBy { (labels[it.pkg] ?: it.pkg).lowercase() }
     SettingsActionRow(
         "Restore everything",
         if (record.isEmpty()) "Nothing to restore" else "Puts all ${record.size} back",
@@ -274,6 +281,28 @@ private fun RestoreSection(state: HavenState, scan: List<Classified>, colors: Th
                 runner.restore(listOf(e.pkg))
             }
         }
+    }
+    if (elsewhere.isNotEmpty()) Eyebrow("Switched off somewhere else", colors)
+    elsewhere.forEach { c ->
+        SettingsActionRow(
+            c.facts.label,
+            "${c.facts.pkg} · switched off outside Haven (the TV's settings, a computer, or before Haven kept a record)",
+            "Turn on", colors,
+        ) {
+            if (!runner.busy) {
+                runCatching { restoreAll.requestFocus() }
+                runner.restore(listOf(c.facts.pkg))
+            }
+        }
+    }
+    if (asShipped.isNotEmpty()) Eyebrow("Off as the TV came", colors)
+    asShipped.forEach { c ->
+        SettingsStatusRow(
+            c.facts.label,
+            "${c.facts.pkg} · the TV maker ships it off, or Android keeps it off until something needs it. " +
+                "Haven leaves these alone: some start store or factory modes.",
+            colors, traversable = true,
+        )
     }
     RunLog(runner, colors)
 }

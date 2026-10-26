@@ -192,6 +192,20 @@ object CleanupPlan {
     fun entryFor(before: PackageFacts, existing: CleanupEntry?, now: Long, fingerprint: String): CleanupEntry? =
         existing ?: if (before.state.on) CleanupEntry(before.pkg, before.state, now, fingerprint) else null
 
+    /**
+     * Restore's other two groups: packages that are off but not in Haven's record. [first] were
+     * switched off for the user somewhere else (the TV's settings, a computer, or a run that lost
+     * its record), and Restore can turn them on. [second] are off as the TV came (the maker ships
+     * them off or Android keeps them off until used); Haven only lists them, since some start
+     * store or factory modes.
+     */
+    fun offOutsideRecord(scan: Collection<Classified>, record: Set<String>): Pair<List<Classified>, List<Classified>> =
+        scan.filter { !it.facts.state.on && it.facts.pkg !in record && validName(it.facts.pkg) }
+            .partition { canTurnOn(it.facts.state) }
+
+    /** Only a package switched off for the user is turned on without a record of how it was. */
+    fun canTurnOn(state: PkgState): Boolean = state == PkgState.DISABLED_USER
+
     /** Recorded packages that are on again; [current] is each one's state now (null: not installed). */
     fun cameBack(record: Collection<CleanupEntry>, current: Map<String, PkgState?>): List<CleanupEntry> =
         record.filter { current[it.pkg]?.on == true }.sortedBy { it.pkg }

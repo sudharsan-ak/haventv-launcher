@@ -158,6 +158,25 @@ class CleanupPlanTest {
         assertTrue(CleanupPlan.cameBack(listOf(a), mapOf("com.a.a" to null)).isEmpty())
     }
 
+    @Test fun restoreListsEverythingThatsOffInThreeGroups() {
+        val scan = Cleanup.scan(
+            listOf(
+                pkg("com.sony.dtv.promos", state = PkgState.DISABLED_USER),
+                pkg("com.google.android.play.games", state = PkgState.DISABLED_USER),
+                pkg("com.sony.dtv.livingfit", state = PkgState.DISABLED),
+                pkg("com.maker.lazy", state = PkgState.DISABLED_UNTIL_USED),
+                pkg("com.netflix.ninja"),
+            ),
+        )
+        val (elsewhere, asShipped) = CleanupPlan.offOutsideRecord(scan, setOf("com.sony.dtv.promos"))
+        // Recorded by Haven: not repeated here. Lost its record: can be turned on.
+        assertEquals(listOf("com.google.android.play.games"), elsewhere.map { it.facts.pkg })
+        assertEquals(setOf("com.sony.dtv.livingfit", "com.maker.lazy"), asShipped.map { it.facts.pkg }.toSet())
+        assertTrue(CleanupPlan.canTurnOn(PkgState.DISABLED_USER))
+        assertFalse(CleanupPlan.canTurnOn(PkgState.DISABLED))
+        assertFalse(CleanupPlan.canTurnOn(PkgState.DISABLED_UNTIL_USED))
+    }
+
     @Test fun routeFollowsWhatTheTvOffers() {
         assertEquals(CleanupRoute.READY, CleanupPlan.route(debuggingPortOpen = true, suPresent = false, wirelessDebuggingOn = true))
         assertEquals(CleanupRoute.ROOT, CleanupPlan.route(debuggingPortOpen = false, suPresent = true, wirelessDebuggingOn = true))
