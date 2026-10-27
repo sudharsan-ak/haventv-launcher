@@ -68,6 +68,8 @@ internal val HAVEN_SETTINGS = listOf(
 
     setting("watch_nba", "NBA", SettingsDestination.WATCH_NOW, "Watching & alerts · Watch Now", "Show NBA scores, schedule and your team.", "basketball"),
     setting("favorite_team", "Favorite team", SettingsDestination.WATCH_NOW, "Watching & alerts · Watch Now", "Choose the NBA team shown first.", "basketball Warriors"),
+    setting("rotate_nba", "Rotate NBA games", SettingsDestination.WATCH_NOW, "Watching & alerts · Watch Now", "Cycle through today's games in the Home NBA card.", "carousel cycle slideshow games home"),
+    setting("nba_rotation_interval", "Rotation interval", SettingsDestination.WATCH_NOW, "Watching & alerts · Watch Now", "Choose 8, 10, 15 or 20 seconds between games.", "speed seconds carousel games"),
     setting("continue_watching", "Continue watching", SettingsDestination.WATCH_NOW, "Watching & alerts · Watch Now", "Show programs shared by installed TV apps.", "resume progress"),
     setting("live_channels", "Live channels", SettingsDestination.WATCH_NOW, "Watching & alerts · Watch Now", "Show channels shared by Live TV apps.", "television listings"),
     setting("local_abc", "Local ABC station", SettingsDestination.WATCH_NOW, "Watching & alerts · Watch Now", "Choose the live channel that carries ABC.", "network tune in"),

@@ -13,6 +13,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
+import java.time.LocalTime
+import java.time.Instant
 
 /**
  * Everything behind the Smart Strip and the Watch Now drawer. Refreshed from the UI clock while
@@ -71,6 +73,14 @@ class WatchNow(
         if (!s.watchNba && !(s.headlineChanging && s.favoriteTeam.isNotBlank())) return
         // Today: every 10 s while a game is live (see [liveTick]), every 5 minutes otherwise.
         loadDay(today(), maxAgeMs = if (liveToday()) 10_000 else 5 * 60_000, force = force)
+        // Yesterday's late games may still be active after local midnight. Reuse this cache
+        // for card rotation rather than fetching individual games as the UI advances.
+        if (s.watchNba) overnightDay()?.let { day ->
+            val previous = games[day]
+            if (previous == null || previous.any { NbaRotation.overnight(it, Instant.now()) }) {
+                loadDay(day, maxAgeMs = if (previous?.any { it.state == GameState.LIVE } == true) 10_000 else 5 * 60_000)
+            }
+        }
         val fav = s.favoriteTeam
         if (fav.isNotBlank() && (fav != scheduleTeam || now - scheduleAt > 6 * 3_600_000L || (force && schedule.isEmpty()))) {
             scheduleTeam = fav
@@ -92,7 +102,24 @@ class WatchNow(
         val s = settingsStore.settings
         if (!s.watchNba && !s.headlineChanging) return
         if (liveToday()) loadDay(today(), maxAgeMs = 9_000)
+        overnightDay()?.let { day ->
+            if (games[day].orEmpty().any { it.state == GameState.LIVE }) loadDay(day, maxAgeMs = 9_000)
+        }
     }
+
+    /** During the early morning, look for yesterday's unfinished games as well. */
+    private fun overnightDay(): LocalDate? =
+        today().minusDays(1).takeIf { LocalTime.now().hour < 7 }
+
+    /** The cached home slate. This selection makes no requests to ESPN. */
+    fun homeRotationGames(): List<Game> = NbaRotation.ordered(
+        NbaRotation.slate(
+            games[today()].orEmpty(),
+            overnightDay()?.let { games[it] }.orEmpty(),
+            Instant.now(),
+        ),
+        settingsStore.settings.favoriteTeam,
+    )
 
     /** Reads Continue watching and the apps' shared rows now. The alert banners call it directly. */
     suspend fun loadRows() {

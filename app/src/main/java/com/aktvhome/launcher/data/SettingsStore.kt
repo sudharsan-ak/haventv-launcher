@@ -36,6 +36,14 @@ enum class WallInterval(val label: String, val millis: Long) {
     DAY("Daily", 24 * 3_600_000L),
 }
 
+/** Seconds each NBA matchup remains visible, after the featured game's longer hold. */
+enum class NbaRotationInterval(val label: String, val millis: Long) {
+    EIGHT("8 seconds", 8_000L),
+    TEN("10 seconds", 10_000L),
+    FIFTEEN("15 seconds", 15_000L),
+    TWENTY("20 seconds", 20_000L),
+}
+
 /** Watch Now sections, id to label, in their default order. */
 val WATCH_SECTIONS = listOf("nba" to "NBA", "live" to "Live channels", "continue" to "Continue watching")
 
@@ -80,6 +88,8 @@ data class Settings(
     val unsplashKey: String = "",
     /** Watch Now sections. NBA is a personal module and starts off for everyone. */
     val watchNba: Boolean = false,
+    val rotateNba: Boolean = true,
+    val nbaRotationInterval: NbaRotationInterval = NbaRotationInterval.TEN,
     val watchContinue: Boolean = true,
     val watchLive: Boolean = true,
     /** ESPN team abbreviation of the favorite team ("" = none), e.g. "GS". */
@@ -165,6 +175,8 @@ class SettingsStore(context: Context) {
             .putBoolean("wallCredit", next.wallCredit)
             .putString("unsplashKey", next.unsplashKey)
             .putBoolean("watchNba", next.watchNba)
+            .putBoolean("rotateNba", next.rotateNba)
+            .putString("nbaRotationInterval", next.nbaRotationInterval.name)
             .putBoolean("watchContinue", next.watchContinue)
             .putBoolean("watchLive", next.watchLive)
             .putString("favoriteTeam", next.favoriteTeam)
@@ -220,6 +232,8 @@ class SettingsStore(context: Context) {
         wallCredit = prefs.getBoolean("wallCredit", true),
         unsplashKey = prefs.getString("unsplashKey", null) ?: "",
         watchNba = prefs.getBoolean("watchNba", false),
+        rotateNba = prefs.getBoolean("rotateNba", true),
+        nbaRotationInterval = enumOr(prefs.getString("nbaRotationInterval", null), NbaRotationInterval.TEN),
         watchContinue = prefs.getBoolean("watchContinue", true),
         watchLive = prefs.getBoolean("watchLive", true),
         favoriteTeam = prefs.getString("favoriteTeam", null) ?: "",
