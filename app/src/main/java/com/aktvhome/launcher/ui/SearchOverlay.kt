@@ -59,11 +59,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aktvhome.launcher.core.search.SearchDocument
+import com.aktvhome.launcher.core.search.SearchMatcher
 import com.aktvhome.launcher.data.AppEntry
 import com.aktvhome.launcher.data.Game
 import com.aktvhome.launcher.data.Nba
-import com.aktvhome.launcher.data.SearchDocument
-import com.aktvhome.launcher.data.SearchMatcher
 import com.aktvhome.launcher.data.TvInput
 import com.aktvhome.launcher.data.TvItem
 import com.aktvhome.launcher.ui.settings.CloseButton
