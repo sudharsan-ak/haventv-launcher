@@ -107,6 +107,8 @@ internal val HAVEN_SETTINGS = listOf(
     setting("cleanup_restore_all", "Restore everything", SettingsDestination.CLEANUP, "TV & network · Cleanup · Restore", "Put every package Cleanup switched off back the way it was.", "undo enable re-enable put back", "Restore everything", "RESTORE"),
     setting("cleanup_recheck", "Check after an update", SettingsDestination.CLEANUP, "TV & network · Cleanup · Restore", "Find packages that came back on after a firmware update and switch them off again.", "firmware update came back re-enabled disable again", "Check after an update", "RESTORE"),
 
+    setting("accessibility_services", "Accessibility services", SettingsDestination.ACCESSIBILITY, "TV & network · Accessibility", "Choose which accessibility services Haven keeps on through restarts.", "watchdog keep on restore services remote button mapper", "What this does"),
+
     setting("this_tv", "This TV", SettingsDestination.THIS_TV, "About & data · This TV", "Review this TV's available Haven capabilities.", "setup permissions device", null),
     setting("automatic_backup", "Automatic backup", SettingsDestination.BACKUP, "About & data · Backup & reset", "Back up Haven settings now.", "data export save"),
     setting("restore", "Restore", SettingsDestination.BACKUP, "About & data · Backup & reset", "Restore Haven from the saved backup.", "data import"),

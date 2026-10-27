@@ -41,6 +41,10 @@ and tested on a Sony BRAVIA running Google TV (Android 12).
   Wi-Fi setup or anything Haven or the TV relies on. *Restore* puts them back, and after a
   firmware update offers to switch off again anything that came back on. Disable and Restore use
   the one-time setup's route (root or the TV's own USB/ADB debugging).
+- **Accessibility**: *All settings › TV & network › Accessibility* lists every accessibility
+  service on the TV with one toggle each. On, Haven keeps it on, even when the TV drops it at a
+  restart (apps on a USB drive load late). Switch one off in the TV's own settings and Haven asks,
+  top right: turn it back on, remind me after the next restart, or leave it off.
 - **Remote-first**: hold OK for options, rows wrap around end to end, greeting with your name,
   card size, motion level, 12/24-hour clock.
 
@@ -166,8 +170,9 @@ and paste the key in **All settings › Appearance › Wallpaper › Unsplash ke
   `CleanupPlan`, `CleanupRunner`) and the shared root/ADB route (`ShellRoute`, `Adb`)
 - `haven-core/` plain Java module with no Android code, called from the Kotlin app: search
   ranking with typo tolerance (`core/search/SearchMatcher`), the player card's advanced stats
-  (`core/stats/Advanced`) and the Accessibility Watchdog's decisions (`core/guard/GuardRules`).
-  It builds and tests on any JVM.
+  (`core/stats/Advanced`), the Accessibility Watchdog's decisions (`core/guard/GuardRules`) and
+  the turns taken by the toasts in the top-right corner (`core/corner/CornerQueue`). It builds and
+  tests on any JVM.
 - `ui/kingdom/`, `ui/tide/` one folder per theme; each puts the settings gear at the top right
 - `ui/settings/` Quick settings card and the Personalize panel (both float over the live home)
 - `ui/theme/` theme colors and the day/night blend

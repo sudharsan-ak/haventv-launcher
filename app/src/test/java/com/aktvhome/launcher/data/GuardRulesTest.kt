@@ -2,98 +2,94 @@ package com.aktvhome.launcher.data
 
 import com.aktvhome.launcher.core.guard.GuardRules
 import com.aktvhome.launcher.core.guard.GuardState
+import com.aktvhome.launcher.core.guard.Keep
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.function.Predicate
 
 /**
- * The Accessibility Watchdog tests from before GuardRules moved to Java (haven-core), run from
- * Kotlin against the Java code. Only Java syntax changed: no named arguments, and the stored
- * "loaded" checks are Java Predicates (a lambda written in the call converts by itself; a Kotlin
- * function kept in a variable doesn't).
+ * The Accessibility Watchdog's rules (Java, in haven-core), called from Kotlin the way
+ * AccessibilityGuard calls them: the boot and USB cases from before the Accessibility tab, plus
+ * asking instead of guessing when a service is switched off outside Haven.
  */
 class GuardRulesTest {
 
+    private val self = "com.aktvhome.launcher"
+    private val haven = "$self/$self.HomeOverrideService"
     private val mapper = "flar2.homebutton/flar2.homebutton.MapperService"
     private val zank = "zank.remote/zank.remote.RemoteService"
     private val loaded = Predicate<String> { true }
     private val notLoaded = Predicate<String> { false }
 
-    @Test fun firstRunTakesWhatIsOn() {
-        val r = GuardRules.decide(null, setOf(mapper), loaded, false)
+    private fun kept(vararg services: String) = GuardRules.start(services.toList(), emptySet(), self)
+
+    @Test fun firstRunKeepsWhatIsOnExceptHaven() {
+        val s = GuardRules.start(null, setOf(mapper, haven), self)
+        assertEquals(mapOf(mapper to Keep.ON), s.keep)
+    }
+
+    @Test fun theListFromEarlierVersionsCarriesOver() {
+        val s = GuardRules.start(setOf(mapper, zank), setOf(mapper), self)
+        assertEquals(mapOf(mapper to Keep.ON, zank to Keep.ON), s.keep)
+    }
+
+    @Test fun droppedAtBootIsRestoredWithoutAsking() {
+        val r = GuardRules.decide(kept(mapper, zank), emptySet(), loaded, true, self)
+        assertEquals(listOf(mapper, zank), r.restore)
+        assertTrue(r.ask.isEmpty())
+    }
+
+    @Test fun appThatLoadsLateIsRestoredWithoutAsking() {
+        // Drive not mounted yet: nothing to do, still kept on.
+        var r = GuardRules.decide(kept(zank), emptySet(), notLoaded, true, self)
         assertTrue(r.restore.isEmpty())
-        assertEquals(setOf(mapper), r.state.wanted)
-    }
-
-    @Test fun missingAtFirstCheckAfterBootIsRestored() {
-        // Seen before the reboot doesn't count: the state after boot starts with nothing seen.
-        val state = GuardState(setOf(mapper, zank), emptySet())
-        val r = GuardRules.decide(state, emptySet(), loaded, true)
-        assertEquals(setOf(mapper, zank), r.restore.toSet())
-        assertEquals(setOf(mapper, zank), r.state.wanted)
-    }
-
-    @Test fun missingInBootWindowIsRestoredEvenIfSeenBefore() {
-        // The race: the check runs before the boot flag is set, with the drive already loaded.
-        val state = GuardState(setOf(mapper), setOf(mapper))
-        val r = GuardRules.decide(state, emptySet(), loaded, true)
-        assertEquals(listOf(mapper), r.restore)
-        assertEquals(setOf(mapper), r.state.wanted)
-    }
-
-    @Test fun firstCheckAfterTheWindowStillRestores() {
-        val state = GuardState(setOf(mapper), emptySet())
-        assertEquals(listOf(mapper), GuardRules.decide(state, emptySet(), loaded, false).restore)
-    }
-
-    @Test fun appThatLoadsLateIsRestored() {
-        var state = GuardState(setOf(zank), emptySet())
-        // Drive not mounted yet: nothing to do, still wanted.
-        var r = GuardRules.decide(state, emptySet(), notLoaded, true)
-        assertTrue(r.restore.isEmpty())
-        assertEquals(setOf(zank), r.state.wanted)
-        state = r.state
-        // Mounted after the boot window: it was never seen on this boot, so it's restored.
-        r = GuardRules.decide(state, emptySet(), loaded, false)
+        assertEquals(Keep.ON, r.state.keepOf(zank))
+        // It loads after the TV has settled: it was dropped, not switched off, so no question.
+        r = GuardRules.decide(r.state, emptySet(), loaded, false, self)
         assertEquals(listOf(zank), r.restore)
+        assertTrue(r.ask.isEmpty())
     }
 
-    @Test fun userSwitchOffLaterIsRespected() {
-        var r = GuardRules.decide(GuardState(setOf(mapper), emptySet()), setOf(mapper), loaded, false)
+    @Test fun switchedOffOutsideHavenIsAskedAboutOnce() {
+        var r = GuardRules.decide(kept(mapper), setOf(mapper), loaded, false, self)
+        // Switched off in the TV's settings, app loaded, TV settled: ask rather than guess.
+        r = GuardRules.decide(r.state, emptySet(), loaded, false, self)
         assertTrue(r.restore.isEmpty())
-        // You turn it off: it was seen on, its app is loaded, the boot is long over.
-        r = GuardRules.decide(r.state, emptySet(), loaded, false)
-        assertTrue(r.restore.isEmpty())
-        assertEquals(emptySet<String>(), r.state.wanted)
-        // And it stays off.
-        r = GuardRules.decide(r.state, emptySet(), loaded, false)
-        assertTrue(r.restore.isEmpty())
+        assertEquals(listOf(mapper), r.ask)
+        // While the question is open, later checks don't ask again.
+        r = GuardRules.decide(r.state, emptySet(), loaded, false, self)
+        assertTrue(r.ask.isEmpty())
+        assertEquals(Keep.ON, r.state.keepOf(mapper))
     }
 
-    @Test fun appUnmountedThenBackIsRestored() {
-        var r = GuardRules.decide(GuardState(setOf(zank), emptySet()), setOf(zank), loaded, false)
-        // Drive drops out and Android drops the service with it.
-        r = GuardRules.decide(r.state, emptySet(), notLoaded, false)
-        assertEquals(setOf(zank), r.state.wanted)
-        r = GuardRules.decide(r.state, emptySet(), loaded, false)
+    @Test fun appUnmountedThenBackIsRestoredWithoutAsking() {
+        var r = GuardRules.decide(kept(zank), setOf(zank), loaded, false, self)
+        // The drive drops out and Android drops the service with it.
+        r = GuardRules.decide(r.state, emptySet(), notLoaded, false, self)
+        assertTrue(r.ask.isEmpty())
+        r = GuardRules.decide(r.state, emptySet(), loaded, false, self)
         assertEquals(listOf(zank), r.restore)
+        assertTrue(r.ask.isEmpty())
     }
 
-    @Test fun newServicesJoinTheWantedList() {
-        val r = GuardRules.decide(GuardState(setOf(mapper), setOf(mapper)), setOf(mapper, zank), loaded, false)
-        assertEquals(setOf(mapper, zank), r.state.wanted)
+    @Test fun switchedOnAnywhereIsKeptOn() {
+        val off = GuardRules.setKeep(kept(mapper), zank, false)
+        val r = GuardRules.decide(off, setOf(mapper, zank), loaded, false, self)
+        assertEquals(Keep.ON, r.state.keepOf(zank))
     }
 
     @Test fun shortAndLongFormsAreTheSameService() {
         assertEquals(mapper, GuardRules.normal("flar2.homebutton/.MapperService"))
         assertEquals(zank, GuardRules.normal(zank))
-        // Wanted in short form, enabled in long form: not missing, one entry.
-        val r = GuardRules.decide(GuardState(setOf("flar2.homebutton/.MapperService"), emptySet()), setOf(mapper), loaded, false)
-        assertTrue(r.restore.isEmpty())
-        assertEquals(setOf(mapper), r.state.wanted)
-        // Saved twice in both forms: restored once.
-        val twice = GuardRules.decide(GuardState(setOf("flar2.homebutton/.MapperService", mapper), emptySet()), emptySet(), loaded, true)
-        assertEquals(listOf(mapper), twice.restore)
+        val r = GuardRules.decide(kept("flar2.homebutton/.MapperService"), setOf(mapper), loaded, false, self)
+        assertTrue(r.restore.isEmpty() && r.ask.isEmpty())
+        assertEquals(mapOf(mapper to Keep.ON), r.state.keep)
+    }
+
+    @Test fun havensOwnServiceIsLeftToTheHomeButtonTab() {
+        val r = GuardRules.decide(GuardState.EMPTY, setOf(haven), loaded, false, self)
+        assertTrue(r.state.keep.isEmpty())
+        assertTrue(GuardRules.decide(r.state, emptySet(), loaded, false, self).ask.isEmpty())
     }
 }
