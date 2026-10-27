@@ -62,7 +62,7 @@ internal val HAVEN_SETTINGS = listOf(
     setting("alert_other_comeback", "Other games · Comeback", SettingsDestination.NBA_ALERTS, "Watching & alerts · NBA alerts", "Toggle comeback alerts for other games.", "basketball", "other:COMEBACK"),
     setting("hide_scores", "Hide scores", SettingsDestination.NBA_ALERTS, "Watching & alerts · NBA alerts", "Hide scores in alert banners.", "spoilers"),
     setting("alert_cooldown", "Space out other-game alerts", SettingsDestination.NBA_ALERTS, "Watching & alerts · NBA alerts", "Choose the minimum time between other-game alerts.", "cooldown minutes"),
-    setting("banner_time", "Banner time", SettingsDestination.NBA_ALERTS, "Watching & alerts · NBA alerts", "Choose how long an alert banner stays visible.", "seconds duration"),
+    setting("banner_time", "Banner time", SettingsDestination.NBA_ALERTS, "Watching & alerts · NBA alerts", "Choose how long alert banners and the Last night recap stay visible.", "seconds duration"),
     setting("last_night_recap", "Last night recap", SettingsDestination.NBA_ALERTS, "Watching & alerts · NBA alerts", "Control the morning NBA recap.", "yesterday results"),
     setting("send_test_alert", "Send test alert", SettingsDestination.NBA_ALERTS, "Watching & alerts · NBA alerts", "Show a sample NBA alert banner.", "notification test"),
 

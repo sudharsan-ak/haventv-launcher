@@ -3,10 +3,12 @@ package com.aktvhome.launcher.ui
 import android.content.Context
 import android.os.SystemClock
 import android.view.KeyEvent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -37,8 +39,9 @@ import java.time.LocalTime
  * The morning catch-up: the first time Haven's Home is in front each day after 6 AM (no overlay
  * open), a toast with last night's result, drawn in Haven's own window like the alert banners and
  * never over other apps. Only from a complete, fresh scoreboard with at least one final. "See
- * recaps" opens the NBA panel on yesterday with that game selected. Keys in the first 500 ms are
- * ignored, Back dismisses, and it closes after 10 s without a key.
+ * recaps" opens the NBA panel on yesterday with that game selected. It holds focus while it's up
+ * (Home leaves focus alone, see [HavenState.popupShowing]). Keys in the first 500 ms are ignored,
+ * Back dismisses (wherever focus is), and it closes after Banner time without a key, like the alerts.
  */
 @Composable
 fun LastNightRecap(state: HavenState, colors: ThemeColors) {
@@ -67,8 +70,10 @@ fun LastNightRecap(state: HavenState, colors: ThemeColors) {
         if (games.any { it.state == GameState.LIVE }) return@LaunchedEffect
         val pick = LastNight.pick(games, s.favoriteTeam, s.followedTeams, s.hideScores) ?: return@LaunchedEffect
         prefs.edit().putString("shown", today.toString()).apply()
+        state.popupShowing = true
         toast = pick
     }
+    DisposableEffect(Unit) { onDispose { state.popupShowing = false } }
 
     val t = toast ?: return
     val focus = remember(t) { FocusRequester() }
@@ -79,10 +84,13 @@ fun LastNightRecap(state: HavenState, colors: ThemeColors) {
     // Focus goes back to Home's first row, as after a Home press.
     fun dismiss() {
         toast = null
+        state.popupShowing = false
         state.homePresses++
     }
+    // Closes it even if focus somehow isn't on it; declared after Home's own Back, so it comes first.
+    BackHandler { dismiss() }
     LaunchedEffect(t, lastKey) {
-        delay(10_000)
+        delay(s.bannerSeconds * 1_000L)
         dismiss()
     }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopEnd) {
@@ -90,6 +98,7 @@ fun LastNightRecap(state: HavenState, colors: ThemeColors) {
             "Haven · Last night", t.headline, "▶ See recaps", colors, w, focus,
             onPrimary = {
                 toast = null
+                state.popupShowing = false
                 state.openGame(t.game, onSummary = true)
             },
             onDismiss = ::dismiss,
@@ -112,5 +121,4 @@ fun LastNightRecap(state: HavenState, colors: ThemeColors) {
             t.detail?.let { Text(it, color = colors.inkSoft, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis) }
         }
     }
-    LaunchedEffect(t) { runCatching { focus.requestFocus() } }
 }

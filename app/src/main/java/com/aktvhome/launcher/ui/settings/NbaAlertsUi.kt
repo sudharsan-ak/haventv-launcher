@@ -108,7 +108,7 @@ fun NbaAlertsPage(state: HavenState, colors: ThemeColors, first: Modifier) {
         store.update { it.copy(alertCooldown = v.removeSuffix(" min").toInt()) }
     }
     SettingsChoiceRow(
-        "Banner time", "How long a banner stays up when you don't press anything.", "${s.bannerSeconds} s",
+        "Banner time", "How long a banner or the Last night recap stays up when you don't press anything.", "${s.bannerSeconds} s",
         listOf("5 s", "8 s", "10 s").map { SettingsPickerOption(it) }, "${s.bannerSeconds} s", colors,
     ) { v ->
         store.update { it.copy(bannerSeconds = v.removeSuffix(" s").toInt()) }

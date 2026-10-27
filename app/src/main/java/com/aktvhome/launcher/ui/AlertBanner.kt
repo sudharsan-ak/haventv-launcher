@@ -37,10 +37,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -274,7 +276,6 @@ private fun Banner(
             color = colors.inkSoft, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
     }
-    LaunchedEffect(Unit) { runCatching { primary.requestFocus() } }
 }
 
 /**
@@ -282,6 +283,11 @@ private fun Banner(
  * wide: NBA logo and [eyebrow] with a small close, the [headline], then [body] on the left and the
  * main action ([primary], focused through [focus]) over a quiet Dismiss on the right. Shared by
  * the alert banners and the Last night recap.
+ *
+ * It takes focus on the main action as it appears, and keeps asking for the first few seconds
+ * until it has it: Home may still be loading and move focus, and a new window may not have key
+ * focus yet. Once in, the D-pad stays on its three buttons (close, main action, Dismiss) until
+ * it closes, so a stray press can't drop you back onto what's behind it.
  */
 @Composable
 fun NbaToast(
@@ -296,8 +302,23 @@ fun NbaToast(
     modifier: Modifier = Modifier,
     body: @Composable ColumnScope.() -> Unit,
 ) {
+    val close = remember { FocusRequester() }
+    val dismiss = remember { FocusRequester() }
+    var holding by remember { mutableStateOf(false) }
+    val host = LocalView.current
+    LaunchedEffect(Unit) {
+        repeat(FOCUS_TRIES) {
+            if (!holding) {
+                // A window that's just been added may not have key focus yet.
+                if (!host.hasFocus()) host.requestFocus()
+                runCatching { focus.requestFocus() }
+            }
+            delay(FOCUS_RETRY_MS)
+        }
+    }
     Column(
         modifier
+            .onFocusChanged { holding = it.hasFocus }
             .padding(top = 76.dp, end = 40.dp)
             .width(240.dp)
             .glassPanel(colors, RoundedCornerShape(18.dp))
@@ -307,14 +328,23 @@ fun NbaToast(
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             NetImage(watchNow, Nba.LEAGUE_LOGO, 14.dp)
             Box(Modifier.weight(1f)) { Eyebrow(eyebrow, colors) }
-            SmallClose(colors, onDismiss)
+            SmallClose(
+                colors, onDismiss,
+                Modifier.focusRequester(close).focusProperties { down = focus; up = close; left = close; right = close },
+            )
         }
         Text(headline, color = colors.ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp), content = body)
             Column(Modifier.width(104.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                WatchPill(primary, colors, focus, onPrimary)
-                DismissButton(colors, onDismiss)
+                WatchPill(
+                    primary, colors, focus, onPrimary,
+                    Modifier.focusProperties { up = close; down = dismiss; left = focus; right = focus },
+                )
+                DismissButton(
+                    colors, onDismiss,
+                    Modifier.focusRequester(dismiss).focusProperties { up = focus; down = dismiss; left = dismiss; right = dismiss },
+                )
             }
         }
     }
@@ -332,13 +362,13 @@ private fun TeamLine(team: Team, hideScore: Boolean, colors: ThemeColors) {
 
 /** The banner's main action, a compact pill; focus fills it. */
 @Composable
-private fun WatchPill(text: String, colors: ThemeColors, focus: FocusRequester, onClick: () -> Unit) {
+private fun WatchPill(text: String, colors: ThemeColors, focus: FocusRequester, onClick: () -> Unit, modifier: Modifier = Modifier) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(50)
     Text(
         text, color = if (focused) colors.pillInk else colors.ink, fontSize = 10.sp, fontWeight = FontWeight.Bold,
         maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .focusRequester(focus)
             .clip(shape)
@@ -352,14 +382,14 @@ private fun WatchPill(text: String, colors: ThemeColors, focus: FocusRequester, 
 
 /** Secondary banner action, styled as a proper compact TV button. */
 @Composable
-private fun DismissButton(colors: ThemeColors, onClick: () -> Unit) {
+private fun DismissButton(colors: ThemeColors, onClick: () -> Unit, modifier: Modifier = Modifier) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(50)
     Text(
         "Dismiss", color = if (focused) colors.pillInk else colors.ink, fontSize = 10.sp,
         fontWeight = if (focused) FontWeight.Bold else FontWeight.Medium,
         textAlign = TextAlign.Center,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(shape)
             .background(if (focused) colors.pill else colors.glass)
@@ -372,10 +402,10 @@ private fun DismissButton(colors: ThemeColors, onClick: () -> Unit) {
 
 /** A small round close button, the settings panels' close in miniature. */
 @Composable
-private fun SmallClose(colors: ThemeColors, onClick: () -> Unit) {
+private fun SmallClose(colors: ThemeColors, onClick: () -> Unit, modifier: Modifier = Modifier) {
     var focused by remember { mutableStateOf(false) }
     Box(
-        Modifier
+        modifier
             .size(20.dp)
             .clip(CircleShape)
             .background(if (focused) colors.pill else colors.glass)
@@ -394,3 +424,7 @@ private fun statusText(game: Game): String = when (game.state) {
     GameState.FINAL -> "Final"
     GameState.LIVE -> game.clockLine()
 }
+
+/** How long a toast keeps asking for focus: [FOCUS_TRIES] times, [FOCUS_RETRY_MS] apart (3 s). */
+private const val FOCUS_TRIES = 20
+private const val FOCUS_RETRY_MS = 150L
