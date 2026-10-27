@@ -41,7 +41,7 @@ import java.time.LocalTime
  * never over other apps. Only from a complete, fresh scoreboard with at least one final. "See
  * recaps" opens the NBA panel on yesterday with that game selected. It holds focus while it's up
  * (Home leaves focus alone, see [HavenState.popupShowing]). Keys in the first 500 ms are ignored,
- * Back dismisses (wherever focus is), and it closes after 10 s without a key.
+ * Back dismisses (wherever focus is), and it closes after Banner time without a key, like the alerts.
  */
 @Composable
 fun LastNightRecap(state: HavenState, colors: ThemeColors) {
@@ -90,7 +90,7 @@ fun LastNightRecap(state: HavenState, colors: ThemeColors) {
     // Closes it even if focus somehow isn't on it; declared after Home's own Back, so it comes first.
     BackHandler { dismiss() }
     LaunchedEffect(t, lastKey) {
-        delay(10_000)
+        delay(s.bannerSeconds * 1_000L)
         dismiss()
     }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopEnd) {
