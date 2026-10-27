@@ -41,6 +41,10 @@ and tested on a Sony BRAVIA running Google TV (Android 12).
   Wi-Fi setup or anything Haven or the TV relies on. *Restore* puts them back, and after a
   firmware update offers to switch off again anything that came back on. Disable and Restore use
   the one-time setup's route (root or the TV's own USB/ADB debugging).
+- **Accessibility**: *All settings › TV & network › Accessibility* lists every accessibility
+  service on the TV with one toggle each. On, Haven keeps it on, even when the TV drops it at a
+  restart (apps on a USB drive load late). Switch one off in the TV's own settings and Haven asks,
+  top right: turn it back on, remind me after the next restart, or leave it off.
 - **Remote-first**: hold OK for options, rows wrap around end to end, greeting with your name,
   card size, motion level, 12/24-hour clock.
 

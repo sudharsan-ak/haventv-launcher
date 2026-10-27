@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Accessibility
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -41,6 +42,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -54,6 +56,7 @@ import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import com.aktvhome.launcher.core.guard.Answer
 import com.aktvhome.launcher.data.Alert
 import com.aktvhome.launcher.data.AlertEvent
 import com.aktvhome.launcher.data.Game
@@ -91,8 +94,22 @@ import java.time.format.DateTimeFormatter
  * time (5 s by default) without a key, on Back or Dismiss, and the window is removed so focus
  * returns to the app underneath.
  * Alerts that arrive while one shows wait their turn.
+ *
+ * It also asks about accessibility services switched off outside Haven ([ask]), in the same
+ * toast with three answers. Closing that one without an answer (Back, the small close, Home or
+ * the timer) means "ask again after the next restart"; [onAnswer] gets the answer either way.
  */
-class AlertBanner(private val service: AccessibilityService, private val store: SettingsStore) {
+class AlertBanner(
+    private val service: AccessibilityService,
+    private val store: SettingsStore,
+    private val onAnswer: (String, Answer) -> Unit = { _, _ -> },
+) {
+
+    /** What the banner shows: an NBA alert, or a question about an accessibility service. */
+    private sealed interface Pop {
+        class Nba(val alert: Alert) : Pop
+        class Ask(val service: String, val label: String) : Pop
+    }
 
     private val main = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val windows = service.getSystemService(WindowManager::class.java)
@@ -103,25 +120,34 @@ class AlertBanner(private val service: AccessibilityService, private val store: 
         liveApps = { layout.layout.collections.firstOrNull { it.id == "livetv" }?.apps?.toSet().orEmpty() },
         labelOf = { pkg -> labelOf(pkg) ?: pkg.substringAfterLast('.') },
     )
-    private val queue = ArrayDeque<Alert>()
+    private val queue = ArrayDeque<Pop>()
     private var view: View? = null
     private var owner: OverlayOwner? = null
     private var timer: Job? = null
     /** True from picking the next alert until its banner closes. */
     private var busy = false
+    /** What closing the banner on screen without an answer means; null for NBA alerts. */
+    private var unanswered: (() -> Unit)? = null
 
     /** Shows [alert] now, or after the banner on screen. Safe from any thread. */
-    fun show(alert: Alert) {
+    fun show(alert: Alert) = enqueue(Pop.Nba(alert))
+
+    /** Asks about [service] (named [label]), which was switched off outside Haven. Safe from any thread. */
+    fun ask(service: String, label: String) = enqueue(Pop.Ask(service, label))
+
+    private fun enqueue(pop: Pop) {
         main.launch {
-            queue.addLast(alert)
+            queue.addLast(pop)
             if (!busy) next()
         }
     }
 
-    /** Closes the banner on screen and drops any waiting (Home was pressed). */
+    /** Closes the banner on screen and drops any waiting (Home was pressed); questions count as unanswered. */
     fun dismissAll() {
         main.launch {
+            queue.filterIsInstance<Pop.Ask>().forEach { onAnswer(it.service, Answer.REMIND) }
             queue.clear()
+            unanswered?.invoke()
             close()
         }
     }
@@ -133,21 +159,40 @@ class AlertBanner(private val service: AccessibilityService, private val store: 
     }
 
     private suspend fun next() {
-        val alert = queue.removeFirstOrNull() ?: return
+        val pop = queue.removeFirstOrNull() ?: return
         busy = true
         store.reload()
-        layout.reload()
-        runCatching { watchNow.loadRows() }
-        val option = watchOptions(alert.game, sources()).first()
         val s = store.settings
         val colors = Palettes.colors(s.theme, dayness(s.dayMode, LocalTime.now()))
-        if (!open(alert, option, s.hideScores, colors)) {
+        val shown = when (pop) {
+            is Pop.Nba -> {
+                layout.reload()
+                runCatching { watchNow.loadRows() }
+                val option = watchOptions(pop.alert.game, sources()).first()
+                open(null) { done ->
+                    Banner(pop.alert, option, s.hideScores, colors, watchNow, onOpen = { option.open(); done() }, onDismiss = done)
+                }
+            }
+            is Pop.Ask -> open({ onAnswer(pop.service, Answer.REMIND) }) { done ->
+                AskBanner(pop.label, colors) { answer ->
+                    onAnswer(pop.service, answer ?: Answer.REMIND)
+                    done()
+                }
+            }
+        }
+        if (!shown) {
+            if (pop is Pop.Ask) onAnswer(pop.service, Answer.REMIND)
             busy = false
             next()
         }
     }
 
-    private fun open(alert: Alert, option: WatchOption, hideScores: Boolean, colors: ThemeColors): Boolean {
+    /**
+     * Adds the banner window showing [content], which calls its argument once acted on. Closing
+     * it any other way (Back, the timer, Home) runs [onUnanswered]. False if the window couldn't
+     * be added.
+     */
+    private fun open(onUnanswered: (() -> Unit)?, content: @Composable (done: () -> Unit) -> Unit): Boolean {
         val shownAt = SystemClock.uptimeMillis()
         // Keys whose press came in the first 500 ms; their release is swallowed too.
         val ignored = mutableSetOf<Int>()
@@ -161,7 +206,10 @@ class AlertBanner(private val service: AccessibilityService, private val store: 
                 if (event.action == KeyEvent.ACTION_UP && ignored.remove(event.keyCode)) return true
                 restartTimer()
                 if (event.keyCode == KeyEvent.KEYCODE_BACK) {
-                    if (event.action == KeyEvent.ACTION_UP) close()
+                    if (event.action == KeyEvent.ACTION_UP) {
+                        unanswered?.invoke()
+                        close()
+                    }
                     return true
                 }
                 return super.dispatchKeyEvent(event)
@@ -170,9 +218,7 @@ class AlertBanner(private val service: AccessibilityService, private val store: 
         root.setViewTreeLifecycleOwner(o)
         root.setViewTreeSavedStateRegistryOwner(o)
         root.addView(ComposeView(service).apply {
-            setContent {
-                Banner(alert, option, hideScores, colors, watchNow, onOpen = { option.open(); close() }, onDismiss = { close() })
-            }
+            setContent { content { close() } }
         })
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -188,6 +234,7 @@ class AlertBanner(private val service: AccessibilityService, private val store: 
         }
         view = root
         owner = o
+        unanswered = onUnanswered
         restartTimer()
         return true
     }
@@ -196,12 +243,14 @@ class AlertBanner(private val service: AccessibilityService, private val store: 
         timer?.cancel()
         timer = main.launch {
             delay(store.settings.bannerSeconds * 1_000L)
+            unanswered?.invoke()
             close()
         }
     }
 
     private fun close() {
         if (view == null) return
+        unanswered = null
         removeWindow()
         busy = false
         if (queue.isNotEmpty()) main.launch { if (!busy) next() }
@@ -278,6 +327,33 @@ private fun Banner(
     }
 }
 
+/** The three answers, in the order the question shows them. */
+internal val ASK_CHOICES = listOf(
+    "Turn it back on" to Answer.TURN_ON,
+    "Remind me after restart" to Answer.REMIND,
+    "Leave it off" to Answer.LEAVE_OFF,
+)
+
+/**
+ * "[label] was switched off": asked when a service Haven keeps on is switched off outside Haven,
+ * or after a restart for one waiting for an answer ([afterRestart]). [onAnswer] gets null for the
+ * small close, which counts as no answer.
+ */
+@Composable
+fun AskBanner(label: String, colors: ThemeColors, afterRestart: Boolean = false, modifier: Modifier = Modifier, onAnswer: (Answer?) -> Unit) {
+    val primary = remember { FocusRequester() }
+    ChoiceToast(
+        "Haven · Accessibility", Icons.Rounded.Accessibility,
+        if (afterRestart) "$label is still off" else "$label was switched off",
+        if (afterRestart) "You asked to be reminded after a restart. Haven keeps it on if you turn it back on."
+        else "Haven keeps it on for you. What would you like?",
+        ASK_CHOICES.map { it.first }, colors, primary,
+        onChoose = { onAnswer(ASK_CHOICES[it].second) },
+        onClose = { onAnswer(null) },
+        modifier = modifier,
+    )
+}
+
 /**
  * The small glass toast under the gear, top right in the TV-safe area, a quarter of the screen
  * wide: NBA logo and [eyebrow] with a small close, the [headline], then [body] on the left and the
@@ -304,21 +380,9 @@ fun NbaToast(
 ) {
     val close = remember { FocusRequester() }
     val dismiss = remember { FocusRequester() }
-    var holding by remember { mutableStateOf(false) }
-    val host = LocalView.current
-    LaunchedEffect(Unit) {
-        repeat(FOCUS_TRIES) {
-            if (!holding) {
-                // A window that's just been added may not have key focus yet.
-                if (!host.hasFocus()) host.requestFocus()
-                runCatching { focus.requestFocus() }
-            }
-            delay(FOCUS_RETRY_MS)
-        }
-    }
     Column(
         modifier
-            .onFocusChanged { holding = it.hasFocus }
+            .holdingFocus(focus)
             .padding(top = 76.dp, end = 40.dp)
             .width(240.dp)
             .glassPanel(colors, RoundedCornerShape(18.dp))
@@ -348,6 +412,83 @@ fun NbaToast(
             }
         }
     }
+}
+
+/**
+ * A question in the same toast: [icon] and [eyebrow] with a small close, the [headline] and a
+ * [line] under it, then [choices] stacked, the first one the main action (focused through
+ * [focus]). [onChoose] gets the chosen index; [onClose] is the small close. It takes and holds
+ * focus like [NbaToast], and the D-pad stays on its buttons.
+ */
+@Composable
+fun ChoiceToast(
+    eyebrow: String,
+    icon: ImageVector,
+    headline: String,
+    line: String,
+    choices: List<String>,
+    colors: ThemeColors,
+    focus: FocusRequester,
+    onChoose: (Int) -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val close = remember { FocusRequester() }
+    val others = remember(choices.size) { List(choices.size) { if (it == 0) focus else FocusRequester() } }
+    Column(
+        modifier
+            .holdingFocus(focus)
+            .padding(top = 76.dp, end = 40.dp)
+            .width(240.dp)
+            .glassPanel(colors, RoundedCornerShape(18.dp))
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(icon, null, tint = colors.accent, modifier = Modifier.size(14.dp))
+            Box(Modifier.weight(1f)) { Eyebrow(eyebrow, colors) }
+            SmallClose(
+                colors, onClose,
+                Modifier.focusRequester(close).focusProperties { down = others.first(); up = close; left = close; right = close },
+            )
+        }
+        Text(headline, color = colors.ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(line, color = colors.inkSoft, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            choices.forEachIndexed { i, label ->
+                val me = others[i]
+                val nav = Modifier.focusProperties {
+                    up = others.getOrNull(i - 1) ?: close
+                    down = others.getOrNull(i + 1) ?: me
+                    left = me
+                    right = me
+                }
+                if (i == 0) WatchPill(label, colors, focus, { onChoose(i) }, nav)
+                else DismissButton(colors, { onChoose(i) }, Modifier.focusRequester(me).then(nav), label)
+            }
+        }
+    }
+}
+
+/**
+ * Takes focus on [focus] as the toast appears, and keeps asking for the first few seconds until
+ * it has it: Home may still be loading and move focus, and a new window may not have key focus yet.
+ */
+@Composable
+private fun Modifier.holdingFocus(focus: FocusRequester): Modifier {
+    var holding by remember { mutableStateOf(false) }
+    val host = LocalView.current
+    LaunchedEffect(Unit) {
+        repeat(FOCUS_TRIES) {
+            if (!holding) {
+                // A window that's just been added may not have key focus yet.
+                if (!host.hasFocus()) host.requestFocus()
+                runCatching { focus.requestFocus() }
+            }
+            delay(FOCUS_RETRY_MS)
+        }
+    }
+    return onFocusChanged { holding = it.hasFocus }
 }
 
 @Composable
@@ -382,11 +523,11 @@ private fun WatchPill(text: String, colors: ThemeColors, focus: FocusRequester, 
 
 /** Secondary banner action, styled as a proper compact TV button. */
 @Composable
-private fun DismissButton(colors: ThemeColors, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun DismissButton(colors: ThemeColors, onClick: () -> Unit, modifier: Modifier = Modifier, text: String = "Dismiss") {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(50)
     Text(
-        "Dismiss", color = if (focused) colors.pillInk else colors.ink, fontSize = 10.sp,
+        text, color = if (focused) colors.pillInk else colors.ink, fontSize = 10.sp,
         fontWeight = if (focused) FontWeight.Bold else FontWeight.Medium,
         textAlign = TextAlign.Center,
         modifier = modifier

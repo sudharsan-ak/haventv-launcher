@@ -28,6 +28,7 @@ import com.aktvhome.launcher.data.PrivateDns
 import kotlinx.coroutines.launch
 import com.aktvhome.launcher.data.SettingsStore
 import com.aktvhome.launcher.data.ThemeId
+import com.aktvhome.launcher.ui.AccessibilityReminder
 import com.aktvhome.launcher.ui.LastNightRecap
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.Overlay
@@ -115,6 +116,8 @@ class MainActivity : ComponentActivity() {
 
             // The morning catch-up toast, on Home only.
             LastNightRecap(state, colors)
+            // After a restart: accessibility services waiting for an answer, on Home only.
+            AccessibilityReminder(state, colors)
 
             // Settings float over the home, which stays live behind them.
             when (state.overlay) {

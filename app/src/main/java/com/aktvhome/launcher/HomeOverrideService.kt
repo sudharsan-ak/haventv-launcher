@@ -3,6 +3,10 @@ package com.aktvhome.launcher
 import android.accessibilityservice.AccessibilityService
 import android.content.ComponentName
 import android.content.Intent
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -61,22 +65,38 @@ class HomeOverrideService : AccessibilityService() {
         home = DeviceCapabilities.stockLauncher(applicationContext)
         if (rootInActiveWindow?.packageName == homePackage) openHaven()
         val store = SettingsStore(applicationContext)
-        val b = AlertBanner(this, store)
+        val b = AlertBanner(this, store) { service, answer ->
+            guard.launch { runCatching { AccessibilityGuard.answer(applicationContext, service, answer) } }
+        }
         banner = b
         alerts = NbaAlerts(applicationContext, guard, store, foreground = { rootInActiveWindow?.packageName?.toString() }, show = b::show)
             .also { it.start() }
         // This service runs from internal storage for as long as the TV is on, so it also restores
         // other apps' accessibility services once their USB-stored apps load: every 20 s for the
-        // first 10 minutes, then every 2 minutes.
+        // first 10 minutes, then every 2 minutes, and straight away whenever the TV's list changes
+        // (so a service switched off in the TV's settings is asked about at once).
+        contentResolver.registerContentObserver(Settings.Secure.getUriFor(Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES), false, a11yObserver)
         guard.launch {
             val start = System.currentTimeMillis()
             while (isActive) {
-                runCatching {
-                    AccessibilityGuard.check(applicationContext)
-                    AccessibilityGuard.settle(applicationContext)
-                }
+                guardServices()
                 delay(if (System.currentTimeMillis() - start < 10 * 60_000L) 20_000L else 120_000L)
             }
+        }
+    }
+
+    private val a11yObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) {
+            guard.launch { guardServices() }
+        }
+    }
+
+    /** One watchdog check: restores dropped services and asks about ones switched off outside Haven. */
+    private fun guardServices() {
+        runCatching {
+            val ask = AccessibilityGuard.check(applicationContext)
+            AccessibilityGuard.settle(applicationContext)
+            ask.forEach { banner?.ask(it, AccessibilityGuard.label(applicationContext, it)) }
         }
     }
 
@@ -186,6 +206,7 @@ class HomeOverrideService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        runCatching { contentResolver.unregisterContentObserver(a11yObserver) }
         alerts?.stop()
         banner?.destroy()
         guard.cancel()

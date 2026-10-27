@@ -10,6 +10,7 @@ import android.view.accessibility.AccessibilityManager
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
+import com.aktvhome.launcher.core.guard.Answer
 import com.aktvhome.launcher.core.guard.GuardRules
 import com.aktvhome.launcher.core.guard.GuardState
 import com.aktvhome.launcher.core.guard.ServiceStatus
@@ -48,17 +49,56 @@ object AccessibilityGuard {
     var version by mutableIntStateOf(0)
         private set
 
-    /** Run periodically and at boot. Returns how many services it switched back on. */
-    fun check(context: Context): Int {
+    /**
+     * Run at boot, every so often, and whenever the TV's list changes. Switches dropped services
+     * back on and returns the ones to ask about (switched off outside Haven), each once.
+     */
+    fun check(context: Context): List<String> {
         synchronized(lock) {
-            if (!PrivateDns.canWrite(context)) return 0
+            if (!PrivateDns.canWrite(context)) return emptyList()
             val prefs = prefs(context)
             val current = read(context)
             val r = GuardRules.decide(load(context, prefs), current, { available(context, it) }, booting(context, prefs), context.packageName)
             if (r.restore.isNotEmpty()) write(context, current + r.restore)
             save(context, prefs, r.state)
-            return r.restore.size
+            return r.ask
         }
+    }
+
+    /** Your answer about [service], from the question or the reminder after a restart. */
+    fun answer(context: Context, service: String, answer: Answer) {
+        synchronized(lock) {
+            val prefs = prefs(context)
+            val id = GuardRules.normal(service)
+            val state = GuardRules.answer(load(context, prefs), id, answer)
+            if (answer == Answer.TURN_ON && PrivateDns.canWrite(context)) write(context, read(context) + id)
+            save(context, prefs, state)
+        }
+    }
+
+    /** Services to remind you about after a restart, once the TV has settled. */
+    fun reminders(context: Context): List<String> {
+        synchronized(lock) {
+            val prefs = prefs(context)
+            if (!PrivateDns.canWrite(context) || booting(context, prefs)) return emptyList()
+            return GuardRules.reminders(load(context, prefs), read(context), { available(context, it) }, context.packageName)
+        }
+    }
+
+    /** The reminder about [service] was shown and went unanswered: ask again after the next restart. */
+    fun reminded(context: Context, service: String) {
+        synchronized(lock) {
+            val prefs = prefs(context)
+            save(context, prefs, GuardRules.reminded(load(context, prefs), service))
+        }
+    }
+
+    /** A service's name as the TV shows it, or its app's. */
+    fun label(context: Context, service: String): String {
+        val pm = context.packageManager
+        val cn = ComponentName.unflattenFromString(service) ?: return service
+        return runCatching { pm.getServiceInfo(cn, 0).loadLabel(pm).toString() }.getOrNull()
+            ?: runCatching { pm.getApplicationLabel(pm.getApplicationInfo(cn.packageName, 0)).toString() }.getOrDefault(cn.packageName)
     }
 
     /** The Accessibility tab's toggle. Returns false without the one-time setup's grant. */

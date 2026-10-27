@@ -115,7 +115,7 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
     }
     /** Bumped each time the home screen comes back into view; themes key their welcome on it. */
     var arrivals by mutableStateOf(0)
-    /** True while the Last night recap is up: it holds focus, so the themes don't move it to their rows. */
+    /** True while a toast on Home (the Last night recap, an accessibility reminder) holds focus, so the themes don't move it to their rows. */
     var popupShowing by mutableStateOf(false)
     /** Bumped when Home is pressed while Haven is showing; themes move focus back to the first row. */
     var homePresses by mutableStateOf(0)
