@@ -30,7 +30,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.aktvhome.launcher.data.Advanced
+import com.aktvhome.launcher.core.stats.Advanced
+import com.aktvhome.launcher.core.stats.MadeAttempted
 import com.aktvhome.launcher.data.BoxPlayer
 import com.aktvhome.launcher.data.Game
 import com.aktvhome.launcher.data.GameState
@@ -179,13 +180,13 @@ private fun CurrentGame(w: WatchNow, g: Game, p: BoxPlayer?, box: TeamBox?, colo
     val fg = Advanced.madeAttempted(s["FG"])
     val three = Advanced.madeAttempted(s["3PT"])
     val ft = Advanced.madeAttempted(s["FT"])
-    fun shooting(ma: Pair<Double, Double>?) = ma?.let { (m, a) -> "${m.toInt()}-${a.toInt()} (${Advanced.show(Advanced.ratio(100 * m, a))})" } ?: "-"
+    fun shooting(ma: MadeAttempted?) = ma?.let { (m, a) -> "${m.toInt()}-${a.toInt()} (${Advanced.show(Advanced.ratio(100 * m, a))})" } ?: "-"
     Section(colors, listOf("FG", "3PT", "FT"), listOf(shooting(fg), shooting(three), shooting(ft)))
     Section(colors, listOf("STL", "BLK", "TO", "PF", "OREB", "DREB", "+/-"), listOf("STL", "BLK", "TO", "PF", "OREB", "DREB", "+/-").map { s[it] ?: "-" })
 
-    val (fgm, fga) = fg ?: (0.0 to 0.0)
-    val (ftm, fta) = ft ?: (0.0 to 0.0)
-    val threes = three?.first ?: 0.0
+    val (fgm, fga) = fg ?: MadeAttempted.NONE
+    val (ftm, fta) = ft ?: MadeAttempted.NONE
+    val threes = three?.made ?: 0.0
     val team = teamTotals(box)
     val minutes = n("MIN")
     Eyebrow("Advanced", colors)
@@ -208,10 +209,10 @@ private class TeamTotals(val min: Double, val fga: Double, val fta: Double, val 
 private fun teamTotals(box: TeamBox?): TeamTotals? {
     box ?: return null
     fun sum(f: (BoxPlayer) -> Double) = box.players.sumOf(f)
-    val fga = Advanced.madeAttempted(box.stats["fieldGoalsMade-fieldGoalsAttempted"] ?: box.stats["FG"])?.second
-        ?: sum { Advanced.madeAttempted(it.stats["FG"])?.second ?: 0.0 }
-    val fta = Advanced.madeAttempted(box.stats["freeThrowsMade-freeThrowsAttempted"] ?: box.stats["FT"])?.second
-        ?: sum { Advanced.madeAttempted(it.stats["FT"])?.second ?: 0.0 }
+    val fga = Advanced.madeAttempted(box.stats["fieldGoalsMade-fieldGoalsAttempted"] ?: box.stats["FG"])?.attempted
+        ?: sum { Advanced.madeAttempted(it.stats["FG"])?.attempted ?: 0.0 }
+    val fta = Advanced.madeAttempted(box.stats["freeThrowsMade-freeThrowsAttempted"] ?: box.stats["FT"])?.attempted
+        ?: sum { Advanced.madeAttempted(it.stats["FT"])?.attempted ?: 0.0 }
     val to = (box.stats["turnovers"] ?: box.stats["totalTurnovers"] ?: box.stats["TO"])?.let { Advanced.number(it) }
         ?: sum { Advanced.number(it.stats["TO"]) }
     return TeamTotals(sum { Advanced.number(it.stats["MIN"]) }, fga, fta, to)
@@ -285,8 +286,8 @@ private fun Section(colors: ThemeColors, labels: List<String>, values: List<Stri
 
 /** TS% from a row with PTS, FG and FT (made-attempted), as ESPN's totals and splits have. */
 private fun ts(r: StatRow): Double? {
-    val fga = Advanced.madeAttempted(r["FG"])?.second ?: r["FGA"]?.let { Advanced.number(it) } ?: return null
-    val fta = Advanced.madeAttempted(r["FT"])?.second ?: r["FTA"]?.let { Advanced.number(it) } ?: return null
+    val fga = Advanced.madeAttempted(r["FG"])?.attempted ?: r["FGA"]?.let { Advanced.number(it) } ?: return null
+    val fta = Advanced.madeAttempted(r["FT"])?.attempted ?: r["FTA"]?.let { Advanced.number(it) } ?: return null
     val pts = r["PTS"]?.let { Advanced.number(it) } ?: return null
     return Advanced.trueShooting(pts, fga, fta)
 }
@@ -294,6 +295,6 @@ private fun ts(r: StatRow): Double? {
 /** eFG% from a row with FG and 3PT (made-attempted). */
 private fun efg(r: StatRow): Double? {
     val (fgm, fga) = Advanced.madeAttempted(r["FG"]) ?: return null
-    val threes = Advanced.madeAttempted(r["3PT"])?.first ?: r["3PM"]?.let { Advanced.number(it) } ?: return null
+    val threes = Advanced.madeAttempted(r["3PT"])?.made ?: r["3PM"]?.let { Advanced.number(it) } ?: return null
     return Advanced.effectiveFg(fgm, threes, fga)
 }

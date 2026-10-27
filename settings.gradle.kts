@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "Haven"
 include(":app")
+include(":haven-core")

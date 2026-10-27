@@ -1,15 +1,22 @@
 package com.aktvhome.launcher.data
 
+import com.aktvhome.launcher.core.search.SearchDocument
+import com.aktvhome.launcher.core.search.SearchMatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/**
+ * The search tests from before the ranking moved to Java (haven-core), run from Kotlin against
+ * the Java engine: they pass unchanged, so the move didn't change any result. Java takes no named
+ * arguments, so the documents pass their (blank) description positionally.
+ */
 class SearchMatcherTest {
     private val documents = listOf(
-        SearchDocument("warriors", "Golden State Warriors", "NBA team", keywords = "GS GSW Warriors favorite team"),
-        SearchDocument("settings", "Favorite team", "Watching & alerts", keywords = "NBA Warriors"),
-        SearchDocument("channel", "ESPN", "YouTube TV · Live channel", keywords = "basketball sports"),
-        SearchDocument("app", "Netflix", "Installed app", keywords = "movies streaming"),
+        SearchDocument("warriors", "Golden State Warriors", "NBA team", "", "GS GSW Warriors favorite team"),
+        SearchDocument("settings", "Favorite team", "Watching & alerts", "", "NBA Warriors"),
+        SearchDocument("channel", "ESPN", "YouTube TV · Live channel", "", "basketball sports"),
+        SearchDocument("app", "Netflix", "Installed app", "", "movies streaming"),
     )
 
     @Test fun exactNameRanksFirst() {
@@ -39,7 +46,7 @@ class SearchMatcherTest {
 
     @Test fun resultLimitKeepsOnlyHighestRankedMatches() {
         val many = (1..20).map { SearchDocument("app:$it", "Game $it") }
-        val results = SearchMatcher.ranked(many, "Game", limit = 15)
+        val results = SearchMatcher.ranked(many, "Game", 15)
         assertEquals(15, results.size)
     }
 }

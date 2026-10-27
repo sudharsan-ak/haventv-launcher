@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.SystemClock
 import android.provider.Settings
+import com.aktvhome.launcher.core.guard.GuardRules
+import com.aktvhome.launcher.core.guard.GuardState
 
 /**
  * Keeps your accessibility services switched on across restarts (the Accessibility Watchdog's job).
@@ -16,7 +18,7 @@ import android.provider.Settings
  * Removal you do yourself is respected, but only when it's clearly yours: an earlier check this
  * boot saw the service on, its app is loaded now, and the first 10 minutes after boot are over.
  * Anything missing at the first check after a boot, or during those 10 minutes, was dropped by the
- * boot and comes back. (The decisions are in [GuardRules].)
+ * boot and comes back. (The decisions are in [GuardRules], in Java in haven-core.)
  */
 object AccessibilityGuard {
 

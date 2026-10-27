@@ -1,9 +1,15 @@
 package com.aktvhome.launcher.data
 
+import com.aktvhome.launcher.core.stats.Advanced
+import com.aktvhome.launcher.core.stats.MadeAttempted
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
+/**
+ * The player stat tests from before Advanced moved to Java (haven-core), run from Kotlin against
+ * the Java code. Only the made-attempted results changed: Kotlin's Pair became MadeAttempted.
+ */
 class AdvancedTest {
 
     private val eps = 0.01
@@ -46,12 +52,20 @@ class AdvancedTest {
     }
 
     @Test fun parsing() {
-        assertEquals(5.0 to 10.0, Advanced.madeAttempted("5-10"))
-        assertEquals(8.5 to 17.1, Advanced.madeAttempted("8.5-17.1"))
+        assertEquals(MadeAttempted(5.0, 10.0), Advanced.madeAttempted("5-10"))
+        assertEquals(MadeAttempted(8.5, 17.1), Advanced.madeAttempted("8.5-17.1"))
         assertNull(Advanced.madeAttempted("--"))
         assertNull(Advanced.madeAttempted(null))
         assertEquals(7.0, Advanced.number("+7"), eps)
         assertEquals(-3.0, Advanced.number("-3"), eps)
         assertEquals(0.0, Advanced.number("-"), eps)
+    }
+
+    @Test fun kotlinUnpacksTheJavaValue() {
+        // The player card writes `val (fgm, fga) = fg`: Kotlin uses MadeAttempted's component1/2.
+        val (made, attempted) = Advanced.madeAttempted("9-18") ?: MadeAttempted.NONE
+        assertEquals(9.0, made, eps)
+        assertEquals(18.0, attempted, eps)
+        assertEquals(18.0, Advanced.madeAttempted("9-18")?.attempted ?: 0.0, eps)
     }
 }
