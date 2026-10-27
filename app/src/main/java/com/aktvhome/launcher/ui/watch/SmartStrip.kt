@@ -1,5 +1,7 @@
 package com.aktvhome.launcher.ui.watch
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,10 +37,15 @@ import androidx.compose.ui.unit.sp
 import com.aktvhome.launcher.data.Game
 import com.aktvhome.launcher.data.GameState
 import com.aktvhome.launcher.data.Nba
+import com.aktvhome.launcher.data.NbaRotation
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.Overlay
 import com.aktvhome.launcher.ui.theme.ThemeColors
 import com.aktvhome.launcher.ui.tvClickable
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -55,17 +63,39 @@ fun SmartStrip(state: HavenState, colors: ThemeColors, first: FocusRequester, mo
     var firstUsed = false
     fun claim(): Modifier = if (!firstUsed) { firstUsed = true; Modifier.focusRequester(first) } else Modifier
     val nbaLogo: @Composable () -> Unit = { NetImage(w, Nba.LEAGUE_LOGO, 11.dp) }
+    val eligible = w.homeRotationGames()
+    val ids = eligible.map { it.espnId }
+    var rotationId by remember { mutableStateOf<String?>(null) }
+    var nbaFocused by remember { mutableStateOf(false) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val rotate = s.watchNba && s.rotateNba && ids.size > 1
+
+    // Card animation and the timer are Home-only. ESPN updates are handled by WatchNow.
+    // Use stable ESPN identifiers to avoid resetting the timer every time a score changes.
+    LaunchedEffect(lifecycle, rotate, ids, nbaFocused, s.nbaRotationInterval, state.overlay, state.wallpaperView) {
+        if (!rotate || nbaFocused || state.overlay != Overlay.NONE || state.wallpaperView) return@LaunchedEffect
+        if (rotationId !in ids) rotationId = ids.first()
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                val index = ids.indexOf(rotationId).takeIf { it >= 0 } ?: 0
+                delay(NbaRotation.displayMillis(index, ids.size, s.nbaRotationInterval.millis))
+                rotationId = NbaRotation.nextId(ids, rotationId)
+            }
+        }
+    }
 
     Row(modifier.height(68.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
       for (section in s.watchOrder) when (section) {
         "nba" -> if (s.watchNba) {
-            val g = w.featured()
+            val g = if (s.rotateNba) eligible.firstOrNull { it.espnId == rotationId } ?: eligible.firstOrNull() ?: w.featured() else w.featured()
             val fav = s.favoriteTeam
             when {
                 g != null -> StripCard(
-                    if (g.involves(fav)) Nba.teamName(fav).substringAfterLast(' ').uppercase() + " · TODAY" else "TONIGHT",
+                    (if (g.involves(fav)) Nba.teamName(fav).substringAfterLast(' ').uppercase() + " · TODAY" else "TONIGHT") +
+                        (if (rotate) " · ${ids.indexOf(g.espnId) + 1}/${ids.size}" else ""),
                     matchup(g), g.status + (g.network?.let { " · $it" } ?: ""), g.state == GameState.LIVE,
                     colors, claim().weight(1.25f), nbaLogo,
+                    onFocusState = { nbaFocused = it },
                 ) { state.openGame(g) }
                 w.games[w.today()] == null && !w.nbaError -> StripCard("TONIGHT", "Loading games…", "ESPN", false, colors, claim().weight(1.25f), nbaLogo) {
                     state.overlay = Overlay.NBA
@@ -112,6 +142,7 @@ private fun RowScope.StripCard(
     modifier: Modifier,
     /** Small mark before the kicker (the NBA logo). */
     badge: (@Composable () -> Unit)? = null,
+    onFocusState: (Boolean) -> Unit = {},
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -123,22 +154,34 @@ private fun RowScope.StripCard(
             .clip(shape)
             .background(if (focused) colors.pill else colors.glass)
             .border(if (focused) 2.dp else 1.dp, if (focused) colors.accent else colors.edge, shape)
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged {
+                if (focused != it.isFocused) {
+                    focused = it.isFocused
+                    onFocusState(focused)
+                }
+            }
             .tvClickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.Center,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            badge?.invoke()
-            Text(kicker, color = ink.copy(alpha = 0.7f), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp, maxLines = 1)
-        }
-        Text(main, color = ink, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-            if (live) Box(Modifier.size(6.dp).clip(CircleShape).background(Color(0xFFE53935)))
-            Text(sub, color = ink.copy(alpha = 0.75f), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        val presentation = StripPresentation(kicker, main, sub, live)
+        Crossfade(targetState = presentation, animationSpec = tween(550), label = "Home strip content") { value ->
+            Column(verticalArrangement = Arrangement.Center) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    badge?.invoke()
+                    Text(value.kicker, color = ink.copy(alpha = 0.7f), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp, maxLines = 1)
+                }
+                Text(value.main, color = ink, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    if (value.live) Box(Modifier.size(6.dp).clip(CircleShape).background(Color(0xFFE53935)))
+                    Text(value.sub, color = ink.copy(alpha = 0.75f), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
         }
     }
 }
+
+private data class StripPresentation(val kicker: String, val main: String, val sub: String, val live: Boolean)
 
 @Composable
 private fun SeeMore(colors: ThemeColors, modifier: Modifier, onClick: () -> Unit) {

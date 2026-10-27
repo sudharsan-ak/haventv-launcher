@@ -79,6 +79,7 @@ import com.aktvhome.launcher.data.Defaults
 import com.aktvhome.launcher.data.DnsChoice
 import com.aktvhome.launcher.data.HomeOverride
 import com.aktvhome.launcher.data.Nba
+import com.aktvhome.launcher.data.NbaRotationInterval
 import com.aktvhome.launcher.data.WATCH_SECTIONS
 import com.aktvhome.launcher.data.LOCAL_NETWORKS
 import com.aktvhome.launcher.data.PrivateDns
@@ -585,6 +586,16 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                                 },
                                 s.favoriteTeam, colors,
                             ) { abbr -> store.update { it.copy(favoriteTeam = abbr) } }
+                            SettingsToggleRow(
+                                "Rotate NBA games", "Cycle through the day's games on Home. Pauses while focused.",
+                                s.rotateNba, colors,
+                            ) { store.update { it.copy(rotateNba = !it.rotateNba) } }
+                            if (s.rotateNba) SettingsChoiceRow(
+                                "Rotation interval", "Time for each game after the featured game's longer hold.",
+                                s.nbaRotationInterval.label,
+                                NbaRotationInterval.entries.map { SettingsPickerOption(it.name, it.label) },
+                                s.nbaRotationInterval.name, colors,
+                            ) { choice -> store.update { it.copy(nbaRotationInterval = NbaRotationInterval.valueOf(choice)) } }
                             SettingsToggleRow("Continue watching", "Shows from apps that share progress with the TV.", s.watchContinue, colors) {
                                 store.update { it.copy(watchContinue = !it.watchContinue) }
                             }
