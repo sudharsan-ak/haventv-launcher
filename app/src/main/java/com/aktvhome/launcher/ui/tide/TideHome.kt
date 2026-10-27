@@ -226,8 +226,9 @@ fun TideHome(state: HavenState, colors: ThemeColors, preview: Boolean = false) {
     AppMenuOverlays(state, colors)
 
     // Closing settings returns focus to the collection you were on before opening them.
+    // Not while the Last night recap holds focus; closing it brings focus to the first row.
     LaunchedEffect(state.overlay) {
-        if (state.overlay == Overlay.NONE && shown.isNotEmpty()) {
+        if (state.overlay == Overlay.NONE && shown.isNotEmpty() && !state.popupShowing) {
             delay(80) // let the closing window hand focus back first
             chips.state.scrollToItem(currentIndex)
             runCatching { chips.requester(currentIndex).requestFocus() }
@@ -235,7 +236,7 @@ fun TideHome(state: HavenState, colors: ThemeColors, preview: Boolean = false) {
     }
 
     LaunchedEffect(shown.isNotEmpty(), state.homePresses) {
-        if (shown.isNotEmpty()) {
+        if (shown.isNotEmpty() && !state.popupShowing) {
             chips.state.scrollToItem(0)
             runCatching { chips.requester(0).requestFocus() }
         }
