@@ -32,7 +32,7 @@ enum class Overlay { NONE, QUICK, SEARCH, PERSONALIZE, WATCH, NBA, LIVE, CONTINU
 /** The All settings page requested by search. Names intentionally mirror Personalize's pages. */
 enum class SettingsDestination {
     STYLE, WALLPAPER, DISPLAY, COLLECTIONS, HIDDEN, NBA_ALERTS, WATCH_NOW,
-    HOME_BUTTON, DNS, TV_CONTROLS, CLEANUP, THIS_TV, BACKUP, ABOUT,
+    HOME_BUTTON, DNS, TV_CONTROLS, CLEANUP, ACCESSIBILITY, THIS_TV, BACKUP, ABOUT,
 }
 
 data class SettingsRequest(
