@@ -452,8 +452,8 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                                 else openSystemPage(ctx, android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
                             }
                             SettingsStatusRow(
-                                "Turn off Projectivy's override",
-                                "In Projectivy's settings, switch off \"Override current launcher\" so the two don't fight over Home.",
+                                "Other launcher overrides",
+                                "If another launcher is set to override your current launcher, turn that option off in its settings so it doesn't conflict with Haven.",
                                 colors,
                             )
                             SettingsStatusRow(
