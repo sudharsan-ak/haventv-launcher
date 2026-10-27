@@ -22,6 +22,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.aktvhome.launcher.core.corner.CornerKind
 import com.aktvhome.launcher.core.guard.Answer
 import com.aktvhome.launcher.data.AccessibilityGuard
 import com.aktvhome.launcher.ui.theme.ThemeColors
@@ -44,14 +45,32 @@ fun AccessibilityReminder(state: HavenState, colors: ThemeColors) {
     val home = life.isAtLeast(Lifecycle.State.RESUMED) && state.overlay == Overlay.NONE &&
         state.menuFor == null && !state.backup.offerRestore && !state.wallpaperView &&
         (state.setup.offered || com.aktvhome.launcher.data.Setup.needed(state.device.status).isEmpty())
-    // state.now ticks every 15 s, so a service whose app loads late is picked up while Home sits open.
-    LaunchedEffect(home, state.popupShowing, state.now, service) {
-        if (!home || state.popupShowing || service != null) return@LaunchedEffect
+    // state.now ticks every 15 s, so a service whose app loads late is picked up while Home sits
+    // open; Corner.version changes when the top-right corner comes free. Reminders are the least
+    // urgent toast there, so they go after any alert, question or recap.
+    LaunchedEffect(home, state.now, Corner.version, service) {
+        if (!home || service != null) return@LaunchedEffect
         val next = AccessibilityGuard.reminders(context).firstOrNull() ?: return@LaunchedEffect
+        if (!Corner.tryStart(CornerKind.REMINDER)) return@LaunchedEffect
         state.popupShowing = true
         service = next
     }
-    DisposableEffect(Unit) { onDispose { if (service != null) state.popupShowing = false } }
+    // Leaving Home while it's up: it wasn't really seen, so it comes back next time Home is in front.
+    LaunchedEffect(life) {
+        if (service != null && !life.isAtLeast(Lifecycle.State.RESUMED)) {
+            service = null
+            state.popupShowing = false
+            Corner.finish(CornerKind.REMINDER)
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            if (service != null) {
+                state.popupShowing = false
+                Corner.finish(CornerKind.REMINDER)
+            }
+        }
+    }
 
     val s = service ?: return
     val label = remember(s) { AccessibilityGuard.label(context, s) }
@@ -64,6 +83,7 @@ fun AccessibilityReminder(state: HavenState, colors: ThemeColors) {
         if (answer == null) AccessibilityGuard.reminded(context, s) else AccessibilityGuard.answer(context, s, answer)
         service = null
         state.popupShowing = false
+        Corner.finish(CornerKind.REMINDER)
         state.homePresses++
     }
     BackHandler { finish(null) }

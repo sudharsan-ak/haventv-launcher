@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.aktvhome.launcher.core.corner.CornerKind
 import com.aktvhome.launcher.data.GameState
 import com.aktvhome.launcher.data.LastNight
 import com.aktvhome.launcher.data.LastNightToast
@@ -39,7 +40,8 @@ import java.time.LocalTime
  * The morning catch-up: the first time Haven's Home is in front each day after 6 AM (no overlay
  * open), a toast with last night's result, drawn in Haven's own window like the alert banners and
  * never over other apps. Only from a complete, fresh scoreboard with at least one final. "See
- * recaps" opens the NBA panel on yesterday with that game selected. It holds focus while it's up
+ * recaps" opens the NBA panel on yesterday with that game selected. It waits its turn for the
+ * top-right corner ([Corner]: after any alert), and holds focus while it's up
  * (Home leaves focus alone, see [HavenState.popupShowing]). Keys in the first 500 ms are ignored,
  * Back dismisses (wherever focus is), and it closes after Banner time without a key, like the alerts.
  */
@@ -51,6 +53,8 @@ fun LastNightRecap(state: HavenState, colors: ThemeColors) {
     val w = state.watchNow
     val life by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
     var toast by remember { mutableStateOf<LastNightToast?>(null) }
+    // Picked and waiting for the top-right corner (an alert may be showing there).
+    var pending by remember { mutableStateOf<LastNightToast?>(null) }
 
     val home = life.isAtLeast(Lifecycle.State.RESUMED) && state.overlay == Overlay.NONE &&
         state.menuFor == null && !state.backup.offerRestore && !state.wallpaperView &&
@@ -58,23 +62,36 @@ fun LastNightRecap(state: HavenState, colors: ThemeColors) {
     val today = LocalDate.now()
     val yesterday = today.minusDays(1)
     // state.now ticks every 15 s, so 6 AM and a new day are noticed while Home sits open.
-    // Not while another toast (an accessibility reminder) holds the corner.
-    val ready = s.lastNightRecap && home && !state.popupShowing && state.now >= LocalTime.of(6, 0) && prefs.getString("shown", null) != today.toString()
+    val ready = s.lastNightRecap && home && state.now >= LocalTime.of(6, 0) && prefs.getString("shown", null) != today.toString()
 
     // Yesterday's scoreboard, fetched within the last 10 minutes (it's been final since the night).
     LaunchedEffect(ready, yesterday) { if (ready) w.loadDay(yesterday, maxAgeMs = 10 * 60_000L) }
     val games = w.games[yesterday]
     LaunchedEffect(ready, games) {
-        if (!ready || toast != null || games == null) return@LaunchedEffect
+        if (!ready || toast != null || pending != null || games == null) return@LaunchedEffect
         // Never from old or failed data, or from a night that isn't over.
         if (System.currentTimeMillis() - w.fetchedAt(yesterday) > 10 * 60_000L) return@LaunchedEffect
         if (games.any { it.state == GameState.LIVE }) return@LaunchedEffect
-        val pick = LastNight.pick(games, s.favoriteTeam, s.followedTeams, s.hideScores) ?: return@LaunchedEffect
-        prefs.edit().putString("shown", today.toString()).apply()
-        state.popupShowing = true
-        toast = pick
+        pending = LastNight.pick(games, s.favoriteTeam, s.followedTeams, s.hideScores) ?: return@LaunchedEffect
+        Corner.want(CornerKind.RECAP)
     }
-    DisposableEffect(Unit) { onDispose { state.popupShowing = false } }
+    // Shows once the corner is free (Corner.version changes when it comes free); only then does it
+    // count as shown for today.
+    LaunchedEffect(pending, home, Corner.version) {
+        val p = pending ?: return@LaunchedEffect
+        if (!home || !Corner.tryStart(CornerKind.RECAP)) return@LaunchedEffect
+        prefs.edit().putString("shown", today.toString()).apply()
+        pending = null
+        state.popupShowing = true
+        toast = p
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            if (pending != null) Corner.withdraw(CornerKind.RECAP)
+            if (toast != null) Corner.finish(CornerKind.RECAP)
+            state.popupShowing = false
+        }
+    }
 
     val t = toast ?: return
     val focus = remember(t) { FocusRequester() }
@@ -86,6 +103,7 @@ fun LastNightRecap(state: HavenState, colors: ThemeColors) {
     fun dismiss() {
         toast = null
         state.popupShowing = false
+        Corner.finish(CornerKind.RECAP)
         state.homePresses++
     }
     // Closes it even if focus somehow isn't on it; declared after Home's own Back, so it comes first.
@@ -100,6 +118,7 @@ fun LastNightRecap(state: HavenState, colors: ThemeColors) {
             onPrimary = {
                 toast = null
                 state.popupShowing = false
+                Corner.finish(CornerKind.RECAP)
                 state.openGame(t.game, onSummary = true)
             },
             onDismiss = ::dismiss,

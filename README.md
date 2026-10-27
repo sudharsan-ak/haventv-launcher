@@ -170,8 +170,9 @@ and paste the key in **All settings › Appearance › Wallpaper › Unsplash ke
   `CleanupPlan`, `CleanupRunner`) and the shared root/ADB route (`ShellRoute`, `Adb`)
 - `haven-core/` plain Java module with no Android code, called from the Kotlin app: search
   ranking with typo tolerance (`core/search/SearchMatcher`), the player card's advanced stats
-  (`core/stats/Advanced`) and the Accessibility Watchdog's decisions (`core/guard/GuardRules`).
-  It builds and tests on any JVM.
+  (`core/stats/Advanced`), the Accessibility Watchdog's decisions (`core/guard/GuardRules`) and
+  the turns taken by the toasts in the top-right corner (`core/corner/CornerQueue`). It builds and
+  tests on any JVM.
 - `ui/kingdom/`, `ui/tide/` one folder per theme; each puts the settings gear at the top right
 - `ui/settings/` Quick settings card and the Personalize panel (both float over the live home)
 - `ui/theme/` theme colors and the day/night blend

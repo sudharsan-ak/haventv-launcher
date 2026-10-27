@@ -56,6 +56,7 @@ import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import com.aktvhome.launcher.core.corner.CornerKind
 import com.aktvhome.launcher.core.guard.Answer
 import com.aktvhome.launcher.data.Alert
 import com.aktvhome.launcher.data.AlertEvent
@@ -98,6 +99,9 @@ import java.time.format.DateTimeFormatter
  * It also asks about accessibility services switched off outside Haven ([ask]), in the same
  * toast with three answers. Closing that one without an answer (Back, the small close, Home or
  * the timer) means "ask again after the next restart"; [onAnswer] gets the answer either way.
+ *
+ * The corner is shared with the toasts on Haven's Home ([Corner]): a banner waits while one of
+ * those shows, and questions go before alerts.
  */
 class AlertBanner(
     private val service: AccessibilityService,
@@ -107,8 +111,15 @@ class AlertBanner(
 
     /** What the banner shows: an NBA alert, or a question about an accessibility service. */
     private sealed interface Pop {
-        class Nba(val alert: Alert) : Pop
-        class Ask(val service: String, val label: String) : Pop
+        val kind: CornerKind
+
+        class Nba(val alert: Alert) : Pop {
+            override val kind get() = CornerKind.NBA_ALERT
+        }
+
+        class Ask(val service: String, val label: String) : Pop {
+            override val kind get() = CornerKind.SWITCHED_OFF
+        }
     }
 
     private val main = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -128,6 +139,14 @@ class AlertBanner(
     private var busy = false
     /** What closing the banner on screen without an answer means; null for NBA alerts. */
     private var unanswered: (() -> Unit)? = null
+    /** The kind of banner on screen, while it holds the corner. */
+    private var showing: CornerKind? = null
+    /** When a toast on Home gives the corner back, show what's waiting. */
+    private val cornerFree: () -> Unit = { main.launch { if (!busy && queue.isNotEmpty()) next() } }
+
+    init {
+        Corner.listen(cornerFree)
+    }
 
     /** Shows [alert] now, or after the banner on screen. Safe from any thread. */
     fun show(alert: Alert) = enqueue(Pop.Nba(alert))
@@ -138,6 +157,7 @@ class AlertBanner(
     private fun enqueue(pop: Pop) {
         main.launch {
             queue.addLast(pop)
+            Corner.want(pop.kind)
             if (!busy) next()
         }
     }
@@ -146,20 +166,33 @@ class AlertBanner(
     fun dismissAll() {
         main.launch {
             queue.filterIsInstance<Pop.Ask>().forEach { onAnswer(it.service, Answer.REMIND) }
-            queue.clear()
+            dropQueue()
             unanswered?.invoke()
             close()
         }
     }
 
-    fun destroy() {
+    private fun dropQueue() {
+        queue.forEach { Corner.withdraw(it.kind) }
         queue.clear()
+    }
+
+    fun destroy() {
+        Corner.unlisten(cornerFree)
+        dropQueue()
         removeWindow()
+        // Don't leave the corner held: Home's toasts would wait forever.
+        showing?.let(Corner::finish)
+        showing = null
         main.cancel()
     }
 
     private suspend fun next() {
-        val pop = queue.removeFirstOrNull() ?: return
+        // Questions go before alerts; either waits while a toast on Home holds the corner.
+        val pop = queue.firstOrNull { it is Pop.Ask } ?: queue.firstOrNull() ?: return
+        if (!Corner.tryStart(pop.kind)) return
+        queue.remove(pop)
+        showing = pop.kind
         busy = true
         store.reload()
         val s = store.settings
@@ -182,6 +215,8 @@ class AlertBanner(
         }
         if (!shown) {
             if (pop is Pop.Ask) onAnswer(pop.service, Answer.REMIND)
+            showing = null
+            Corner.finish(pop.kind)
             busy = false
             next()
         }
@@ -253,6 +288,11 @@ class AlertBanner(
         unanswered = null
         removeWindow()
         busy = false
+        showing?.let { k ->
+            showing = null
+            // Giving the corner back also wakes this banner's queue (cornerFree).
+            Corner.finish(k)
+        }
         if (queue.isNotEmpty()) main.launch { if (!busy) next() }
     }
 
