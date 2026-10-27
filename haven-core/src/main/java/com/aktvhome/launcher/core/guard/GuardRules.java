@@ -117,23 +117,28 @@ public final class GuardRules {
         return new GuardState(keep, without(state.getDropped(), s), without(state.getAsking(), s), state.getReminded());
     }
 
-    /** Your answer to the question or the reminder about {@code service}. */
+    /**
+     * Your answer to the question or the reminder about {@code service}. "Remind me after restart"
+     * also means nothing more about it until then: it counts as reminded for this boot.
+     */
     @NotNull
     public static GuardState answer(@NotNull GuardState state, @NotNull String service, @NotNull Answer answer) {
         String s = normal(service);
         Map<String, Keep> keep = new LinkedHashMap<>(state.getKeep());
+        Set<String> reminded = new LinkedHashSet<>(state.getReminded());
         switch (answer) {
             case TURN_ON:
                 keep.put(s, Keep.ON);
                 break;
             case REMIND:
                 keep.put(s, Keep.REMIND);
+                reminded.add(s);
                 break;
             case LEAVE_OFF:
                 keep.put(s, Keep.OFF);
                 break;
         }
-        return new GuardState(keep, without(state.getDropped(), s), without(state.getAsking(), s), state.getReminded());
+        return new GuardState(keep, without(state.getDropped(), s), without(state.getAsking(), s), reminded);
     }
 
     /**

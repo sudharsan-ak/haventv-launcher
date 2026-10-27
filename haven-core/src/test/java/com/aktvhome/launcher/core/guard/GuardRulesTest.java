@@ -65,6 +65,19 @@ public class GuardRulesTest {
     }
 
     @Test
+    public void remindMeAfterRestartWaitsForTheRestart() {
+        // Answered "Remind me after restart" to the question: no reminder until the TV restarts.
+        GuardState s = GuardRules.answer(asking(MAPPER), MAPPER, Answer.REMIND);
+        assertTrue(GuardRules.reminders(s, NONE, x -> true, SELF).isEmpty());
+        // After the restart it's reminded about; answering "Remind me after restart" again ends it for this boot.
+        s = GuardRules.newBoot(s);
+        assertEquals(Collections.singletonList(MAPPER), GuardRules.reminders(s, NONE, x -> true, SELF));
+        s = GuardRules.answer(s, MAPPER, Answer.REMIND);
+        assertTrue(GuardRules.reminders(s, NONE, x -> true, SELF).isEmpty());
+        assertEquals(Collections.singletonList(MAPPER), GuardRules.reminders(GuardRules.newBoot(s), NONE, x -> true, SELF));
+    }
+
+    @Test
     public void anUnansweredQuestionBecomesAReminderAtTheNextBoot() {
         GuardState s = GuardRules.newBoot(asking(MAPPER));
         assertEquals(Keep.REMIND, s.keepOf(MAPPER));
