@@ -135,14 +135,14 @@ fun SearchOverlay(state: HavenState, colors: ThemeColors) {
     }
     val results = listOfNotNull(smartTube) + localResults
     val listState = rememberLazyListState()
-    LaunchedEffect(selected, results.map { it.document.id }) {
-        if (results.isEmpty()) {
-            selected = 0
-        } else {
-            val safeSelected = selected.coerceIn(results.indices)
-            if (selected != safeSelected) selected = safeSelected
-            listState.animateScrollToItem(safeSelected)
-        }
+    // Moving focus scrolls the list just enough to show the focused row; scrolling it here as well
+    // made the two fight on every press. A new query or tab starts from the top.
+    LaunchedEffect(query, category) {
+        selected = 0
+        listState.scrollToItem(0)
+    }
+    LaunchedEffect(results.map { it.document.id }) {
+        selected = if (results.isEmpty()) 0 else selected.coerceIn(results.indices)
     }
 
     fun activate(item: SearchItem) {
@@ -325,7 +325,7 @@ private fun SearchResultRow(
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SearchArtwork(item, state, colors, 40)
+        SearchArtwork(item, state, colors, 40, onPill = focused)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(item.document.name, color = ink, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -386,18 +386,23 @@ private fun DetailAction(label: String, colors: ThemeColors, modifier: Modifier,
     }
 }
 
+/** The result's icon in a small tile. [onPill]: its row is focused and filled light, so the tile and icon go dark. */
 @Composable
-private fun SearchArtwork(item: SearchItem, state: HavenState, colors: ThemeColors, pixels: Int) {
+private fun SearchArtwork(item: SearchItem, state: HavenState, colors: ThemeColors, pixels: Int, onPill: Boolean = false) {
     val size = pixels.dp
+    val shape = RoundedCornerShape(size * 0.26f)
+    val tint = if (onPill) colors.pillInk else colors.ink
     Box(
-        Modifier.size(size).clip(RoundedCornerShape(size * 0.26f)).background(colors.glass).border(1.dp, colors.edge, RoundedCornerShape(size * 0.26f)),
+        Modifier.size(size).clip(shape)
+            .background(if (onPill) colors.pillInk.copy(alpha = 0.1f) else colors.glass)
+            .border(1.dp, if (onPill) colors.pillInk.copy(alpha = 0.22f) else colors.edge, shape),
         contentAlignment = Alignment.Center,
     ) {
         when {
             item.app != null -> Image(item.app.icon, item.app.label, Modifier.fillMaxSize().padding(5.dp), contentScale = ContentScale.Fit)
             item.imageUrl != null -> NetImage(state.watchNow, item.imageUrl, size - 8.dp)
-            item.collectionIcon != null -> Icon(CollectionIcons.of(item.collectionIcon), null, tint = colors.ink, modifier = Modifier.size(size * 0.58f))
-            else -> Icon(iconFor(item.category, item.target), null, tint = colors.ink, modifier = Modifier.size(size * 0.55f))
+            item.collectionIcon != null -> Icon(CollectionIcons.of(item.collectionIcon), null, tint = tint, modifier = Modifier.size(size * 0.58f))
+            else -> Icon(iconFor(item.category, item.target), null, tint = tint, modifier = Modifier.size(size * 0.55f))
         }
     }
 }
