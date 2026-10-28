@@ -143,7 +143,7 @@ fun TideHome(state: HavenState, colors: ThemeColors, preview: Boolean = false) {
             )
             // Shared Home headline: understated, like the greeting above the clock.
             // Reserve room for two lines so the rest of Tide never jumps on a text update.
-            Box(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 72.dp, top = 12.dp),
+            Box(Modifier.fillMaxWidth().height(60.dp).padding(start = 72.dp, end = 72.dp, top = 12.dp),
                 contentAlignment = Alignment.TopCenter) {
                 Crossfade(targetState = rememberHeadline(state, preview), animationSpec = tween(600), label = "tideHeadline") { line ->
                     Text(line, color = colors.inkSoft, fontSize = 20.sp, fontWeight = FontWeight.Light,
