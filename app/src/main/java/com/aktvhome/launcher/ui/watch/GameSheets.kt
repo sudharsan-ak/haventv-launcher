@@ -217,7 +217,7 @@ fun GameDetailPane(
                     if (youtubePrimary) showYoutubeChannels = true else { option.open(); close() }
                 }
                 if (youtubeAlternate) {
-                    Pill("YouTube TV channels", colors) { showYoutubeChannels = true }
+                    Pill("Watch on YouTube TV", colors) { showYoutubeChannels = true }
                 }
                 if (game.state != GameState.FINAL) {
                     Pill(if (alertOn) "Alert on" else "Set alert", colors, selected = alertOn) {
