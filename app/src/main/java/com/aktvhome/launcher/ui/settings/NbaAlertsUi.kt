@@ -68,8 +68,6 @@ fun NbaAlertsPage(state: HavenState, colors: ThemeColors, first: Modifier, enabl
         "Your team", "Get alerts for your favorite team.", s.alertsMine, colors, first,
         onSwitch = { if (enabled) store.update { it.copy(alertsMine = !it.alertsMine) } },
         enabled = enabled,
-    ) { abbr -> store.update { it.copy(followedTeams = it.followedTeams.toggle(abbr)) } }
-        },
     ) {
         EventTiles(AlertEvent.entries, s.alertsFavorite, colors, "favorite",
             onToggle = { e -> if (enabled) store.update { it.copy(alertsFavorite = it.alertsFavorite.toggle(e)) } },
