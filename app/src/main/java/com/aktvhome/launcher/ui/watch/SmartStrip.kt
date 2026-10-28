@@ -50,7 +50,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /** True when at least one Watch Now section is switched on, so the strip has something to show. */
-fun HavenState.stripVisible(): Boolean = settingsStore.settings.let { it.watchNba || it.watchContinue || it.watchLive }
+fun HavenState.stripVisible(): Boolean = settingsStore.settings.let { it.nbaCardEnabled() || it.watchContinue || it.watchLive }
 
 /**
  * The slim Watch Now strip on Home: Tonight (NBA), Continue, Live TV, and See more.
@@ -68,7 +68,7 @@ fun SmartStrip(state: HavenState, colors: ThemeColors, first: FocusRequester, mo
     var rotationId by remember { mutableStateOf<String?>(null) }
     var nbaFocused by remember { mutableStateOf(false) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val rotate = s.watchNba && s.rotateNba && ids.size > 1
+    val rotate = s.nbaCardEnabled() && s.rotateNba && ids.size > 1
 
     // Card animation and the timer are Home-only. ESPN updates are handled by WatchNow.
     // Use stable ESPN identifiers to avoid resetting the timer every time a score changes.
@@ -86,7 +86,7 @@ fun SmartStrip(state: HavenState, colors: ThemeColors, first: FocusRequester, mo
 
     Row(modifier.height(68.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
       for (section in s.watchOrder) when (section) {
-        "nba" -> if (s.watchNba) {
+        "nba" -> if (s.nbaCardEnabled()) {
             val g = if (s.rotateNba) eligible.firstOrNull { it.espnId == rotationId } ?: eligible.firstOrNull() ?: w.featured() else w.featured()
             val fav = s.favoriteTeam
             when {

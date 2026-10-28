@@ -68,6 +68,7 @@ fun HavenState.headline(): String {
 
 /** The favorite team's game today, as a headline, or null when there's none (or no fresh score). */
 private fun HavenState.gameHeadline(): String? {
+    if (!settingsStore.settings.nbaLeagueEnabled) return null
     val fav = settingsStore.settings.favoriteTeam
     if (fav.isBlank()) return null
     val w = watchNow
@@ -133,7 +134,7 @@ private fun liveLine(game: Game, us: Team, them: Team, hide: Boolean, withOppone
  */
 fun HavenState.notableGames(): List<Game> {
     val s = settingsStore.settings
-    if (!s.headlineChanging) return emptyList()
+    if (!s.nbaLeagueEnabled || !s.headlineChanging) return emptyList()
     val w = watchNow
     val today = w.today()
     if (w.nbaError || !w.fresh(today)) return emptyList()

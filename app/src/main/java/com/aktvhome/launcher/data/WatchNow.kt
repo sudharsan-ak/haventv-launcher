@@ -70,7 +70,7 @@ class WatchNow(
             scope.launch { loadRows() }
         }
         // Today's games also feed Kingdom's headline when it follows your team.
-        if (!s.watchNba && !(s.headlineChanging && s.favoriteTeam.isNotBlank())) return
+        if (!s.nbaLeagueEnabled || (!s.watchNba && !(s.headlineChanging && s.favoriteTeam.isNotBlank()))) return
         // Today: every 10 s while a game is live (see [liveTick]), every 5 minutes otherwise.
         loadDay(today(), maxAgeMs = if (liveToday()) 10_000 else 5 * 60_000, force = force)
         // Yesterday's late games may still be active after local midnight. Reuse this cache
@@ -100,7 +100,7 @@ class WatchNow(
      */
     fun liveTick() {
         val s = settingsStore.settings
-        if (!s.watchNba && !s.headlineChanging) return
+        if (!s.nbaLeagueEnabled || (!s.watchNba && !s.headlineChanging)) return
         if (liveToday()) loadDay(today(), maxAgeMs = 9_000)
         overnightDay()?.let { day ->
             if (games[day].orEmpty().any { it.state == GameState.LIVE }) loadDay(day, maxAgeMs = 9_000)

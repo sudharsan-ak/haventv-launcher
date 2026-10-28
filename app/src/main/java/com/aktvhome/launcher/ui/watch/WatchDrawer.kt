@@ -69,7 +69,7 @@ fun WatchDrawer(state: HavenState, colors: ThemeColors) {
     fun claim(): FocusRequester? = if (!firstUsed) { firstUsed = true; first } else null
 
     LaunchedEffect(Unit) { w.tick(force = true) }
-    LaunchedEffect(day, s.watchNba) { if (s.watchNba) w.loadDay(day) }
+    LaunchedEffect(day, s.nbaCardEnabled()) { if (s.nbaCardEnabled()) w.loadDay(day) }
 
     HavenOverlay(dim = 0.35f, onDismiss = close) {
         Column(
@@ -92,7 +92,7 @@ fun WatchDrawer(state: HavenState, colors: ThemeColors) {
             }
 
           for (section in s.watchOrder) when (section) {
-            "nba" -> if (s.watchNba) {
+            "nba" -> if (s.nbaCardEnabled()) {
                 val fav = s.favoriteTeam
                 if (fav.isNotBlank()) {
                     TeamCard(state, colors, fav, claim())
@@ -124,7 +124,7 @@ fun WatchDrawer(state: HavenState, colors: ThemeColors) {
 
             Spacer(Modifier.height(4.dp))
             Text(
-                listOfNotNull(if (s.watchNba) "Scores from ESPN; games open in the NBA app." else null, "Items open in the app that shared them.").joinToString(" "),
+                listOfNotNull(if (s.nbaCardEnabled()) "Scores from ESPN; games open in the NBA app." else null, "Items open in the app that shared them.").joinToString(" "),
                 color = colors.inkSoft, fontSize = 10.sp,
             )
         }

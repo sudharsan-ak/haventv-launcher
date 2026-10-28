@@ -44,79 +44,73 @@ import com.aktvhome.launcher.data.AlertEvent
 import com.aktvhome.launcher.data.Nba
 import com.aktvhome.launcher.data.NbaAlerts
 import com.aktvhome.launcher.data.OTHER_EVENTS
-import com.aktvhome.launcher.data.WatchNow
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.Pill
 import com.aktvhome.launcher.ui.theme.ThemeColors
 import com.aktvhome.launcher.ui.tvClickable
-import com.aktvhome.launcher.ui.watch.NetImage
 import kotlinx.coroutines.delay
 
 /**
- * All settings › Watching & alerts › NBA alerts: a card for your teams and one for other games,
+ * All settings › Watching & alerts › NBA League › Alerts: a card for your teams and one for other games,
  * each with its switch and alert types, then the shared options, status and a test banner.
  */
 @Composable
-fun NbaAlertsPage(state: HavenState, colors: ThemeColors, first: Modifier) {
+fun NbaAlertsPage(state: HavenState, colors: ThemeColors, first: Modifier, enabled: Boolean = true) {
     val ctx = LocalContext.current
     val store = state.settingsStore
     val s = store.settings
-    val w = state.watchNow
     // Status lines read live state; look again every few seconds.
     var tick by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) { while (true) { delay(5_000); tick++ } }
     var testNote by remember { mutableStateOf("Shows a sample banner in 10 s. Switch to Netflix or YouTube TV to see it there.") }
 
     AlertCard(
-        "Your team", "Get alerts for your favorite team.", s.alertsMine, w, colors, first,
-        onSwitch = { store.update { it.copy(alertsMine = !it.alertsMine) } },
-        extra = {
-            SettingsMultiChoiceRow(
-                "Teams you follow", "", teamsLabel(s.followedTeams, s.favoriteTeam),
-                Nba.TEAMS.map { (abbr, name) ->
-                    SettingsPickerOption(abbr, name, leading = { NetImage(w, Nba.logo(abbr), 24.dp) })
-                },
-                s.followedTeams, colors,
-            ) { abbr -> store.update { it.copy(followedTeams = it.followedTeams.toggle(abbr)) } }
+        "Your team", "Get alerts for your favorite team.", s.alertsMine, colors, first,
+        onSwitch = { if (enabled) store.update { it.copy(alertsMine = !it.alertsMine) } },
+        enabled = enabled,
+    ) { abbr -> store.update { it.copy(followedTeams = it.followedTeams.toggle(abbr)) } }
         },
     ) {
         EventTiles(AlertEvent.entries, s.alertsFavorite, colors, "favorite",
-            onToggle = { e -> store.update { it.copy(alertsFavorite = it.alertsFavorite.toggle(e)) } },
-            onAll = { store.update { it.copy(alertsFavorite = AlertEvent.entries.toSet()) } },
+            onToggle = { e -> if (enabled) store.update { it.copy(alertsFavorite = it.alertsFavorite.toggle(e)) } },
+            onAll = { if (enabled) store.update { it.copy(alertsFavorite = AlertEvent.entries.toSet()) } },
+            enabled = enabled && s.alertsMine,
         )
     }
     AlertCard(
-        "Other games", "Get alerts for important games and big moments.", s.alertsOthers, w, colors, Modifier,
-        onSwitch = { store.update { it.copy(alertsOthers = !it.alertsOthers) } },
+        "Other games", "Get alerts for important games and big moments.", s.alertsOthers, colors, Modifier,
+        enabled = enabled,
+        onSwitch = { if (enabled) store.update { it.copy(alertsOthers = !it.alertsOthers) } },
     ) {
         val events = AlertEvent.entries.filter { it in OTHER_EVENTS }
         EventTiles(events, s.alertsOther, colors, "other",
-            onToggle = { e -> store.update { it.copy(alertsOther = it.alertsOther.toggle(e)) } },
-            onAll = { store.update { it.copy(alertsOther = events.toSet()) } },
+            onToggle = { e -> if (enabled) store.update { it.copy(alertsOther = it.alertsOther.toggle(e)) } },
+            onAll = { if (enabled) store.update { it.copy(alertsOther = events.toSet()) } },
+            enabled = enabled && s.alertsOthers,
         )
     }
 
-    SettingsToggleRow("Hide scores", "Banners say what's happening (\"Close game · tune in\"), never the score or result.", s.hideScores, colors) {
+    SettingsToggleRow("Hide scores", "Banners say what's happening (\"Close game · tune in\"), never the score or result.", s.hideScores, colors, enabled = enabled) {
         store.update { it.copy(hideScores = !it.hideScores) }
     }
     SettingsChoiceRow(
         "Space out other-game alerts",
         "At most one per this long. Overtime and the close-game escalation always show; followed teams and games with Set alert are never held back.",
         "${s.alertCooldown} min", listOf("5 min", "10 min", "15 min", "30 min").map { SettingsPickerOption(it) },
-        "${s.alertCooldown} min", colors,
+        "${s.alertCooldown} min", colors, enabled = enabled,
     ) { v ->
         store.update { it.copy(alertCooldown = v.removeSuffix(" min").toInt()) }
     }
     SettingsChoiceRow(
         "Banner time", "How long a banner or the Last night recap stays up when you don't press anything.", "${s.bannerSeconds} s",
-        listOf("5 s", "8 s", "10 s").map { SettingsPickerOption(it) }, "${s.bannerSeconds} s", colors,
+        listOf("5 s", "8 s", "10 s").map { SettingsPickerOption(it) }, "${s.bannerSeconds} s", colors, enabled = enabled,
     ) { v ->
         store.update { it.copy(bannerSeconds = v.removeSuffix(" s").toInt()) }
     }
-    SettingsToggleRow("Last night recap", "A catch-up on Haven's Home each morning", s.lastNightRecap, colors) {
+    SettingsToggleRow("Last night recap", "A catch-up on Haven's Home each morning", s.lastNightRecap, colors, enabled = enabled) {
         store.update { it.copy(lastNightRecap = !it.lastNightRecap) }
     }
-    SettingsActionRow("Send test alert", testNote, "Send", colors) {
+    SettingsActionRow("Send test alert", testNote, "Send", colors, enabled = enabled) {
         testNote = if (HomeOverrideService.sendTestAlert()) "Sent. The banner shows in 10 s, over whatever's on."
         else "Needs the Home button service. Turn it on in TV & network › Home button."
     }
@@ -152,11 +146,10 @@ private fun AlertCard(
     title: String,
     subtitle: String,
     on: Boolean,
-    watchNow: WatchNow,
     colors: ThemeColors,
     switchModifier: Modifier,
     onSwitch: () -> Unit,
-    extra: (@Composable () -> Unit)? = null,
+    enabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val shape = RoundedCornerShape(18.dp)
@@ -169,12 +162,11 @@ private fun AlertCard(
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        SettingsToggleRow(title, subtitle, on, colors, switchModifier, onToggle = onSwitch)
+        SettingsToggleRow(title, subtitle, on, colors, switchModifier, enabled = enabled, onToggle = onSwitch)
         Column(
-            Modifier.fillMaxWidth().alpha(if (on) 1f else 0.42f).focusProperties { canFocus = on },
+            Modifier.fillMaxWidth().alpha(if (enabled && on) 1f else 0.42f).focusProperties { canFocus = enabled && on },
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            extra?.invoke()
             content()
         }
     }
@@ -206,22 +198,24 @@ private fun EventTiles(
     focusPrefix: String,
     onToggle: (AlertEvent) -> Unit,
     onAll: () -> Unit,
+    enabled: Boolean = true,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.alpha(if (enabled) 1f else 0.42f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Alert types (${events.size})", color = colors.inkSoft, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            Pill("Select all", colors, selected = events.all { it in on }, onClick = onAll)
+            if (enabled) Pill("Select all", colors, selected = events.all { it in on }, onClick = onAll)
+            else Text("Select all", color = colors.inkSoft, fontSize = 11.sp)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             events.forEach { e ->
-                EventTile(e, e in on, colors, Modifier.weight(1f).settingSearchTarget("$focusPrefix:${e.name}")) { onToggle(e) }
+                EventTile(e, e in on, colors, Modifier.weight(1f).settingSearchTarget("$focusPrefix:${e.name}"), enabled) { onToggle(e) }
             }
         }
     }
 }
 
 @Composable
-private fun EventTile(event: AlertEvent, on: Boolean, colors: ThemeColors, modifier: Modifier, onClick: () -> Unit) {
+private fun EventTile(event: AlertEvent, on: Boolean, colors: ThemeColors, modifier: Modifier, enabled: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(14.dp)
     val ink = if (focused) colors.pillInk else colors.ink
@@ -230,8 +224,9 @@ private fun EventTile(event: AlertEvent, on: Boolean, colors: ThemeColors, modif
             .clip(shape)
             .background(if (focused) colors.pill else colors.glass)
             .border(if (focused || on) 2.dp else 1.dp, if (focused || on) colors.accent else colors.edge, shape)
+            .focusProperties { canFocus = enabled }
             .onFocusChanged { focused = it.isFocused }
-            .tvClickable(onClick = onClick)
+            .tvClickable(onClick = { if (enabled) onClick() })
             .padding(vertical = 10.dp, horizontal = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp),

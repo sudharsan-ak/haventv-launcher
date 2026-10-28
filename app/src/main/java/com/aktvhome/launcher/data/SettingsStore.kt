@@ -87,6 +87,9 @@ data class Settings(
     val wallCredit: Boolean = true,
     val unsplashKey: String = "",
     /** Watch Now sections. NBA is a personal module and starts off for everyone. */
+    /** Global league switch: off preserves all previously selected options. */
+    val nbaLeagueEnabled: Boolean = false,
+    /** Only controls the NBA card on Home, not background alerts. */
     val watchNba: Boolean = false,
     val rotateNba: Boolean = true,
     val nbaRotationInterval: NbaRotationInterval = NbaRotationInterval.TEN,
@@ -124,8 +127,11 @@ data class Settings(
      */
     val alertGames: Map<String, Long> = emptyMap(),
 ) {
+    /** Shared visibility rule used by Home, the drawer and score refresh. */
+    fun nbaCardEnabled(): Boolean = nbaLeagueEnabled && watchNba
+
     fun alertPrefs() = AlertPrefs(
-        on = alertsMine || alertsOthers,
+        on = nbaLeagueEnabled && (alertsMine || alertsOthers),
         followed = followedTeams,
         alertGames = alertGames.keys,
         favoriteEvents = if (alertsMine) alertsFavorite else emptySet(),
@@ -174,6 +180,7 @@ class SettingsStore(context: Context) {
             .putString("wallInterval", next.wallInterval.name)
             .putBoolean("wallCredit", next.wallCredit)
             .putString("unsplashKey", next.unsplashKey)
+            .putBoolean("nbaLeagueEnabled", next.nbaLeagueEnabled)
             .putBoolean("watchNba", next.watchNba)
             .putBoolean("rotateNba", next.rotateNba)
             .putString("nbaRotationInterval", next.nbaRotationInterval.name)
@@ -231,6 +238,13 @@ class SettingsStore(context: Context) {
         wallInterval = enumOr(prefs.getString("wallInterval", null), WallInterval.SIX),
         wallCredit = prefs.getBoolean("wallCredit", true),
         unsplashKey = prefs.getString("unsplashKey", null) ?: "",
+        // Upgraded installations keep their previous NBA card/alert behavior.
+        // Fresh installs have no legacy NBA keys, so the optional league starts disabled.
+        nbaLeagueEnabled = prefs.getBoolean("nbaLeagueEnabled",
+            (prefs.contains("watchNba") && prefs.getBoolean("watchNba", false)) ||
+            (prefs.contains("alertsMine") && prefs.getBoolean("alertsMine", true)) ||
+            (prefs.contains("alertsOthers") && prefs.getBoolean("alertsOthers", true)),
+        ),
         watchNba = prefs.getBoolean("watchNba", false),
         rotateNba = prefs.getBoolean("rotateNba", true),
         nbaRotationInterval = enumOr(prefs.getString("nbaRotationInterval", null), NbaRotationInterval.TEN),

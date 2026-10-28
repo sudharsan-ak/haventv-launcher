@@ -279,9 +279,10 @@ internal fun SettingsToggleRow(
     colors: ThemeColors,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    leading: (@Composable () -> Unit)? = null,
     onToggle: () -> Unit,
 ) {
-    SettingsInteractiveRow(title, note, colors, modifier, enabled, onToggle) {
+    SettingsInteractiveRow(title, note, colors, modifier, enabled, onToggle, leading = leading) {
         Switch(checked, colors)
     }
 }
@@ -360,6 +361,7 @@ private fun SettingsInteractiveRow(
     modifier: Modifier,
     enabled: Boolean,
     onClick: () -> Unit,
+    leading: (@Composable () -> Unit)? = null,
     trailing: @Composable RowScope.() -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -379,6 +381,7 @@ private fun SettingsInteractiveRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        leading?.invoke()
         Column(Modifier.weight(1f)) {
             Text(title, color = colors.ink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             if (note.isNotBlank()) Text(note, color = colors.inkSoft, fontSize = 10.sp)

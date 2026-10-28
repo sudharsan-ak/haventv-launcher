@@ -79,7 +79,6 @@ import com.aktvhome.launcher.data.Defaults
 import com.aktvhome.launcher.data.DnsChoice
 import com.aktvhome.launcher.data.HomeOverride
 import com.aktvhome.launcher.data.Nba
-import com.aktvhome.launcher.data.NbaRotationInterval
 import com.aktvhome.launcher.data.WATCH_SECTIONS
 import com.aktvhome.launcher.data.LOCAL_NETWORKS
 import com.aktvhome.launcher.data.PrivateDns
@@ -118,7 +117,7 @@ private enum class SettingsGroup(
         "Organize your home and control what appears.",
     ),
     WATCHING(
-        "Watching & alerts", Icons.Rounded.Schedule, "NBA, Watch Now, live TV",
+        "Watching & alerts", Icons.Rounded.Schedule, "Watch Now, NBA League, live TV",
         "Stay close to games and pick up where you left off.",
     ),
     SYSTEM(
@@ -138,8 +137,8 @@ private enum class Page(val label: String, val group: SettingsGroup, val availab
     DISPLAY("Display", SettingsGroup.HOME),
     COLLECTIONS("Collections", SettingsGroup.HOME),
     HIDDEN("Hidden apps", SettingsGroup.HOME),
-    NBA_ALERTS("NBA alerts", SettingsGroup.WATCHING),
     WATCH_NOW("Watch Now", SettingsGroup.WATCHING),
+    NBA_LEAGUE("NBA League", SettingsGroup.WATCHING),
     LIVE_CHANNELS("Live channels", SettingsGroup.WATCHING, available = false),
     HOME_BUTTON("Home button", SettingsGroup.SYSTEM),
     DNS("Private DNS", SettingsGroup.SYSTEM),
@@ -168,7 +167,8 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
 
     val initialRequest = remember { state.settingsDestination }
     val initialPage = initialRequest?.let { request ->
-        Page.entries.firstOrNull { it.name == request.destination.name }
+        Page.entries.firstOrNull { it.name == request.destination.name ||
+            (request.destination == SettingsDestination.NBA_ALERTS && it == Page.NBA_LEAGUE) }
     } ?: Page.STYLE
     var group by remember { mutableStateOf(initialPage.group) }
     var page by remember { mutableStateOf(initialPage) }
@@ -571,31 +571,6 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                         Page.ABOUT -> AboutCard(colors, first)
                         Page.THIS_TV -> ThisTvPage(state, colors, first)
                         Page.WATCH_NOW -> {
-                            SettingsToggleRow("NBA", "Scores, the 7-day schedule and your team. Uses ESPN and nba.com.", s.watchNba, colors) {
-                                store.update { it.copy(watchNba = !it.watchNba) }
-                            }
-                            SettingsChoiceRow(
-                                "Favorite team", "Shown first on Home and in Watch Now, with its full schedule.",
-                                if (s.favoriteTeam.isBlank()) "None" else Nba.teamName(s.favoriteTeam),
-                                listOf(SettingsPickerOption("", "None")) + Nba.TEAMS.map { (abbr, name) ->
-                                    SettingsPickerOption(
-                                        abbr,
-                                        name,
-                                        leading = { NetImage(state.watchNow, Nba.logo(abbr), 24.dp) },
-                                    )
-                                },
-                                s.favoriteTeam, colors,
-                            ) { abbr -> store.update { it.copy(favoriteTeam = abbr) } }
-                            SettingsToggleRow(
-                                "Rotate NBA games", "Cycle through the day's games on Home. Pauses while focused.",
-                                s.rotateNba, colors,
-                            ) { store.update { it.copy(rotateNba = !it.rotateNba) } }
-                            if (s.rotateNba) SettingsChoiceRow(
-                                "Rotation interval", "Time for each game after the featured game's longer hold.",
-                                s.nbaRotationInterval.label,
-                                NbaRotationInterval.entries.map { SettingsPickerOption(it.name, it.label) },
-                                s.nbaRotationInterval.name, colors,
-                            ) { choice -> store.update { it.copy(nbaRotationInterval = NbaRotationInterval.valueOf(choice)) } }
                             SettingsToggleRow("Continue watching", "Shows from apps that share progress with the TV.", s.watchContinue, colors) {
                                 store.update { it.copy(watchContinue = !it.watchContinue) }
                             }
@@ -654,7 +629,20 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                             }
                             if (b.problem.isNotBlank()) SettingsStatusRow("Backup problem", b.problem, colors)
                         }
-                            Page.NBA_ALERTS -> NbaAlertsPage(state, colors, first)
+                            Page.NBA_LEAGUE -> {
+                                val setting = initialRequest?.settingId
+                                val initialTab = when {
+                                    initialRequest?.destination == SettingsDestination.NBA_ALERTS ||
+                                        setting?.startsWith("alert_") == true ||
+                                        setting in setOf("alerts_your_team", "alerts_other_games",
+                                            "hide_scores", "banner_time", "last_night_recap",
+                                            "send_test_alert") -> NbaLeagueSection.ALERTS
+                                    setting in setOf("watch_nba", "rotate_nba",
+                                        "nba_rotation_interval") -> NbaLeagueSection.HOME_CARD
+                                    else -> NbaLeagueSection.OVERVIEW
+                                }
+                                NbaLeaguePage(state, colors, first, initialTab)
+                            }
                             Page.LIVE_CHANNELS -> Unit
                             }
                         }
