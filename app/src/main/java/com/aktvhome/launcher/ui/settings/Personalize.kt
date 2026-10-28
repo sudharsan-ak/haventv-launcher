@@ -92,6 +92,7 @@ import com.aktvhome.launcher.ui.IconBadge
 import com.aktvhome.launcher.ui.LocalTvInteractionsEnabled
 import com.aktvhome.launcher.ui.Overlay
 import com.aktvhome.launcher.ui.SettingsDestination
+import com.aktvhome.launcher.ui.havenSetting
 import com.aktvhome.launcher.ui.Pill
 import com.aktvhome.launcher.ui.TextInputDialog
 import com.aktvhome.launcher.ui.kingdom.KingdomHome
@@ -630,17 +631,12 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                             if (b.problem.isNotBlank()) SettingsStatusRow("Backup problem", b.problem, colors)
                         }
                             Page.NBA_LEAGUE -> {
-                                val setting = initialRequest?.settingId
-                                val initialTab = when {
-                                    initialRequest?.destination == SettingsDestination.NBA_ALERTS ||
-                                        setting?.startsWith("alert_") == true ||
-                                        setting in setOf("alerts_your_team", "alerts_other_games",
-                                            "hide_scores", "banner_time", "last_night_recap",
-                                            "send_test_alert") -> NbaLeagueSection.ALERTS
-                                    setting in setOf("watch_nba", "rotate_nba",
-                                        "nba_rotation_interval") -> NbaLeagueSection.HOME_CARD
-                                    else -> NbaLeagueSection.OVERVIEW
-                                }
+                                val initialTab =
+                                    if (initialRequest?.destination == SettingsDestination.NBA_ALERTS)
+                                        NbaLeagueSection.ALERTS
+                                    else NbaLeagueSection.fromSetting(
+                                        initialRequest?.settingId?.let(::havenSetting)
+                                    )
                                 NbaLeaguePage(state, colors, first, initialTab)
                             }
                             Page.LIVE_CHANNELS -> Unit
