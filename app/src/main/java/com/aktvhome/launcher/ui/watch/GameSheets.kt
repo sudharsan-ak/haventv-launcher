@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -51,10 +52,13 @@ import com.aktvhome.launcher.data.Nba
 import com.aktvhome.launcher.data.Play
 import com.aktvhome.launcher.data.Team
 import com.aktvhome.launcher.data.WatchNow
+import com.aktvhome.launcher.data.YOUTUBE_TV
+import com.aktvhome.launcher.data.TvItem
 import com.aktvhome.launcher.data.networkApp
 import com.aktvhome.launcher.data.recapLine
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.Pill
+import com.aktvhome.launcher.ui.GlassDialog
 import com.aktvhome.launcher.ui.settings.CloseButton
 import com.aktvhome.launcher.ui.settings.Eyebrow
 import com.aktvhome.launcher.ui.theme.ThemeColors
@@ -161,6 +165,7 @@ fun GameDetailPane(
     val scrolls = remember(id) { mutableMapOf<DetailTab, ScrollState>() }
     // The player card open over the details, by ESPN athlete id.
     var playerId by remember(id) { mutableStateOf<String?>(null) }
+    var showYoutubeChannels by remember(id) { mutableStateOf(false) }
 
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -198,9 +203,17 @@ fun GameDetailPane(
 
             // The best way to watch (from the game's networks), then the game's alert.
             val option = state.watchOptions(game).first()
+            val youtubePrimary = option.app == state.apps[YOUTUBE_TV]?.label && YOUTUBE_TV in state.apps
+            val youtubeAlternate = YOUTUBE_TV in state.apps && game.state != GameState.FINAL &&
+                youtubeTvMayCarry(game) && !youtubePrimary
             val alertOn = id in state.settingsStore.settings.alertGames
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Pill("▶  Watch on ${option.app}", colors, selected = true, focusRequester = watchFocus) { option.open(); close() }
+                Pill("▶  Watch on ${option.app}", colors, selected = true, focusRequester = watchFocus) {
+                    if (youtubePrimary) showYoutubeChannels = true else { option.open(); close() }
+                }
+                if (youtubeAlternate) {
+                    Pill("YouTube TV channels", colors) { showYoutubeChannels = true }
+                }
                 if (game.state != GameState.FINAL) {
                     Pill(if (alertOn) "Alert on" else "Set alert", colors, selected = alertOn) {
                         state.settingsStore.update {
@@ -232,6 +245,26 @@ fun GameDetailPane(
         }
     }
     val shown = game
+    if (showYoutubeChannels && game != null) {
+        YouTubeTvChannelDialog(
+            colors = colors,
+            channels = youtubeTvChannelCandidates(
+                game, w.live + w.appRows, store.settings.localStations,
+            ),
+            onPick = { item ->
+                showYoutubeChannels = false
+                w.open(item)
+                close()
+            },
+            onGuide = {
+                showYoutubeChannels = false
+                w.open(TvItem(YOUTUBE_TV, "YouTube TV Guide", "", null, false,
+                    "https://tv.youtube.com/live?launch=launcher"))
+                close()
+            },
+            onDismiss = { showYoutubeChannels = false },
+        )
+    }
     val pid = playerId
     if (shown != null && pid != null) PlayerCard(state, colors, shown, feed.summary, pid) { playerId = null }
 }

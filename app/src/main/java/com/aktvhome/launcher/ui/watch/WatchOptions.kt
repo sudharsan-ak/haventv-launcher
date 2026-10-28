@@ -4,6 +4,7 @@ import com.aktvhome.launcher.data.ESPN_APP
 import com.aktvhome.launcher.data.Game
 import com.aktvhome.launcher.data.GameState
 import com.aktvhome.launcher.data.LiveGroup
+import com.aktvhome.launcher.data.YOUTUBE_TV
 import com.aktvhome.launcher.data.PEACOCK
 import com.aktvhome.launcher.data.PRIME
 import com.aktvhome.launcher.data.TV_CHANNELS
@@ -104,4 +105,62 @@ private fun mentions(item: TvItem, game: Game): Boolean {
     val text = "${item.title} ${item.detail}".uppercase()
     fun has(abbr: String, name: String) = name.uppercase() in text || Regex("\\b${Regex.escape(abbr)}\\b").containsMatchIn(text)
     return has(game.away.abbr, game.away.name) && has(game.home.abbr, game.home.name)
+}
+
+/**
+ * Discover plausible channels for a YouTube TV NBA game without pretending to
+ * read YouTube TV's private Live Guide. Only app-published, openable links are
+ * eligible. Include sports overflow channels from the same broadcaster family;
+ * the user makes the final choice in the TV-friendly picker.
+ */
+fun youtubeTvChannelCandidates(
+    game: Game,
+    groups: List<LiveGroup>,
+    localStations: Map<String, String>,
+): List<TvItem> {
+    val nets = game.networks
+    fun family(title: String): Boolean {
+        val t = title.trim().uppercase().replace(Regex("\\s+"), " ")
+        if (nets.any { carries(title, it, localStations) }) return true
+        if (nets.any { it == "NBC" || "PEACOCK" in it || it.startsWith("NBC") }) {
+            if (t.startsWith("NBCSN") || t.startsWith("NBC SPORTS") || t.startsWith("NBC ")) return true
+        }
+        if (nets.any { it.startsWith("ESPN") || it == "ABC" }) {
+            if (t.startsWith("ESPN") || t.startsWith("ESPNU")) return true
+        }
+        if (nets.any { it == "CBS" || it.startsWith("CBS SPORTS") }) {
+            if (t.startsWith("CBSSN") || t.startsWith("CBS SPORTS")) return true
+        }
+        if (nets.any { it == "FOX" || it.startsWith("FOX SPORTS") }) {
+            if (t.startsWith("FS1") || t.startsWith("FS2") || t.startsWith("FOX SPORTS")) return true
+        }
+        if (nets.any { it == "TNT" || it == "TRUTV" || it == "TBS" }) {
+            if (t == "TNT" || t == "TBS" || t == "TRUTV") return true
+        }
+        if (nets.any { it == "NBA TV" || it == "NBATV" }) {
+            if (t == "NBATV" || t == "NBA TV") return true
+        }
+        return false
+    }
+
+    val known = groups.asSequence()
+        .filter { it.pkg == YOUTUBE_TV }
+        .flatMap { it.items.asSequence() }
+        // A channel without a provider-supplied intent cannot be directly tuned.
+        .filter { !it.intentUri.isNullOrBlank() }
+        .filter { family(it.title) || mentions(it, game) }
+        .distinctBy { it.title.trim().uppercase() }
+        .sortedWith(compareByDescending<TvItem> { mentions(it, game) }
+            .thenByDescending { it.live }
+            .thenBy { it.title.lowercase() })
+        .toList()
+    return known
+}
+
+/** Whether a national-broadcast NBA game merits a YouTube TV alternative to the app's default. */
+fun youtubeTvMayCarry(game: Game): Boolean = game.networks.any {
+    it.contains("PEACOCK") || it.startsWith("NBC") ||
+        it.startsWith("ESPN") || it == "ABC" || it == "CBS" ||
+        it.startsWith("FOX") || it == "TNT" || it == "TRUTV" ||
+        it == "TBS" || it == "NBA TV"
 }

@@ -52,6 +52,36 @@ class WatchOptionsTest {
         assertEquals(live, launched)
     }
 
+
+    @Test fun includesNbcOverflowFeedWhenListedBroadcasterIsPeacock() {
+        val regular = TvItem(YOUTUBE_TV, "NBC", "", null, true, "content://example/nbc")
+        val overflow = TvItem(YOUTUBE_TV, "NBCSN Extra", "", null, true, "content://example/extra")
+        val other = TvItem(YOUTUBE_TV, "ESPN2", "", null, true, "content://example/espn")
+        val out = youtubeTvChannelCandidates(
+            game("Peacock, NBC"), listOf(LiveGroup(YOUTUBE_TV, "YouTube TV", listOf(regular, overflow, other))),
+            emptyMap(),
+        )
+        assertEquals(listOf("NBC", "NBCSN Extra"), out.map { it.title })
+    }
+
+    @Test fun discoversEspnFamilyWithoutInventingUndiscoveredLinks() {
+        val channels = listOf(
+            TvItem(YOUTUBE_TV, "ESPN", "", null, true, "content://example/espn"),
+            TvItem(YOUTUBE_TV, "ESPN2", "", null, true, "content://example/espn2"),
+            TvItem(YOUTUBE_TV, "ESPNU", "", null, false, null),
+            TvItem(YOUTUBE_TV, "NBCSN Extra", "", null, true, "content://example/nbc"),
+        )
+        val out = youtubeTvChannelCandidates(
+            game("ESPN"), listOf(LiveGroup(YOUTUBE_TV, "YouTube TV", channels)), emptyMap(),
+        )
+        assertEquals(listOf("ESPN", "ESPN2"), out.map { it.title })
+    }
+
+    @Test fun youtubeTvAlternativeAvailableForPeacockWithoutAChannelMapping() {
+        assertTrue(youtubeTvMayCarry(game("Peacock")))
+        assertTrue(youtubeTvChannelCandidates(game("Peacock"), emptyList(), emptyMap()).isEmpty())
+    }
+
     @Test fun appOnlyFallbackIsNotMisrepresentedAsDirectStream() {
         val options = watchOptions(game("Prime Video"), WatchSources(
             labelOf = { if (it == PRIME) "Prime Video" else null },
