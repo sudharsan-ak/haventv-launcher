@@ -64,6 +64,16 @@ class WatchOptionsTest {
         assertEquals(listOf("NBC", "NBCSN Extra"), out.map { it.title })
     }
 
+    @Test fun peacockOnlyStillShowsKnownNbcAndOverflowAlternatives() {
+        val regular = TvItem(YOUTUBE_TV, "NBC", "", null, false, "content://example/nbc")
+        val overflow = TvItem(YOUTUBE_TV, "NBCSN Extra 3", "", null, false, "content://example/extra")
+        val out = youtubeTvChannelCandidates(
+            game("Peacock"), listOf(LiveGroup(YOUTUBE_TV, "YouTube TV", listOf(regular, overflow))),
+            emptyMap(),
+        )
+        assertEquals(listOf("NBC", "NBCSN Extra 3"), out.map { it.title })
+    }
+
     @Test fun discoversEspnFamilyWithoutInventingUndiscoveredLinks() {
         val channels = listOf(
             TvItem(YOUTUBE_TV, "ESPN", "", null, true, "content://example/espn"),
