@@ -59,6 +59,8 @@ public final class NbaMomentEngine {
     public static Moment sinceChecked(Snapshot old, Snapshot now, String favorite) {
         if (!compatible(old, now) || !now.hasScores() || !old.hasScores()) return null;
         if (now.observedAt() <= old.observedAt() + 30_000L) return null;
+        // A corrected feed may briefly revise a score downward; do not invent a run.
+        if (now.awayScore() < old.awayScore() || now.homeScore() < old.homeScore()) return null;
         String team = subject(now, favorite);
         String teamName = now.name(team);
         String safe = "There's an update in the " + now.awayName() + " vs " + now.homeName() + " game.";
@@ -67,6 +69,7 @@ public final class NbaMomentEngine {
                 "The game has started since you last checked.", safe,
                 "The game has started since your last visit.", true, true, 15);
         }
+        if (now.finalGame() && old.finalGame()) return null;
         if (now.finalGame()) {
             return new Moment(now.id() + ":final", now.awayName() + " vs " + now.homeName() + " has finished.",
                 "The game finished since you last checked. Final score: " + now.awayScore() + "–" + now.homeScore() + ".",
@@ -103,7 +106,8 @@ public final class NbaMomentEngine {
     /** Live favorite-team moments can appear without a user checking that game first. */
     public static Moment favoriteLive(Snapshot anchor, Snapshot now, String favorite) {
         if (!compatible(anchor, now) || !anchor.live() || !now.live() ||
-            !anchor.hasScores() || !now.hasScores() || !now.involves(favorite)) return null;
+            !anchor.hasScores() || !now.hasScores() || !now.involves(favorite) ||
+            now.awayScore() < anchor.awayScore() || now.homeScore() < anchor.homeScore()) return null;
         String name = now.name(favorite);
         int oldMargin = anchor.margin(favorite);
         int margin = now.margin(favorite);
