@@ -1,5 +1,8 @@
 # Haven
 
+![Kotlin](https://img.shields.io/badge/Kotlin-7F52FF?logo=kotlin&logoColor=white)
+![Java](https://img.shields.io/badge/Java-ED8B00?logo=openjdk&logoColor=white)
+
 An ad-free, glass-style home screen for Android TV / Google TV.
 
 Haven replaces the stock Google TV home (and its ads and "recommended" rows) with a calm,
