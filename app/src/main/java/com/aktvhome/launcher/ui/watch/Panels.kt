@@ -256,6 +256,7 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
             delay(60)
             val focused = runCatching {
                 if (wanted == null) first.requestFocus() else cardFocus(wanted).requestFocus()
+                true // requestFocus() returns Unit here; only failed attachment should retry.
             }.getOrDefault(false)
             if (focused) {
                 focusPending = false
