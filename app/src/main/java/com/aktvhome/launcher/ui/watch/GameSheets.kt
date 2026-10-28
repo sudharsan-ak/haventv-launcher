@@ -166,6 +166,11 @@ fun GameDetailPane(
     // The player card open over the details, by ESPN athlete id.
     var playerId by remember(id) { mutableStateOf<String?>(null) }
     var showYoutubeChannels by remember(id) { mutableStateOf(false) }
+    LaunchedEffect(showYoutubeChannels) {
+        // Refresh the channel links YouTube TV currently shares when the picker opens.
+        // This does not expose the provider's entire private Live Guide.
+        if (showYoutubeChannels) w.loadRows()
+    }
 
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
