@@ -104,7 +104,8 @@ class NbaCompanionStore(context: Context) {
                 now - oldFav.observedAt() < 2 * 3_600_000L
             ) favoriteMoment = NbaMomentEngine.favoriteLive(oldFav, latestFav, favorite)
             if (oldFav == null || oldFav.id() != latestFav.id() ||
-                latestFav.state() != "LIVE" || now - oldFav.observedAt() >= 2 * 3_600_000L
+                oldFav.state() != "LIVE" || latestFav.state() != "LIVE" ||
+                now - oldFav.observedAt() >= 2 * 3_600_000L
             ) save("favoriteAnchor", latestFav)
         }
 
