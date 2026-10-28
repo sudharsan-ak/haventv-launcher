@@ -178,20 +178,39 @@ object AlertRules {
      *   (In-Arena)", "Portland (Home)"); highlights have a position and no feed in brackets;
      * - the app in front carries the game (ESPN, Peacock, Prime Video) and is playing.
      */
+    /** Require both teams for full-matchup titles; checking the entire string prevents a prefix mismatch. */
+    private fun matchesMatchup(text: String, game: Game): Boolean {
+        val normalized = text.uppercase().replace(Regex("[^A-Z0-9]+"), " ").trim()
+        fun matches(team: Team): Boolean {
+            val candidates = listOf(team.name, team.location, team.abbr).filter { it.length >= 2 }
+            return candidates.any { term ->
+                val word = term.uppercase().replace(Regex("[^A-Z0-9]+"), " ").trim()
+                word.isNotBlank() && (" $normalized ").contains(" $word ")
+            }
+        }
+        return matches(game.away) && matches(game.home)
+    }
+
     fun isWatching(game: Game, sessions: List<NowPlaying>, foreground: String?, localStations: Map<String, String>): Boolean {
         val nets = game.networks
         for (s in sessions) {
             when (s.pkg) {
                 YOUTUBE_TV -> {
+                    if (!s.playing) continue
+                    // YouTube TV may advertise the matchup rather than a channel subtitle.
+                    if (s.title != null && matchesMatchup(s.title, game)) return true
                     val channel = s.subtitle ?: continue
                     if (nets.any { carries(channel, it, localStations) }) return true
                 }
                 NBA_APP -> {
                     val title = s.title ?: continue
-                    val live = s.position == -1L || Regex("\\(.+\\)").containsMatchIn(title)
+                    // Some NBA app builds prepend "NBA" or "Live" to the matchup and
+                    // report an ordinary seek position for live streams.
+                    if (s.playing && matchesMatchup(title, game)) return true
+                    val liveFeed = s.position == -1L || Regex("\\(.+\\)").containsMatchIn(title)
                     val names = listOf(game.away.name, game.home.name, game.away.location, game.home.location)
                     val team = names.any { it.isNotBlank() && title.startsWith(it, ignoreCase = true) }
-                    if (live && team) return true
+                    if (liveFeed && team) return true
                 }
             }
         }

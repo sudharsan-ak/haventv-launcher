@@ -93,7 +93,11 @@ class NbaAlerts(
         save()
         // The user might have switched the league off during the fetch.
         val enabledNow = withContext(Dispatchers.Main) { store.reload(); store.settings.nbaLeagueEnabled }
-        if (enabledNow) alerts.forEach(show)
+        if (enabledNow) alerts.forEach { alert ->
+            // The user could have started watching while ESPN was loading. Re-check
+            // the active session immediately before showing a banner.
+            if (!AlertRules.isWatching(alert.game, nowPlaying(), foreground(), s.localStations)) show(alert)
+        }
         return nextPoll(games, todayGames, System.currentTimeMillis())
     }
 

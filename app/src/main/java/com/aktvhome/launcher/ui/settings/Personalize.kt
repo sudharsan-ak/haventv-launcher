@@ -386,7 +386,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                             SettingsToggleRow("Show greeting", "Show or hide your welcome message.", s.showGreeting, colors) {
                                 store.update { it.copy(showGreeting = !it.showGreeting) }
                             }
-                            SettingsToggleRow("Headline", "Kingdom's big line: follows your team's game and the time of day, or stays fixed.", s.headlineChanging, colors) {
+                            SettingsToggleRow("Headline", "On both Kingdom and Tide, follow the time of day and your favorite team's game, or stay fixed.", s.headlineChanging, colors) {
                                 store.update { it.copy(headlineChanging = !it.headlineChanging) }
                             }
                             SettingsActionRow("Your name", "Used in the home screen greeting.", s.name.ifBlank { "Not set" }, colors) { editingName = true }

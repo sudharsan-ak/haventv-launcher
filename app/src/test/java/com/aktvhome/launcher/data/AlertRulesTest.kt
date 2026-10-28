@@ -329,6 +329,25 @@ class AlertRulesTest {
         assertFalse(AlertRules.isWatching(g, listOf(NowPlaying(NBA_APP, "Heat (In-Arena)", null, -1, true)), NBA_APP, emptyMap()))
     }
 
+    @Test fun watchingRecognizesNetsCelticsLiveMatchupWhenNbaAppPrefixesTitle() {
+        val g = game(id = "det", away = "BKN", home = "BOS",
+            awayName = "Nets", homeName = "Celtics", awayCity = "Brooklyn", homeCity = "Boston")
+        val now = NowPlaying(NBA_APP, "NBA: Brooklyn Nets vs Boston Celtics · Live", null, 35_000, true)
+        assertTrue(AlertRules.isWatching(g, listOf(now), NBA_APP, emptyMap()))
+        assertFalse(AlertRules.isWatching(g, listOf(now.copy(playing = false)), NBA_APP, emptyMap()))
+        val unrelated = game(id = "different", away = "DET", home = "NY",
+            awayName = "Pistons", homeName = "Knicks", awayCity = "Detroit", homeCity = "New York")
+        assertFalse(AlertRules.isWatching(unrelated, listOf(now), NBA_APP, emptyMap()))
+    }
+
+    @Test fun watchingMatchesYoutubeTvByGameTitleEvenWithoutChannelSubtitle() {
+        val g = game(away = "BKN", home = "BOS", awayName = "Nets", homeName = "Celtics",
+            awayCity = "Brooklyn", homeCity = "Boston")
+        val session = NowPlaying(YOUTUBE_TV, "Brooklyn Nets at Boston Celtics", null, 0, true)
+        assertTrue(AlertRules.isWatching(g, listOf(session), YOUTUBE_TV, emptyMap()))
+        assertFalse(AlertRules.isWatching(g, listOf(session.copy(playing = false)), YOUTUBE_TV, emptyMap()))
+    }
+
     @Test fun watchingMatchesNbaAppByCity() {
         val g = game(away = "POR", awayName = "Trail Blazers", awayCity = "Portland", home = "PHI", homeName = "76ers", homeCity = "Philadelphia")
         assertTrue(AlertRules.isWatching(g, listOf(NowPlaying(NBA_APP, "Portland (Home)", null, -1, true)), NBA_APP, emptyMap()))

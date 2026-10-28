@@ -205,10 +205,16 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
     fun returnCard(): String? = if (filter == GameFilter.SCHEDULES) teamCard else selected
     fun backToCard() { returnCard()?.let { runCatching { cardFocus(it).requestFocus() } } }
     fun openPane(id: String) {
+        if (s.nbaLeagueEnabled) {
+            w.findGame(id)?.first?.let { state.nbaCompanion.opened(it, s.favoriteTeam) }
+        }
         selected = id
         toPane++
     }
-    val close = { state.overlay = Overlay.NONE }
+    val close = {
+        state.nbaCompanion.closePanel()
+        state.overlay = Overlay.NONE
+    }
     LaunchedEffect(day) { w.loadDay(day) }
     val list = w.games[day]
     val anyLive = list?.any { it.state == GameState.LIVE } == true
@@ -238,18 +244,28 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
         state.nbaGame = null
     }
     // Otherwise the main team's game, else the first live one, else the first; focused on opening.
-    LaunchedEffect(day, list == null, focusPending) {
-        if (list == null) return@LaunchedEffect
-        if (selected == null || list.none { it.espnId == selected }) {
-            selected = (main ?: list.firstOrNull { it.state == GameState.LIVE } ?: list.firstOrNull())?.espnId
+    LaunchedEffect(day, list?.map { it.espnId }, focusPending) {
+        if (!focusPending || list == null) return@LaunchedEffect
+        val wanted = selected?.takeIf { id -> list.any { it.espnId == id } }
+            ?: (main ?: list.firstOrNull { it.state == GameState.LIVE } ?: list.firstOrNull())?.espnId
+        selected = wanted
+        // The requested game can be near the bottom of the scrolling grid. The old
+        // code cleared focusPending before a single request, leaving focus on All games.
+        // Try until the card is attached; Compose will bring the focused card into view.
+        repeat(24) {
+            delay(60)
+            val focused = runCatching {
+                if (wanted == null) first.requestFocus() else cardFocus(wanted).requestFocus()
+                true // requestFocus() returns Unit here; only failed attachment should retry.
+            }.getOrDefault(false)
+            if (focused) {
+                focusPending = false
+                return@LaunchedEffect
+            }
         }
-        if (focusPending) {
-            focusPending = false
-            val id = selected
-            // The card is composed in this frame; give it a moment before asking for focus.
-            delay(50)
-            runCatching { if (id != null) cardFocus(id).requestFocus() else first.requestFocus() }
-        }
+        // Keep normal remote navigation usable if the grid could not be focused.
+        runCatching { first.requestFocus() }
+        focusPending = false
     }
     // Asked for a team's schedule (the "Full schedule" links): the Schedules tab on that team.
     LaunchedEffect(state.nbaSchedule) {

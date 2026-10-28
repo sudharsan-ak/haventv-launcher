@@ -69,7 +69,7 @@ data class Settings(
     /** Name used in the greeting. Empty means "Good evening" with no name. */
     val name: String = "",
     val showGreeting: Boolean = true,
-    /** Kingdom's headline follows your team's game and the time of day; off keeps it fixed. */
+    /** Shared Kingdom/Tide headline: dynamic context or the fixed default. */
     val headlineChanging: Boolean = true,
     val cardSize: CardSize = CardSize.MEDIUM,
     /** The Private DNS the user picked (what "Keep enforced" restores). */
