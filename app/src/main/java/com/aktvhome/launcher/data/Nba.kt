@@ -288,7 +288,8 @@ object Nba {
         val links = listOfNotNull(nbaGameId?.let { "gametime://game/$it" }, "gametime://games")
         for (link in links) {
             val ok = runCatching {
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link)).setPackage(pkg)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
                 true
             }.getOrDefault(false)
             if (ok) return true

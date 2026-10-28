@@ -81,7 +81,14 @@ class TvListings(private val context: Context) {
         }
         val launch = intent ?: context.packageManager.getLeanbackLaunchIntentForPackage(item.pkg)
             ?: context.packageManager.getLaunchIntentForPackage(item.pkg) ?: return false
-        return runCatching { context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); true }.getOrDefault(false)
+        return runCatching {
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            // Only provider-supplied content links get CLEAR_TOP; ordinary app launches
+            // cannot force a particular game or seek to the live edge.
+            if (intent != null) launch.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            context.startActivity(launch)
+            true
+        }.getOrDefault(false)
     }
 
     private fun <T> query(uri: Uri, map: (Cursor) -> T?): List<T> = runCatching {

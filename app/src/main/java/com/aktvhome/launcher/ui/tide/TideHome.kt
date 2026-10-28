@@ -1,5 +1,6 @@
 package com.aktvhome.launcher.ui.tide
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -43,6 +44,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aktvhome.launcher.data.AppEntry
@@ -58,6 +61,7 @@ import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.Overlay
 import com.aktvhome.launcher.ui.Pill
 import com.aktvhome.launcher.ui.clockText
+import com.aktvhome.launcher.ui.rememberHeadline
 import com.aktvhome.launcher.ui.moveKeys
 import com.aktvhome.launcher.ui.rememberAmbientSeconds
 import com.aktvhome.launcher.ui.onKeyDown
@@ -137,6 +141,15 @@ fun TideHome(state: HavenState, colors: ThemeColors, preview: Boolean = false) {
                 java.time.LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE · MMMM d")).uppercase(),
                 color = colors.inkSoft, fontSize = 15.sp, fontWeight = FontWeight.Light, letterSpacing = 4.sp,
             )
+            // Shared Home headline: understated, like the greeting above the clock.
+            // Reserve room for two lines so the rest of Tide never jumps on a text update.
+            Box(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 72.dp, top = 12.dp),
+                contentAlignment = Alignment.TopCenter) {
+                Crossfade(targetState = rememberHeadline(state), animationSpec = tween(600), label = "tideHeadline") { line ->
+                    Text(line, color = colors.inkSoft, fontSize = 20.sp, fontWeight = FontWeight.Light,
+                        textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
             Spacer(Modifier.weight(1f))
 
             if (showStrip) {
