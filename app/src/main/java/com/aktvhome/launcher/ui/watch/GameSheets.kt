@@ -183,6 +183,18 @@ fun GameDetailPane(
         } else {
             ScoreBlock(w, game, colors)
             if (live) UpdatedLine(feed, colors)
+            // Only a deliberately opened game has a stored comparison.
+            state.nbaCompanion.detailFor(id, store.settings.hideScores)?.let { summary ->
+                DetailLine(colors) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Since you last checked", color = colors.ink, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text(summary, color = colors.inkSoft, fontSize = 12.sp)
+                    }
+                }
+            }
+            LaunchedEffect(id, game.state, game.away.score, game.home.score, game.period) {
+                state.nbaCompanion.updateViewed(game)
+            }
 
             // The best way to watch (from the game's networks), then the game's alert.
             val option = state.watchOptions(game).first()

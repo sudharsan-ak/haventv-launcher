@@ -154,7 +154,7 @@ fun KingdomHome(state: HavenState, colors: ThemeColors, preview: Boolean = false
             state.greetingLine()?.let { Text(it, color = colors.inkSoft, fontSize = 14.sp, modifier = side) }
             // Follows your team's game live, otherwise fits the time of day, with notable games
             // taking turns; crossfades when it changes.
-            Crossfade(targetState = rememberHeadline(state), animationSpec = tween(600), label = "headline") { line ->
+            Crossfade(targetState = rememberHeadline(state, preview), animationSpec = tween(600), label = "headline") { line ->
                 Text(
                     line, color = colors.ink, fontSize = 34.sp,
                     fontWeight = FontWeight.Bold, letterSpacing = (-1).sp, modifier = side, maxLines = 1,

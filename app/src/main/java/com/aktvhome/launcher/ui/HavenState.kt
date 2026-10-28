@@ -21,6 +21,7 @@ import com.aktvhome.launcher.data.TvInput
 import com.aktvhome.launcher.data.Backup
 import com.aktvhome.launcher.data.Wallpapers
 import com.aktvhome.launcher.data.WatchNow
+import com.aktvhome.launcher.data.NbaCompanionStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.time.LocalTime
@@ -69,6 +70,7 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
     val packages = com.aktvhome.launcher.data.PackageScan(context)
     /** Cleanup's Disable and Restore, and the record of what it switched off. */
     val cleanup = com.aktvhome.launcher.data.CleanupRunner(context, packages, scope)
+    val nbaCompanion = NbaCompanionStore(context)
     val watchNow = WatchNow(
         context, scope, settingsStore,
         liveApps = { layoutStore.layout.collections.firstOrNull { it.id == "livetv" }?.apps?.toSet().orEmpty() },
@@ -100,6 +102,9 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
      * the schedule, the Last night recap). [onSummary] shows its Summary without changing the saved tab.
      */
     fun openGame(game: com.aktvhome.launcher.data.Game, onSummary: Boolean = false) {
+        if (settingsStore.settings.nbaLeagueEnabled) {
+            nbaCompanion.opened(game, settingsStore.settings.favoriteTeam)
+        }
         nbaSummaryFor = if (onSummary) game.espnId else null
         nbaGame = game.espnId to game.start.atZone(java.time.ZoneId.systemDefault()).toLocalDate()
         overlay = Overlay.NBA

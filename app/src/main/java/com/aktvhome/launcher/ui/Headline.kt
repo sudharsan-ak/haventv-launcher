@@ -2,6 +2,7 @@ package com.aktvhome.launcher.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -24,7 +25,24 @@ const val FIXED_HEADLINE = "What are we watching?"
  * then each notable game for about 10 s, then back. No notable games, no rotation.
  */
 @Composable
-fun rememberHeadline(state: HavenState): String {
+fun rememberHeadline(state: HavenState, preview: Boolean = false): String {
+    val s = state.settingsStore.settings
+    val recentGames = state.watchNow.homeRotationGames()
+    val fresh = state.watchNow.fresh(state.watchNow.today()) && !state.watchNow.nbaError
+    val enabled = !preview && s.headlineChanging && s.nbaLeagueEnabled &&
+        state.overlay == Overlay.NONE && !state.wallpaperView
+    LaunchedEffect(enabled, state.arrivals, recentGames, s.favoriteTeam, fresh) {
+        if (enabled && fresh) state.nbaCompanion.observeHome(recentGames, s.favoriteTeam)
+        if (!s.nbaLeagueEnabled || !s.headlineChanging) state.nbaCompanion.clear()
+    }
+    val moment = if (enabled && fresh) state.nbaCompanion.activeMoment else null
+    LaunchedEffect(moment) {
+        if (moment != null) {
+            delay(moment.seconds() * 1_000L)
+            state.nbaCompanion.expire(moment.key())
+        }
+    }
+    val special = if (enabled && fresh) state.nbaCompanion.headline(recentGames, s.hideScores) else null
     val notable = state.notableGames()
     var turn by remember { mutableIntStateOf(-1) }
     LaunchedEffect(notable.map { it.espnId }) {
@@ -40,7 +58,7 @@ fun rememberHeadline(state: HavenState): String {
         }
     }
     // Lines are rebuilt from the latest scores each time, so a turn never shows an old score.
-    return notable.getOrNull(turn)?.let { state.notableLine(it) } ?: state.headline()
+    return special ?: notable.getOrNull(turn)?.let { state.notableLine(it) } ?: state.headline()
 }
 
 /**

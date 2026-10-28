@@ -205,10 +205,16 @@ fun NbaPanel(state: HavenState, colors: ThemeColors) {
     fun returnCard(): String? = if (filter == GameFilter.SCHEDULES) teamCard else selected
     fun backToCard() { returnCard()?.let { runCatching { cardFocus(it).requestFocus() } } }
     fun openPane(id: String) {
+        if (s.nbaLeagueEnabled) {
+            w.findGame(id)?.first?.let { state.nbaCompanion.opened(it, s.favoriteTeam) }
+        }
         selected = id
         toPane++
     }
-    val close = { state.overlay = Overlay.NONE }
+    val close = {
+        state.nbaCompanion.closePanel()
+        state.overlay = Overlay.NONE
+    }
     LaunchedEffect(day) { w.loadDay(day) }
     val list = w.games[day]
     val anyLive = list?.any { it.state == GameState.LIVE } == true
