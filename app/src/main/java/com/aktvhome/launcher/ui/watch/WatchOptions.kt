@@ -65,7 +65,12 @@ fun watchOptions(game: Game, src: WatchSources): List<WatchOption> {
     // ABC/NBC/CBS/FOX appear under the local station's name, e.g. ABC = "WFAA 8".
     for (net in game.networks) {
         if (net !in TV_CHANNELS) continue
-        val hit = src.live.flatMap { g -> g.items.map { g to it } }.firstOrNull { (_, item) -> carries(item.title, net, src.localStations) }
+        val hit = src.live.flatMap { g -> g.items.map { g to it } }
+            .filter { (_, item) -> carries(item.title, net, src.localStations) }
+            // When a provider has multiple shared entries, prefer a live, directly linked one.
+            .sortedWith(compareByDescending<Pair<LiveGroup, TvItem>> { it.second.live && !it.second.intentUri.isNullOrBlank() }
+                .thenByDescending { !it.second.intentUri.isNullOrBlank() })
+            .firstOrNull()
         if (hit != null) {
             val app = src.labelOf(hit.first.pkg) ?: hit.first.provider
             options += WatchOption("Watch on $app · ${hit.second.title}", app) { src.openItem(hit.second) }
@@ -78,8 +83,17 @@ fun watchOptions(game: Game, src: WatchSources): List<WatchOption> {
         options += if (event != null) WatchOption("ESPN app · live stream", "ESPN") { src.openItem(event) }
         else WatchOption("ESPN app", "ESPN") { src.openApp(ESPN_APP) }
     }
-    if (PEACOCK in streaming) options += WatchOption("Peacock") { src.openApp(PEACOCK) }
-    if (PRIME in streaming) options += WatchOption("Prime Video") { src.openApp(PRIME) }
+    // If Peacock or Prime publishes this exact game to Android TV, use the actual
+    // content intent rather than resuming an unrelated last-opened screen.
+    for ((pkg, label) in listOf(PEACOCK to "Peacock", PRIME to "Prime Video")) {
+        if (pkg !in streaming) continue
+        val direct = (src.live + src.appRows).asSequence()
+            .filter { it.pkg == pkg }
+            .flatMap { it.items.asSequence() }
+            .firstOrNull { !it.intentUri.isNullOrBlank() && mentions(it, game) }
+        options += if (direct != null) WatchOption("$label · game", label) { src.openItem(direct) }
+            else WatchOption(label) { src.openApp(pkg) }
+    }
 
     options += nbaApp
     return options.distinctBy { it.label }
