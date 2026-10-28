@@ -12,12 +12,22 @@ import androidx.compose.ui.unit.dp
 import com.aktvhome.launcher.data.Nba
 import com.aktvhome.launcher.data.NbaRotationInterval
 import com.aktvhome.launcher.ui.HavenState
+import com.aktvhome.launcher.ui.HavenSettingSpec
 import com.aktvhome.launcher.ui.Pill
 import com.aktvhome.launcher.ui.theme.ThemeColors
 import com.aktvhome.launcher.ui.watch.NetImage
 
 internal enum class NbaLeagueSection(val label: String) {
-    OVERVIEW("Overview"), HOME_CARD("Home card"), ALERTS("Alerts"),
+    OVERVIEW("Overview"), HOME_CARD("Home card"), ALERTS("Alerts");
+
+    companion object {
+        /** Use the search catalog's real destination path, not a fragile ID allowlist. */
+        fun fromSetting(setting: HavenSettingSpec?): NbaLeagueSection = when {
+            setting?.path?.endsWith("· Alerts") == true -> ALERTS
+            setting?.path?.endsWith("· Home card") == true -> HOME_CARD
+            else -> OVERVIEW
+        }
+    }
 }
 
 /** A dedicated league page. The existing glassy picker host is provided by Personalize. */
