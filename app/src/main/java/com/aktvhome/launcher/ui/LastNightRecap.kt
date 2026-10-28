@@ -58,11 +58,12 @@ fun LastNightRecap(state: HavenState, colors: ThemeColors) {
 
     val home = life.isAtLeast(Lifecycle.State.RESUMED) && state.overlay == Overlay.NONE &&
         state.menuFor == null && !state.backup.offerRestore && !state.wallpaperView &&
+        s.nbaLeagueEnabled &&
         (state.setup.offered || com.aktvhome.launcher.data.Setup.needed(state.device.status).isEmpty())
     val today = LocalDate.now()
     val yesterday = today.minusDays(1)
     // state.now ticks every 15 s, so 6 AM and a new day are noticed while Home sits open.
-    val ready = s.lastNightRecap && home && state.now >= LocalTime.of(6, 0) && prefs.getString("shown", null) != today.toString()
+    val ready = s.nbaLeagueEnabled && s.lastNightRecap && home && state.now >= LocalTime.of(6, 0) && prefs.getString("shown", null) != today.toString()
 
     // Yesterday's scoreboard, fetched within the last 10 minutes (it's been final since the night).
     LaunchedEffect(ready, yesterday) { if (ready) w.loadDay(yesterday, maxAgeMs = 10 * 60_000L) }

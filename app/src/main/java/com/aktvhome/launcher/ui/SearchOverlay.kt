@@ -500,6 +500,7 @@ private fun searchItems(state: HavenState): List<SearchItem> = buildList {
             val kind = if (item.live) "Live now" else "TV channel or program"
             add(tvItem(item, "$provider · $kind", "Open ${item.title} in $provider"))
         }
+    if (state.settingsStore.settings.nbaLeagueEnabled) {
     val favorite = state.settingsStore.settings.favoriteTeam
     Nba.TEAMS.sortedWith(compareBy<Pair<String, String>> { it.first != favorite }.thenBy { it.second }).forEach { (abbr, name) ->
         val nickname = name.substringAfterLast(' ')
@@ -528,6 +529,7 @@ private fun searchItems(state: HavenState): List<SearchItem> = buildList {
                 SearchCategory.SPORTS, SearchTarget.NbaGame(game), imageUrl = Nba.logo(game.home),
             ),
         )
+    }
     }
 }
 

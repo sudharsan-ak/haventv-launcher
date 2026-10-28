@@ -71,7 +71,7 @@ class NbaAlerts(
         // Settings change in Haven's own copy; read them fresh each round.
         val s = withContext(Dispatchers.Main) { store.reload(); store.settings }
         // Off: nothing is fetched, only checked again soon so turning it on takes effect.
-        if (!s.alertsMine && !s.alertsOthers) return RETRY_MS
+        if (!s.nbaLeagueEnabled || (!s.alertsMine && !s.alertsOthers)) return RETRY_MS
         val today = LocalDate.now()
         val yesterday = today.minusDays(1)
         val todayGames = withContext(Dispatchers.IO) { Nba.scoreboard(today) }
@@ -91,7 +91,9 @@ class NbaAlerts(
         }
         memory.prune(games.map { it.espnId }.toSet())
         save()
-        alerts.forEach(show)
+        // The user might have switched the league off during the fetch.
+        val enabledNow = withContext(Dispatchers.Main) { store.reload(); store.settings.nbaLeagueEnabled }
+        if (enabledNow) alerts.forEach(show)
         return nextPoll(games, todayGames, System.currentTimeMillis())
     }
 
