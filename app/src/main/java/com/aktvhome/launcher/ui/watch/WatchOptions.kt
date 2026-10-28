@@ -123,7 +123,8 @@ fun youtubeTvChannelCandidates(
         val t = title.trim().uppercase().replace(Regex("\\s+"), " ")
         if (nets.any { carries(title, it, localStations) }) return true
         if (nets.any { it == "NBC" || "PEACOCK" in it || it.startsWith("NBC") }) {
-            if (t.startsWith("NBCSN") || t.startsWith("NBC SPORTS") || t.startsWith("NBC ")) return true
+            if (t == "NBC" || t.startsWith("NBCSN") || t.startsWith("NBC SPORTS") ||
+                t.startsWith("NBC ") || localStations["NBC"]?.equals(title, ignoreCase = true) == true) return true
         }
         if (nets.any { it.startsWith("ESPN") || it == "ABC" }) {
             if (t.startsWith("ESPN") || t.startsWith("ESPNU")) return true
