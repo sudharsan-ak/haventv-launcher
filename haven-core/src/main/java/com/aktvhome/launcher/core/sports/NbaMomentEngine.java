@@ -7,15 +7,40 @@ package com.aktvhome.launcher.core.sports;
 public final class NbaMomentEngine {
     private NbaMomentEngine() {}
 
-    public record Snapshot(
-        String id, String awayAbbr, String homeAbbr, String awayName, String homeName,
-        int awayScore, int homeScore, int period, String state, long observedAt
-    ) {
+    /** Stable game score observation; regular class avoids record desugaring on older TVs. */
+    public static final class Snapshot {
+        private final String id, awayAbbr, homeAbbr, awayName, homeName, state;
+        private final int awayScore, homeScore, period;
+        private final long observedAt;
+
+        public Snapshot(String id, String awayAbbr, String homeAbbr, String awayName, String homeName,
+                        int awayScore, int homeScore, int period, String state, long observedAt) {
+            this.id = id;
+            this.awayAbbr = awayAbbr;
+            this.homeAbbr = homeAbbr;
+            this.awayName = awayName;
+            this.homeName = homeName;
+            this.awayScore = awayScore;
+            this.homeScore = homeScore;
+            this.period = period;
+            this.state = state;
+            this.observedAt = observedAt;
+        }
+        public String id() { return id; }
+        public String awayAbbr() { return awayAbbr; }
+        public String homeAbbr() { return homeAbbr; }
+        public String awayName() { return awayName; }
+        public String homeName() { return homeName; }
+        public int awayScore() { return awayScore; }
+        public int homeScore() { return homeScore; }
+        public int period() { return period; }
+        public String state() { return state; }
+        public long observedAt() { return observedAt; }
         public boolean hasScores() { return awayScore >= 0 && homeScore >= 0; }
         public boolean live() { return "LIVE".equals(state); }
         public boolean finalGame() { return "FINAL".equals(state); }
         public boolean involves(String abbr) {
-            return abbr != null && !abbr.isBlank() && (abbr.equals(awayAbbr) || abbr.equals(homeAbbr));
+            return abbr != null && !abbr.isEmpty() && (abbr.equals(awayAbbr) || abbr.equals(homeAbbr));
         }
         public int margin(String abbr) {
             return abbr.equals(awayAbbr) ? awayScore - homeScore : homeScore - awayScore;
@@ -31,12 +56,30 @@ public final class NbaMomentEngine {
         }
     }
 
-    public record Moment(
-        String key, String headline, String detail, String safeHeadline, String safeDetail,
-        boolean liveOnly, boolean urgent, int seconds
-    ) {
+    public static final class Moment {
+        private final String key, headline, detail, safeHeadline, safeDetail;
+        private final boolean liveOnly, urgent;
+        private final int seconds;
+
+        public Moment(String key, String headline, String detail, String safeHeadline, String safeDetail,
+                      boolean liveOnly, boolean urgent, int seconds) {
+            this.key = key;
+            this.headline = headline;
+            this.detail = detail;
+            this.safeHeadline = safeHeadline;
+            this.safeDetail = safeDetail;
+            this.liveOnly = liveOnly;
+            this.urgent = urgent;
+            this.seconds = seconds;
+        }
+        public String key() { return key; }
+        public String headline() { return headline; }
+        public String detail() { return detail; }
         public String headline(boolean hideScores) { return hideScores ? safeHeadline : headline; }
         public String detail(boolean hideScores) { return hideScores ? safeDetail : detail; }
+        public boolean liveOnly() { return liveOnly; }
+        public boolean urgent() { return urgent; }
+        public int seconds() { return seconds; }
     }
 
     private static boolean compatible(Snapshot a, Snapshot b) {
