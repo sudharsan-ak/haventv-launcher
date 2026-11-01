@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
 import android.media.MediaMetadata
+import android.util.Log
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
 import android.os.SystemClock
@@ -30,6 +31,10 @@ data class PlayingMedia(
     val returnToSession: PendingIntent?,
 )
 
+/** Choose a safe label when an otherwise-valid media session does not publish a title. */
+fun mediaSessionTitle(vararg candidates: String?): String =
+    candidates.firstOrNull { !it.isNullOrBlank() }?.trim() ?: "Resume playback"
+
 /** Keep playing sessions first; paused sessions are eligible only while the app retains them. */
 fun sortMediaSessions(items: List<PlayingMedia>): List<PlayingMedia> =
     items.sortedWith(compareBy<PlayingMedia> { it.kind == PlaybackKind.PAUSED }
@@ -41,55 +46,100 @@ class NowPlayingRepository(private val context: Context) {
     var sessions by mutableStateOf<List<PlayingMedia>>(emptyList())
         private set
 
-    fun clear() { sessions = emptyList() }
+    /** Visible in Watch Now settings so a missing card is diagnosable on the TV. */
+    var detectionStatus by mutableStateOf("Checking Android media sessions…")
+        private set
+
+    fun clear() {
+        sessions = emptyList()
+        detectionStatus = "Now Playing is switched off."
+    }
 
     suspend fun refresh() {
         if (!NbaAlerts.canSeePlaying(context)) {
-            clear()
+            sessions = emptyList()
+            detectionStatus = "Notification access is not enabled for Haven."
             return
         }
-        val found = withContext(Dispatchers.IO) {
+        val result = withContext(Dispatchers.IO) {
             runCatching {
                 val manager = context.getSystemService(MediaSessionManager::class.java)
                 val component = ComponentName(context, HavenMediaListener::class.java)
                 val now = SystemClock.elapsedRealtime()
-                manager.getActiveSessions(component).mapNotNull { controller ->
-                    val playback = controller.playbackState ?: return@mapNotNull null
-                    val kind = when (playback.state) {
-                        PlaybackState.STATE_PLAYING -> PlaybackKind.PLAYING
-                        PlaybackState.STATE_BUFFERING -> PlaybackKind.BUFFERING
-                        PlaybackState.STATE_PAUSED -> PlaybackKind.PAUSED
-                        else -> return@mapNotNull null
+                val controllers = manager.getActiveSessions(component)
+                val excluded = mutableListOf<String>()
+                val found = controllers.mapNotNull { controller ->
+                    // A misbehaving third-party session must not hide every other player's session.
+                    runCatching {
+                        val playback = controller.playbackState
+                        val kind = when (playback?.state) {
+                            PlaybackState.STATE_PLAYING -> PlaybackKind.PLAYING
+                            PlaybackState.STATE_BUFFERING -> PlaybackKind.BUFFERING
+                            PlaybackState.STATE_PAUSED -> PlaybackKind.PAUSED
+                            else -> null
+                        }
+                        if (kind == null) {
+                            excluded.add("${controller.packageName}: not playing/paused (state ${playback?.state ?: "unknown"})")
+                            null
+                        } else {
+                            val updated = playback.lastPositionUpdateTime
+                            if (kind == PlaybackKind.PAUSED && updated > 0 &&
+                                now - updated > MAX_PAUSED_AGE_MS) {
+                                excluded.add("${controller.packageName}: stale paused session")
+                                null
+                            } else {
+                                val metadata = controller.metadata
+                                val description = metadata?.description
+                                val title = mediaSessionTitle(
+                                    description?.title?.toString(),
+                                    metadata?.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE),
+                                    metadata?.getString(MediaMetadata.METADATA_KEY_TITLE),
+                                )
+                                val art = runCatching {
+                                    val image = description?.iconBitmap
+                                        ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
+                                        ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
+                                        ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+                                    image?.asImageBitmap()
+                                }.getOrNull()
+                                PlayingMedia(
+                                    id = "${controller.packageName}:${controller.sessionToken}",
+                                    pkg = controller.packageName,
+                                    title = title,
+                                    subtitle = description?.subtitle?.toString(),
+                                    kind = kind,
+                                    lastUpdated = updated,
+                                    artwork = art,
+                                    returnToSession = controller.sessionActivity,
+                                )
+                            }
+                        }
+                    }.getOrElse { error ->
+                        excluded.add("${controller.packageName}: ${error.javaClass.simpleName}")
+                        null
                     }
-                    // Ignore an abandoned paused session instead of showing yesterday's video.
-                    val updated = playback.lastPositionUpdateTime
-                    if (kind == PlaybackKind.PAUSED && updated > 0 &&
-                        now - updated > MAX_PAUSED_AGE_MS) return@mapNotNull null
-                    val metadata = controller.metadata
-                    val description = metadata?.description
-                    val title = description?.title?.toString()?.trim()
-                        ?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-                    val art = runCatching {
-                        val image = description?.iconBitmap
-                            ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
-                            ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
-                            ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
-                        image?.asImageBitmap()
-                    }.getOrNull()
-                    PlayingMedia(
-                        id = "${controller.packageName}:${controller.sessionToken}",
-                        pkg = controller.packageName,
-                        title = title,
-                        subtitle = description?.subtitle?.toString(),
-                        kind = kind,
-                        lastUpdated = updated,
-                        artwork = art,
-                        returnToSession = controller.sessionActivity,
-                    )
                 }
-            }.getOrDefault(emptyList())
+                val status = when {
+                    controllers.isEmpty() ->
+                        "Android reports 0 media sessions. Check SmartTube's session with ADB."
+                    found.isNotEmpty() ->
+                        "${found.size} usable of ${controllers.size} Android media sessions: " +
+                            found.joinToString { it.pkg.substringAfterLast('.') }
+                    else ->
+                        "${controllers.size} Android media sessions, none eligible: " +
+                            excluded.take(2).joinToString("; ")
+                }
+                found to status
+            }.getOrElse { error ->
+                emptyList<PlayingMedia>() to
+                    "Cannot read Android media sessions: ${error.javaClass.simpleName}"
+            }
         }
-        sessions = sortMediaSessions(found).take(MAX_SESSIONS)
+        sessions = sortMediaSessions(result.first).take(MAX_SESSIONS)
+        if (detectionStatus != result.second) {
+            detectionStatus = result.second
+            Log.i("HavenNowPlaying", detectionStatus)
+        }
     }
 
     /** Prefer the app-provided media return action, then its normal TV launch intent. */

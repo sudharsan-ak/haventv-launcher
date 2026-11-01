@@ -4,6 +4,11 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class NowPlayingSortTest {
+    @Test fun missingMetadataUsesAResumeLabel() {
+        assertEquals("Resume playback", mediaSessionTitle(null, " ", null))
+        assertEquals("Current video", mediaSessionTitle(" ", " Current video ", "Other title"))
+    }
+
     private fun item(id: String, kind: PlaybackKind, updated: Long) =
         PlayingMedia(id, "sample.app", id, null, kind, updated, null, null)
 

@@ -589,12 +589,16 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                                 "Replace the Continue card while a TV media app has an active playing or paused session.",
                                 s.showNowPlaying, colors,
                             ) { store.update { it.copy(showNowPlaying = !it.showNowPlaying) } }
-                            if (s.showNowPlaying && !NbaAlerts.canSeePlaying(LocalContext.current)) {
-                                SettingsStatusRow(
-                                    "Media session access",
-                                    "Notification access is needed for Now Playing. One-time setup: ${NbaAlerts.GRANT_COMMAND}",
-                                    colors,
-                                )
+                            if (s.showNowPlaying) {
+                                if (!NbaAlerts.canSeePlaying(LocalContext.current)) {
+                                    SettingsStatusRow(
+                                        "Media session access",
+                                        "Notification access is needed for Now Playing. One-time setup: ${NbaAlerts.GRANT_COMMAND}",
+                                        colors,
+                                    )
+                                } else {
+                                    SettingsStatusRow("Media detection", state.nowPlaying.detectionStatus, colors)
+                                }
                             }
                             SettingsToggleRow("Continue watching", "Shows from apps that share progress with the TV.", s.watchContinue, colors) {
                                 store.update { it.copy(watchContinue = !it.watchContinue) }
