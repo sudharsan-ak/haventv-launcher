@@ -1,6 +1,7 @@
 package com.aktvhome.launcher.data
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -13,7 +14,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -29,12 +33,30 @@ class Wallpapers(context: Context, private val scope: CoroutineScope, private va
 
     private val dir = File(context.filesDir, "wallpapers").apply { mkdirs() }
     private val prefs = context.getSharedPreferences("wallpaper", Context.MODE_PRIVATE)
+    private val customFile = File(dir, "custom_wallpaper.jpg")
 
-    var current by mutableStateOf<ImageBitmap?>(null)
+    private var rotatingPhoto by mutableStateOf<ImageBitmap?>(null)
+    var customPhoto by mutableStateOf<ImageBitmap?>(null)
         private set
-    /** e.g. "Autumn in Naejangsan National Park · Bing". */
-    var credit by mutableStateOf(prefs.getString("credit", "") ?: "")
+
+    /** One shared wallpaper for Kingdom and Tide, selected by source setting. */
+    val current: ImageBitmap?
+        get() = if (settingsStore.settings.wallpaperMode == WallpaperMode.MY_PHOTO) {
+            customPhoto ?: rotatingPhoto
+        } else rotatingPhoto
+
+    private var rotatingCredit by mutableStateOf(prefs.getString("credit", "") ?: "")
+    val credit: String
+        get() = if (settingsStore.settings.wallpaperMode == WallpaperMode.MY_PHOTO && customPhoto != null)
+            "My photo" else rotatingCredit
+
+    data class PreparedPhoto(val jpegBytes: ByteArray, val image: ImageBitmap, val name: String)
+    var pendingPhoto by mutableStateOf<PreparedPhoto?>(null)
         private set
+
+    init {
+        customPhoto = runCatching { if (customFile.exists()) decode(customFile.readBytes()) else null }.getOrNull()
+    }
     /** One line for the settings page: what happened last. */
     var status by mutableStateOf("")
         private set
@@ -43,6 +65,97 @@ class Wallpapers(context: Context, private val scope: CoroutineScope, private va
     private var retryAt = 0L
 
     fun lastChange(): Long = prefs.getLong("lastChange", 0L)
+
+    /** The online photo remains cached when switching to a custom wallpaper and back. */
+    fun setMode(mode: WallpaperMode) {
+        if (mode == settingsStore.settings.wallpaperMode) return
+        prefs.edit()
+            .putLong("rotationRevision", prefs.getLong("rotationRevision", 0L) + 1)
+            .putLong("lastChange", System.currentTimeMillis())
+            .apply()
+        settingsStore.update { it.copy(wallpaperMode = mode) }
+        status = if (mode == WallpaperMode.MY_PHOTO && customPhoto == null)
+            "Choose a photo from the TV or send one from a device."
+        else if (mode == WallpaperMode.MY_PHOTO) "Using your photo." else "Rotating photos resumed."
+        if (mode == WallpaperMode.ROTATING) tick()
+    }
+
+    /** Stage one validated, resized image. This does not alter the current wallpaper. */
+    suspend fun prepare(bytes: ByteArray, name: String): Boolean {
+        val photo = withContext(Dispatchers.IO) {
+            if (bytes.isEmpty() || bytes.size > MAX_IMPORT_BYTES) return@withContext null
+            runCatching {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                require(bounds.outWidth in 1..12000 && bounds.outHeight in 1..12000)
+                require(bounds.outWidth.toLong() * bounds.outHeight <= 60_000_000L)
+                var sample = 1
+                while (bounds.outWidth / sample > 3840 || bounds.outHeight / sample > 2160) sample *= 2
+                val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size,
+                    BitmapFactory.Options().apply { inSampleSize = sample }) ?: error("Unreadable image")
+                val scale = minOf(1f, 1920f / decoded.width, 1080f / decoded.height)
+                val width = (decoded.width * scale).toInt().coerceAtLeast(1)
+                val height = (decoded.height * scale).toInt().coerceAtLeast(1)
+                val optimized = if (width != decoded.width || height != decoded.height)
+                    Bitmap.createScaledBitmap(decoded, width, height, true) else decoded
+                val output = ByteArrayOutputStream()
+                require(optimized.compress(Bitmap.CompressFormat.JPEG, 88, output))
+                if (optimized !== decoded) decoded.recycle()
+                PreparedPhoto(output.toByteArray(), optimized.asImageBitmap(), name.take(80))
+            }.getOrNull()
+        }
+        if (photo == null) {
+            status = "Couldn't import the photo. Use JPG, PNG or WebP under 16 MB."
+            return false
+        }
+        pendingPhoto = photo
+        status = "Photo ready to preview."
+        return true
+    }
+
+    fun cancelPending() { pendingPhoto = null }
+
+    /** Atomic replacement leaves the old custom wallpaper intact if an import fails. */
+    suspend fun applyPending(fit: WallpaperFit): Boolean {
+        val prepared = pendingPhoto ?: return false
+        val saved = withContext(Dispatchers.IO) {
+            runCatching {
+                val tmp = File(dir, "custom_wallpaper.tmp")
+                tmp.writeBytes(prepared.jpegBytes)
+                try {
+                    Files.move(tmp.toPath(), customFile.toPath(),
+                        StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+                } finally {
+                    tmp.delete()
+                }
+            }.isSuccess
+        }
+        if (!saved) {
+            status = "Couldn't save the photo. Your old wallpaper is unchanged."
+            return false
+        }
+        customPhoto = prepared.image
+        pendingPhoto = null
+        prefs.edit().putLong("rotationRevision", prefs.getLong("rotationRevision", 0L) + 1).apply()
+        settingsStore.update { s ->
+            s.copy(
+                wallpaperMode = WallpaperMode.MY_PHOTO,
+                wallpaperFit = fit,
+                bgKingdom = if (s.theme == ThemeId.KINGDOM) Background.PHOTO else s.bgKingdom,
+                bgTide = if (s.theme == ThemeId.TIDE) Background.PHOTO else s.bgTide,
+            )
+        }
+        status = "Your photo is now the wallpaper."
+        return true
+    }
+
+    /** Backup restore changes the image file outside settings, so refresh both caches. */
+    fun reload() {
+        rotatingPhoto = null
+        loadSaved()
+        customPhoto = runCatching { if (customFile.exists()) decode(customFile.readBytes()) else null }.getOrNull()
+        pendingPhoto = null
+    }
 
     /** Invalidates an in-flight download, including when pin is turned off before it finishes. */
     fun setPinned(pinned: Boolean) {
@@ -64,11 +177,14 @@ class Wallpapers(context: Context, private val scope: CoroutineScope, private va
         val s = settingsStore.settings
         val wanted = s.bgKingdom == Background.PHOTO || s.bgTide == Background.PHOTO
         if (!wanted && !force) return
-        if (current == null) loadSaved()
+        if (rotatingPhoto == null) loadSaved()
+        // The imported wallpaper never rotates; if it is missing, the saved online
+        // photo remains a safe fallback rather than showing a blank screen.
+        if (s.wallpaperMode == WallpaperMode.MY_PHOTO && customPhoto != null) return
         // Pinning always wins, even over the explicit Next photo action.
-        if (s.wallpaperPinned) return
+        if (s.wallpaperPinned && s.wallpaperMode == WallpaperMode.ROTATING) return
         val now = System.currentTimeMillis()
-        val due = force || current == null || now - lastChange() >= s.wallInterval.millis
+        val due = force || rotatingPhoto == null || now - lastChange() >= s.wallInterval.millis
         if (!due || busy || (!force && now < retryAt)) return
         busy = true
         status = "Fetching a new photo…"
@@ -88,7 +204,7 @@ class Wallpapers(context: Context, private val scope: CoroutineScope, private va
     private fun loadSaved() {
         val name = prefs.getString("file", null) ?: return
         val f = File(dir, name)
-        if (f.exists()) current = decode(f.readBytes())
+        if (f.exists()) rotatingPhoto = decode(f.readBytes())
     }
 
     private suspend fun fetchNext(s: Settings, revision: Long) {
@@ -120,8 +236,8 @@ class Wallpapers(context: Context, private val scope: CoroutineScope, private va
                 if (settingsStore.settings.wallpaperPinned) status = "Current photo pinned. Rotation paused."
                 false
             } else {
-                current = bmp
-                credit = c.credit
+                rotatingPhoto = bmp
+                rotatingCredit = c.credit
                 prefs.edit()
                     .putString("file", name).putString("credit", c.credit)
                     .putLong("lastChange", System.currentTimeMillis())
@@ -240,6 +356,7 @@ class Wallpapers(context: Context, private val scope: CoroutineScope, private va
     private fun text(bytes: ByteArray) = String(bytes, Charsets.UTF_8)
 
     private companion object {
+        const val MAX_IMPORT_BYTES = 16 * 1024 * 1024
         const val KEEP = 20
         const val RECENT = 60
         const val RETRY_MS = 10 * 60_000L
