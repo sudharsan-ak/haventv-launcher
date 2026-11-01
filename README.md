@@ -21,6 +21,11 @@ and tested on a Sony BRAVIA running Google TV (Android 12).
   pick an icon from 24, hide apps you don't use. HDMI inputs are a row of their own.
 - **Universal Search**: find and open apps, settings, collections, HDMI inputs, Watch Now content
   and NBA teams/games from one place, with a configurable SmartTube or YouTube search handoff.
+- **Now Playing**: optionally show available Android media sessions in the Home Continue card,
+  browse playing and paused sessions with Left/Right or tappable arrows, and return to the app.
+  Requires Android notification-listener access; availability depends on each media app.
+- **Pin wallpaper**: keep the current downloaded photo until you unpin it, then restart the
+  normal rotation timer without immediately changing the photo.
 - **Real app art**: uses each app's own TV banner or icon; the glow follows the focused app's color.
 - **Quick settings and Personalize**: a gear opens quick toggles; *All settings* opens a glass
   panel over the live home, so every change previews instantly. Settings are grouped into

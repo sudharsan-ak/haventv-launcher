@@ -23,6 +23,8 @@ import com.aktvhome.launcher.data.Backup
 import com.aktvhome.launcher.data.Wallpapers
 import com.aktvhome.launcher.data.WatchNow
 import com.aktvhome.launcher.data.NbaCompanionStore
+import com.aktvhome.launcher.data.NowPlayingRepository
+import com.aktvhome.launcher.data.PlayingMedia
 import com.aktvhome.launcher.data.YouTubeSearchProvider
 import com.aktvhome.launcher.data.chooseYouTubeSearchProvider
 import kotlinx.coroutines.CoroutineScope
@@ -53,6 +55,7 @@ data class ShownCollection(val collection: AppCollection, val apps: List<AppEntr
 class HavenState(private val context: Context, private val scope: CoroutineScope) {
 
     private val appRepo = AppRepository(context)
+    val nowPlaying = NowPlayingRepository(context)
     private val inputRepo = InputRepository(context)
     val layoutStore = LayoutStore(context)
     val settingsStore = SettingsStore(context)
@@ -219,6 +222,10 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         runCatching { context.startActivity(intent) }
             .onFailure { toast("Can't open settings for ${app.label}") }
+    }
+
+    fun openPlayingMedia(media: PlayingMedia) {
+        if (!nowPlaying.open(media)) toast("Can\'t return to ${apps[media.pkg]?.label ?: media.pkg}")
     }
 
     fun switchTo(input: TvInput) {

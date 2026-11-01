@@ -44,20 +44,38 @@ class Wallpapers(context: Context, private val scope: CoroutineScope, private va
 
     fun lastChange(): Long = prefs.getLong("lastChange", 0L)
 
+    /** Invalidates an in-flight download, including when pin is turned off before it finishes. */
+    fun setPinned(pinned: Boolean) {
+        val revision = prefs.getLong("rotationRevision", 0L) + 1L
+        prefs.edit().putLong("rotationRevision", revision).apply()
+        settingsStore.update { it.copy(wallpaperPinned = pinned) }
+        if (!pinned) {
+            // Start the next interval now, without immediately replacing the retained photo.
+            prefs.edit().putLong("lastChange", System.currentTimeMillis()).apply()
+            retryAt = 0L
+            status = "Rotation resumed. The current photo stays until the next interval."
+        } else {
+            status = "Current photo pinned. Rotation paused."
+        }
+    }
+
     /** Called every ~15 s while Haven is open. [force] = "Next wallpaper now". */
     fun tick(force: Boolean = false) {
         val s = settingsStore.settings
         val wanted = s.bgKingdom == Background.PHOTO || s.bgTide == Background.PHOTO
         if (!wanted && !force) return
         if (current == null) loadSaved()
+        // Pinning always wins, even over the explicit Next photo action.
+        if (s.wallpaperPinned) return
         val now = System.currentTimeMillis()
         val due = force || current == null || now - lastChange() >= s.wallInterval.millis
         if (!due || busy || (!force && now < retryAt)) return
         busy = true
         status = "Fetching a new photo…"
+        val revision = prefs.getLong("rotationRevision", 0L)
         scope.launch(Dispatchers.IO) {
             try {
-                fetchNext(s)
+                fetchNext(s, revision)
             } catch (e: Exception) {
                 retryAt = System.currentTimeMillis() + RETRY_MS
                 status = "Couldn't fetch a photo (${e.message ?: e.javaClass.simpleName}). Retrying in 10 minutes."
@@ -73,7 +91,7 @@ class Wallpapers(context: Context, private val scope: CoroutineScope, private va
         if (f.exists()) current = decode(f.readBytes())
     }
 
-    private suspend fun fetchNext(s: Settings) {
+    private suspend fun fetchNext(s: Settings, revision: Long) {
         val sources = s.wallSources.filter { it != WallSource.UNSPLASH || s.unsplashKey.isNotBlank() }
         if (sources.isEmpty()) {
             status = "No sources switched on."
@@ -89,20 +107,36 @@ class Wallpapers(context: Context, private val scope: CoroutineScope, private va
         val c = pick ?: throw IllegalStateException("no photo available")
         val bytes = get(c.url, c.headers)
         val bmp = decode(bytes) ?: throw IllegalStateException("unreadable image")
+        // If the user pins the current wallpaper during a download, discard the fetched image.
+        // The final check runs on Main, where settings changes and the visible photo are updated.
+        if (settingsStore.settings.wallpaperPinned ||
+            prefs.getLong("rotationRevision", 0L) != revision) return
         val name = "w_${System.currentTimeMillis()}.jpg"
-        File(dir, name).writeBytes(bytes)
-        c.ping?.let { runCatching { get(it, c.headers) } } // Unsplash asks to be told when a photo is used.
-        withContext(Dispatchers.Main) {
-            current = bmp
-            credit = c.credit
+        val file = File(dir, name)
+        file.writeBytes(bytes)
+        val accepted = withContext(Dispatchers.Main) {
+            if (settingsStore.settings.wallpaperPinned ||
+                prefs.getLong("rotationRevision", 0L) != revision) {
+                if (settingsStore.settings.wallpaperPinned) status = "Current photo pinned. Rotation paused."
+                false
+            } else {
+                current = bmp
+                credit = c.credit
+                prefs.edit()
+                    .putString("file", name).putString("credit", c.credit)
+                    .putLong("lastChange", System.currentTimeMillis())
+                    .putString("recent", JSONArray((recent + c.url).takeLast(RECENT)).toString())
+                    .apply()
+                status = "Updated: ${c.credit}"
+                true
+            }
         }
-        prefs.edit()
-            .putString("file", name).putString("credit", c.credit)
-            .putLong("lastChange", System.currentTimeMillis())
-            .putString("recent", JSONArray((recent + c.url).takeLast(RECENT)).toString())
-            .apply()
+        if (!accepted) {
+            file.delete()
+            return
+        }
+        c.ping?.let { runCatching { get(it, c.headers) } } // Unsplash asks to be told when a photo is used.
         prune()
-        status = "Updated: ${c.credit}"
     }
 
     private data class Candidate(val url: String, val credit: String, val ping: String? = null, val headers: Map<String, String> = emptyMap())

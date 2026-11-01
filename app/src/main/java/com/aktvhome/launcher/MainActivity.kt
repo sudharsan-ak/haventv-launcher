@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.aktvhome.launcher.data.Background
 import com.aktvhome.launcher.data.HomeOverride
 import com.aktvhome.launcher.data.PrivateDns
@@ -80,6 +81,21 @@ class MainActivity : ComponentActivity() {
                     state.backup.tick()
                     state.sony.refreshIfDue()
                     delay(15_000)
+                }
+            }
+
+            // Media sessions refresh only while Haven is visible. Avoid polling in the background.
+            val mediaLifecycle = LocalLifecycleOwner.current.lifecycle
+            LaunchedEffect(mediaLifecycle, s.showNowPlaying) {
+                if (!s.showNowPlaying) {
+                    state.nowPlaying.clear()
+                } else {
+                    mediaLifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                        while (true) {
+                            state.nowPlaying.refresh()
+                            delay(3_000)
+                        }
+                    }
                 }
             }
 

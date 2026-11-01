@@ -79,6 +79,7 @@ import com.aktvhome.launcher.data.Defaults
 import com.aktvhome.launcher.data.DnsChoice
 import com.aktvhome.launcher.data.HomeOverride
 import com.aktvhome.launcher.data.Nba
+import com.aktvhome.launcher.data.NbaAlerts
 import com.aktvhome.launcher.data.WATCH_SECTIONS
 import com.aktvhome.launcher.data.LOCAL_NETWORKS
 import com.aktvhome.launcher.data.PrivateDns
@@ -404,7 +405,18 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                                 store.update { it.copy(bgTide = if (it.bgTide == Background.PHOTO) Background.SCENE else Background.PHOTO) }
                                 walls.tick()
                             }
-                            SettingsActionRow("Next photo now", "Fetch a new one", "Next photo now", colors) { walls.tick(force = true) }
+                            SettingsActionRow(
+                                "Next photo now",
+                                if (s.wallpaperPinned) "Unpin the current photo before changing it." else "Fetch a new one",
+                                "Next photo now", colors, enabled = !s.wallpaperPinned,
+                            ) { walls.tick(force = true) }
+                            SettingsToggleRow(
+                                "Keep current photo",
+                                if (s.wallpaperPinned) "Pinned. Automatic wallpaper changes are paused." else "Keep this photo until you turn this off.",
+                                s.wallpaperPinned, colors, enabled = s.wallpaperPinned || walls.current != null,
+                            ) {
+                                walls.setPinned(!s.wallpaperPinned)
+                            }
                             SettingsStatusRow(
                                 "Wallpaper view",
                                 "Press Back on the home screen to see just the wallpaper. Press any button to bring Haven back.",
@@ -591,6 +603,39 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                         Page.ABOUT -> AboutCard(colors, first)
                         Page.THIS_TV -> ThisTvPage(state, colors, first)
                         Page.WATCH_NOW -> {
+                            SettingsToggleRow(
+                                "Show Now Playing on Home",
+                                "Replace the Continue card while a TV media app has an active playing or paused session.",
+                                s.showNowPlaying, colors,
+                            ) { store.update { it.copy(showNowPlaying = !it.showNowPlaying) } }
+                            SettingsToggleRow(
+                                "Scroll long video titles",
+                                "Scroll titles that don't fit inside the Now Playing card.",
+                                s.scrollNowPlayingTitles, colors,
+                                enabled = s.showNowPlaying,
+                            ) { store.update { it.copy(scrollNowPlayingTitles = !it.scrollNowPlayingTitles) } }
+                            SettingsChoiceRow(
+                                "Pause between title scrolls",
+                                "Wait before repeating a long video title. Off means no extra pause.",
+                                if (s.nowPlayingTitlePauseSeconds == 0) "Off (No pause)" else "${s.nowPlayingTitlePauseSeconds} seconds",
+                                listOf(SettingsPickerOption("0", "Off (No pause)")) +
+                                    (3..10).map { seconds ->
+                                        SettingsPickerOption(seconds.toString(), "$seconds seconds" + if (seconds == 3) " (Default)" else "")
+                                    },
+                                s.nowPlayingTitlePauseSeconds.toString(), colors,
+                                enabled = s.showNowPlaying && s.scrollNowPlayingTitles,
+                            ) { value ->
+                                store.update { it.copy(nowPlayingTitlePauseSeconds = value.toInt()) }
+                            }
+                            // Keep the access reminder when permission is missing, but hide
+                            // the temporary media-session diagnostics during normal use.
+                            if (s.showNowPlaying && !NbaAlerts.canSeePlaying(LocalContext.current)) {
+                                SettingsStatusRow(
+                                    "Media session access",
+                                    "Notification access is needed for Now Playing. One-time setup: ${NbaAlerts.GRANT_COMMAND}",
+                                    colors,
+                                )
+                            }
                             SettingsToggleRow("Continue watching", "Shows from apps that share progress with the TV.", s.watchContinue, colors) {
                                 store.update { it.copy(watchContinue = !it.watchContinue) }
                             }

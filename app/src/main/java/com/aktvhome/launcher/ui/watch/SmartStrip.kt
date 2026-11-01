@@ -2,7 +2,11 @@ package com.aktvhome.launcher.ui.watch
 
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.MarqueeSpacing
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -29,6 +35,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import android.view.KeyEvent
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.Icon
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -38,6 +53,8 @@ import com.aktvhome.launcher.data.Game
 import com.aktvhome.launcher.data.GameState
 import com.aktvhome.launcher.data.Nba
 import com.aktvhome.launcher.data.NbaRotation
+import com.aktvhome.launcher.data.PlaybackKind
+import com.aktvhome.launcher.data.PlayingMedia
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.Overlay
 import com.aktvhome.launcher.ui.theme.ThemeColors
@@ -50,7 +67,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /** True when at least one Watch Now section is switched on, so the strip has something to show. */
-fun HavenState.stripVisible(): Boolean = settingsStore.settings.let { it.nbaCardEnabled() || it.watchContinue || it.watchLive }
+fun HavenState.stripVisible(): Boolean = settingsStore.settings.let { it.nbaCardEnabled() || it.watchContinue || it.watchLive || (it.showNowPlaying && nowPlaying.sessions.isNotEmpty()) }
 
 /**
  * The slim Watch Now strip on Home: Tonight (NBA), Continue, Live TV, and See more.
@@ -110,14 +127,19 @@ fun SmartStrip(state: HavenState, colors: ThemeColors, first: FocusRequester, mo
                 }
             }
         }
-        "continue" -> if (s.watchContinue) {
-            val item = w.continueWatching.firstOrNull()
-            StripCard(
-                "CONTINUE", item?.title ?: "Nothing to continue",
-                item?.let { listOf(it.detail, state.apps[it.pkg]?.label.orEmpty(), it.progress?.let { p -> "${(p * 100).toInt()}% watched" }.orEmpty()).filter { s -> s.isNotBlank() }.joinToString(" · ") }
-                    ?: "Apps that share progress show up here",
-                false, colors, claim().weight(1f),
-            ) { state.overlay = Overlay.CONTINUE }
+        "continue" -> if (s.watchContinue || (s.showNowPlaying && state.nowPlaying.sessions.isNotEmpty())) {
+            val playing = if (s.showNowPlaying) state.nowPlaying.sessions else emptyList()
+            if (playing.isNotEmpty()) {
+                NowPlayingCard(state, playing, colors, claim().weight(1f))
+            } else {
+                val item = w.continueWatching.firstOrNull()
+                StripCard(
+                    "CONTINUE", item?.title ?: "Nothing to continue",
+                    item?.let { listOf(it.detail, state.apps[it.pkg]?.label.orEmpty(), it.progress?.let { p -> "${(p * 100).toInt()}% watched" }.orEmpty()).filter { s -> s.isNotBlank() }.joinToString(" · ") }
+                        ?: "Apps that share progress show up here",
+                    false, colors, claim().weight(1f),
+                ) { state.overlay = Overlay.CONTINUE }
+            }
         }
         "live" -> if (s.watchLive) {
             val groups = w.live
@@ -129,6 +151,150 @@ fun SmartStrip(state: HavenState, colors: ThemeColors, first: FocusRequester, mo
         }
       }
         SeeMore(colors, claim()) { state.overlay = Overlay.WATCH }
+    }
+}
+
+
+/**
+ * Compact Home carousel. D-pad Left/Right changes the media session until it reaches an
+ * endpoint; at the endpoint we return false so Compose moves to the adjacent Home card.
+ * The arrows are pointer/tap controls for a phone, mouse or PC and do not steal D-pad focus.
+ */
+@Composable
+private fun RowScope.NowPlayingCard(
+    state: HavenState,
+    sessions: List<PlayingMedia>,
+    colors: ThemeColors,
+    modifier: Modifier,
+) {
+    var selectedId by remember { mutableStateOf<String?>(null) }
+    val index = sessions.indexOfFirst { it.id == selectedId }.takeIf { it >= 0 } ?: 0
+    val media = sessions[index]
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(16.dp)
+    val ink = if (focused) colors.pillInk else colors.ink
+    val next: (Int) -> Unit = { delta ->
+        val target = index + delta
+        if (target in sessions.indices) selectedId = sessions[target].id
+    }
+
+    Row(
+        modifier
+            .fillMaxHeight()
+            .clip(shape)
+            .background(if (focused) colors.pill else colors.glass)
+            .border(if (focused) 2.dp else 1.dp, if (focused) colors.accent else colors.edge, shape)
+            .onFocusChanged { focused = it.isFocused }
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) {
+                    false
+                } else {
+                    val delta = when (event.nativeKeyEvent.keyCode) {
+                        KeyEvent.KEYCODE_DPAD_RIGHT -> 1
+                        KeyEvent.KEYCODE_DPAD_LEFT -> -1
+                        else -> 0
+                    }
+                    when {
+                        delta == 0 -> false
+                        // A held remote key must not skip through the carousel or escape it.
+                        // Releasing and pressing again is required for the next step.
+                        event.nativeKeyEvent.repeatCount != 0 -> true
+                        index + delta in sessions.indices -> { next(delta); true }
+                        else -> false
+                    }
+                }
+            }
+            .tvClickable { state.openPlayingMedia(media) }
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        val app = state.apps[media.pkg]
+        val image = media.artwork ?: app?.icon
+        if (image != null) {
+            Image(
+                image, media.title,
+                Modifier.size(width = 54.dp, height = 39.dp).clip(RoundedCornerShape(6.dp)),
+                contentScale = ContentScale.Crop,
+            )
+        } else {
+            Icon(Icons.Rounded.PlayArrow, null, Modifier.size(32.dp), tint = ink)
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+            Text(
+                (if (media.kind == PlaybackKind.PAUSED) "PAUSED" else "NOW PLAYING") +
+                    (if (sessions.size > 1) " · ${index + 1}/${sessions.size}" else ""),
+                color = ink.copy(alpha = 0.72f), fontSize = 9.sp,
+                fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp, maxLines = 1,
+            )
+            // The media repository refreshes every few seconds. Anchor the marquee to the
+            // visible app/title, not the framework session token, so polling cannot restart
+            // a long title midway through its scroll.
+            key(media.pkg, media.title) {
+                // This bounded viewport is important: the marquee measures its child using
+                // unbounded width, while only this box's width is visible on the Home card.
+                Box(Modifier.fillMaxWidth()) {
+                    val scrollTitles = state.settingsStore.settings.scrollNowPlayingTitles
+                    val titlePauseSeconds = state.settingsStore.settings.nowPlayingTitlePauseSeconds
+                    Text(
+                        media.title,
+                        modifier = if (scrollTitles) Modifier.basicMarquee(
+                            iterations = if (state.overlay == Overlay.NONE && !state.wallpaperView) Int.MAX_VALUE else 0,
+                            spacing = MarqueeSpacing(12.dp),
+                            initialDelayMillis = 1_000,
+                            repeatDelayMillis = titlePauseSeconds * 1_000,
+                            velocity = 48.dp,
+                        ) else Modifier.fillMaxWidth(),
+                        color = ink,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = if (scrollTitles) TextOverflow.Clip else TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                app?.icon?.let { icon ->
+                    Image(icon, null, Modifier.size(12.dp).clip(RoundedCornerShape(3.dp)))
+                }
+                Text(
+                    (app?.label ?: media.pkg.substringAfterLast('.')) +
+                        " · " + (if (media.kind == PlaybackKind.PAUSED) "Paused" else if (media.kind == PlaybackKind.BUFFERING) "Buffering" else "Playing"),
+                    color = ink.copy(alpha = 0.75f), fontSize = 10.sp, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (sessions.size > 1) {
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                MediaArrow("‹", index > 0, colors, ink) { next(-1) }
+                MediaArrow("›", index < sessions.lastIndex, colors, ink) { next(1) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MediaArrow(
+    symbol: String,
+    enabled: Boolean,
+    colors: ThemeColors,
+    ink: Color,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier
+            .size(width = 23.dp, height = 34.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.glass.copy(alpha = 0.35f))
+            .then(if (enabled) Modifier.pointerInput(onClick) {
+                detectTapGestures(onTap = { onClick() })
+            } else Modifier),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(symbol, color = ink.copy(alpha = if (enabled) 0.95f else 0.3f),
+            fontSize = 23.sp, fontWeight = FontWeight.Medium)
     }
 }
 

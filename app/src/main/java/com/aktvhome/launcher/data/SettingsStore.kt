@@ -87,6 +87,8 @@ data class Settings(
     val wallTopics: Set<String> = setOf("Nature", "Animals", "Places"),
     val wallInterval: WallInterval = WallInterval.SIX,
     val wallCredit: Boolean = true,
+    /** Preserve the current photo and suspend all wallpaper rotation until unpinned. */
+    val wallpaperPinned: Boolean = false,
     val unsplashKey: String = "",
     /** Watch Now sections. NBA is a personal module and starts off for everyone. */
     /** Global league switch: off preserves all previously selected options. */
@@ -96,6 +98,12 @@ data class Settings(
     val rotateNba: Boolean = true,
     val nbaRotationInterval: NbaRotationInterval = NbaRotationInterval.TEN,
     val watchContinue: Boolean = true,
+    /** Show Android media sessions in place of the Home Continue card when available. */
+    val showNowPlaying: Boolean = true,
+    /** Scroll titles too long to fit the Now Playing card. Disabled uses a static ellipsis. */
+    val scrollNowPlayingTitles: Boolean = true,
+    /** 0 = no pause; otherwise 3-10 seconds between marquee repeats. */
+    val nowPlayingTitlePauseSeconds: Int = 3,
     val watchLive: Boolean = true,
     /** ESPN team abbreviation of the favorite team ("" = none), e.g. "GS". */
     val favoriteTeam: String = "",
@@ -182,12 +190,16 @@ class SettingsStore(context: Context) {
             .putString("wallTopics", next.wallTopics.joinToString(","))
             .putString("wallInterval", next.wallInterval.name)
             .putBoolean("wallCredit", next.wallCredit)
+            .putBoolean("wallpaperPinned", next.wallpaperPinned)
             .putString("unsplashKey", next.unsplashKey)
             .putBoolean("nbaLeagueEnabled", next.nbaLeagueEnabled)
             .putBoolean("watchNba", next.watchNba)
             .putBoolean("rotateNba", next.rotateNba)
             .putString("nbaRotationInterval", next.nbaRotationInterval.name)
             .putBoolean("watchContinue", next.watchContinue)
+            .putBoolean("showNowPlaying", next.showNowPlaying)
+            .putBoolean("scrollNowPlayingTitles", next.scrollNowPlayingTitles)
+            .putInt("nowPlayingTitlePauseSeconds", next.nowPlayingTitlePauseSeconds)
             .putBoolean("watchLive", next.watchLive)
             .putString("favoriteTeam", next.favoriteTeam)
             .putString("localStations", next.localStations.entries.joinToString("\n") { "${it.key}=${it.value}" })
@@ -241,6 +253,7 @@ class SettingsStore(context: Context) {
             ?: setOf("Nature", "Animals", "Places"),
         wallInterval = enumOr(prefs.getString("wallInterval", null), WallInterval.SIX),
         wallCredit = prefs.getBoolean("wallCredit", true),
+        wallpaperPinned = prefs.getBoolean("wallpaperPinned", false),
         unsplashKey = prefs.getString("unsplashKey", null) ?: "",
         // Upgraded installations keep their previous NBA card/alert behavior.
         // Fresh installs have no legacy NBA keys, so the optional league starts disabled.
@@ -253,6 +266,10 @@ class SettingsStore(context: Context) {
         rotateNba = prefs.getBoolean("rotateNba", true),
         nbaRotationInterval = enumOr(prefs.getString("nbaRotationInterval", null), NbaRotationInterval.TEN),
         watchContinue = prefs.getBoolean("watchContinue", true),
+        showNowPlaying = prefs.getBoolean("showNowPlaying", true),
+        scrollNowPlayingTitles = prefs.getBoolean("scrollNowPlayingTitles", true),
+        nowPlayingTitlePauseSeconds = prefs.getInt("nowPlayingTitlePauseSeconds", 3)
+            .takeIf { it == 0 || it in 3..10 } ?: 3,
         watchLive = prefs.getBoolean("watchLive", true),
         favoriteTeam = prefs.getString("favoriteTeam", null) ?: "",
         localStations = (prefs.getString("localStations", null) ?: "").lines().mapNotNull { line ->
