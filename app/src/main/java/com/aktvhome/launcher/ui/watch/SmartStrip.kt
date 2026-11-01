@@ -183,7 +183,7 @@ private fun RowScope.NowPlayingCard(
             .border(if (focused) 2.dp else 1.dp, if (focused) colors.accent else colors.edge, shape)
             .onFocusChanged { focused = it.isFocused }
             .onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown || event.nativeKeyEvent.repeatCount != 0) {
+                if (event.type != KeyEventType.KeyDown) {
                     false
                 } else {
                     val delta = when (event.nativeKeyEvent.keyCode) {
@@ -191,10 +191,14 @@ private fun RowScope.NowPlayingCard(
                         KeyEvent.KEYCODE_DPAD_LEFT -> -1
                         else -> 0
                     }
-                    if (delta != 0 && index + delta in sessions.indices) {
-                        next(delta)
-                        true
-                    } else false
+                    when {
+                        delta == 0 -> false
+                        // A held remote key must not skip through the carousel or escape it.
+                        // Releasing and pressing again is required for the next step.
+                        event.nativeKeyEvent.repeatCount != 0 -> true
+                        index + delta in sessions.indices -> { next(delta); true }
+                        else -> false
+                    }
                 }
             }
             .tvClickable { state.openPlayingMedia(media) }
