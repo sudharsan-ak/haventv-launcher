@@ -44,11 +44,19 @@ class Wallpapers(context: Context, private val scope: CoroutineScope, private va
 
     fun lastChange(): Long = prefs.getLong("lastChange", 0L)
 
-    /** Unpinning starts a new interval rather than fetching a replacement immediately. */
-    fun restartRotationTimer() {
-        prefs.edit().putLong("lastChange", System.currentTimeMillis()).apply()
-        retryAt = 0L
-        status = "Rotation resumed. The current photo stays until the next interval."
+    /** Invalidates an in-flight download, including when pin is turned off before it finishes. */
+    fun setPinned(pinned: Boolean) {
+        val revision = prefs.getLong("rotationRevision", 0L) + 1L
+        prefs.edit().putLong("rotationRevision", revision).apply()
+        settingsStore.update { it.copy(wallpaperPinned = pinned) }
+        if (!pinned) {
+            // Start the next interval now, without immediately replacing the retained photo.
+            prefs.edit().putLong("lastChange", System.currentTimeMillis()).apply()
+            retryAt = 0L
+            status = "Rotation resumed. The current photo stays until the next interval."
+        } else {
+            status = "Current photo pinned. Rotation paused."
+        }
     }
 
     /** Called every ~15 s while Haven is open. [force] = "Next wallpaper now". */
@@ -64,9 +72,10 @@ class Wallpapers(context: Context, private val scope: CoroutineScope, private va
         if (!due || busy || (!force && now < retryAt)) return
         busy = true
         status = "Fetching a new photo…"
+        val revision = prefs.getLong("rotationRevision", 0L)
         scope.launch(Dispatchers.IO) {
             try {
-                fetchNext(s)
+                fetchNext(s, revision)
             } catch (e: Exception) {
                 retryAt = System.currentTimeMillis() + RETRY_MS
                 status = "Couldn't fetch a photo (${e.message ?: e.javaClass.simpleName}). Retrying in 10 minutes."
@@ -82,7 +91,7 @@ class Wallpapers(context: Context, private val scope: CoroutineScope, private va
         if (f.exists()) current = decode(f.readBytes())
     }
 
-    private suspend fun fetchNext(s: Settings) {
+    private suspend fun fetchNext(s: Settings, revision: Long) {
         val sources = s.wallSources.filter { it != WallSource.UNSPLASH || s.unsplashKey.isNotBlank() }
         if (sources.isEmpty()) {
             status = "No sources switched on."
@@ -100,13 +109,15 @@ class Wallpapers(context: Context, private val scope: CoroutineScope, private va
         val bmp = decode(bytes) ?: throw IllegalStateException("unreadable image")
         // If the user pins the current wallpaper during a download, discard the fetched image.
         // The final check runs on Main, where settings changes and the visible photo are updated.
-        if (settingsStore.settings.wallpaperPinned) return
+        if (settingsStore.settings.wallpaperPinned ||
+            prefs.getLong("rotationRevision", 0L) != revision) return
         val name = "w_${System.currentTimeMillis()}.jpg"
         val file = File(dir, name)
         file.writeBytes(bytes)
         val accepted = withContext(Dispatchers.Main) {
-            if (settingsStore.settings.wallpaperPinned) {
-                status = "Current photo pinned. Rotation paused."
+            if (settingsStore.settings.wallpaperPinned ||
+                prefs.getLong("rotationRevision", 0L) != revision) {
+                if (settingsStore.settings.wallpaperPinned) status = "Current photo pinned. Rotation paused."
                 false
             } else {
                 current = bmp

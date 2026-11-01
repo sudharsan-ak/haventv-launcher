@@ -413,9 +413,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                                 if (s.wallpaperPinned) "Pinned. Automatic wallpaper changes are paused." else "Keep this photo until you turn this off.",
                                 s.wallpaperPinned, colors, enabled = s.wallpaperPinned || walls.current != null,
                             ) {
-                                val wasPinned = s.wallpaperPinned
-                                store.update { it.copy(wallpaperPinned = !wasPinned) }
-                                if (wasPinned) walls.restartRotationTimer()
+                                walls.setPinned(!s.wallpaperPinned)
                             }
                             SettingsStatusRow(
                                 "Wallpaper view",
