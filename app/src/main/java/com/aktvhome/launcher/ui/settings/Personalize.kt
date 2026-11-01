@@ -2,6 +2,8 @@
 
 package com.aktvhome.launcher.ui.settings
 
+import android.Manifest
+import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -217,24 +219,24 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
         }
     }
     DisposableEffect(uploadServer) { onDispose { uploadServer.stop() } }
-    val tvPhotoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) importScope.launch {
-            val bytes = withContext(Dispatchers.IO) {
-                runCatching {
-                    context.contentResolver.openInputStream(uri)?.use { stream ->
-                        val output = ByteArrayOutputStream()
-                        val chunk = ByteArray(8192)
-                        while (output.size() <= 16 * 1024 * 1024) {
-                            val n = stream.read(chunk)
-                            if (n < 0) break
-                            output.write(chunk, 0, n)
-                        }
-                        output.toByteArray()
-                    }
-                }.getOrNull()
-            }
-            state.wallpapers.prepare(bytes ?: byteArrayOf(), uri.lastPathSegment ?: "My photo")
-        }
+    // Android TVs often have no DocumentsUI picker installed. Browse inside Haven
+    // instead, using the TV/USB filesystem when available or the photo library.
+    var showTvBrowser by remember { mutableStateOf(false) }
+    var photoPermissionRevision by remember { mutableStateOf(0) }
+    val requestPhotoPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { photoPermissionRevision++ }
+    val askForPhotoAccess = {
+        requestPhotoPermission.launch(
+            when {
+                Build.VERSION.SDK_INT >= 34 -> arrayOf(
+                    Manifest.permission.READ_MEDIA_IMAGES,
+                    Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
+                )
+                Build.VERSION.SDK_INT >= 33 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
+                else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+            },
+        )
     }
 
     LaunchedEffect(Unit) { state.settingsDestination = null }
@@ -494,10 +496,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                                             "Choose from TV", "Select a JPG, PNG or WebP from internal storage or USB.",
                                             "Browse", colors,
                                         ) {
-                                            runCatching { tvPhotoPicker.launch(arrayOf("image/jpeg", "image/png", "image/webp")) }
-                                                .onFailure {
-                                                    Toast.makeText(context, "No TV file picker available. Use Send from device instead.", Toast.LENGTH_LONG).show()
-                                                }
+                                            showTvBrowser = true
                                         }
                                         SettingsActionRow(
                                             "Send from device", "Transfer from a phone or PC on the same trusted local network.",
@@ -842,6 +841,38 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
         }
     }
 
+    // A built-in browser avoids the missing system file-picker problem on Android TV.
+    if (showTvBrowser) {
+        WallpaperTvImageBrowser(
+            context = context,
+            colors = colors,
+            permissionRevision = photoPermissionRevision,
+            onRequestPhotoAccess = askForPhotoAccess,
+            onPick = { entry ->
+                showTvBrowser = false
+                importScope.launch {
+                    val bytes = withContext(Dispatchers.IO) {
+                        runCatching {
+                            val input = entry.image?.inputStream()
+                                ?: entry.mediaUri?.let { context.contentResolver.openInputStream(it) }
+                            input?.use { stream ->
+                                val output = ByteArrayOutputStream()
+                                val chunk = ByteArray(8192)
+                                while (output.size() <= 16 * 1024 * 1024) {
+                                    val amount = stream.read(chunk)
+                                    if (amount < 0) break
+                                    output.write(chunk, 0, amount)
+                                }
+                                output.toByteArray()
+                            }
+                        }.getOrNull()
+                    }
+                    state.wallpapers.prepare(bytes ?: byteArrayOf(), entry.name)
+                }
+            },
+            onDismiss = { showTvBrowser = false },
+        )
+    }
     // Custom photo transfer and preview are scoped to this settings overlay.
     if (uploadVisible) WallpaperUploadDialog(uploadServer, colors) {
         uploadServer.stop()
