@@ -82,7 +82,7 @@ class NowPlayingRepository(private val context: Context) {
                             excluded.add("${controller.packageName}: not playing/paused (state ${playback?.state ?: "unknown"})")
                             null
                         } else {
-                            val updated = playback.lastPositionUpdateTime
+                            val updated = playback?.lastPositionUpdateTime ?: 0L
                             if (kind == PlaybackKind.PAUSED && updated > 0 &&
                                 now - updated > MAX_PAUSED_AGE_MS) {
                                 excluded.add("${controller.packageName}: stale paused session")
