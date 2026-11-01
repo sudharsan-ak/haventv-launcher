@@ -627,16 +627,14 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                             ) { value ->
                                 store.update { it.copy(nowPlayingTitlePauseSeconds = value.toInt()) }
                             }
-                            if (s.showNowPlaying) {
-                                if (!NbaAlerts.canSeePlaying(LocalContext.current)) {
-                                    SettingsStatusRow(
-                                        "Media session access",
-                                        "Notification access is needed for Now Playing. One-time setup: ${NbaAlerts.GRANT_COMMAND}",
-                                        colors,
-                                    )
-                                } else {
-                                    SettingsStatusRow("Media detection", state.nowPlaying.detectionStatus, colors)
-                                }
+                            // Keep the access reminder when permission is missing, but hide
+                            // the temporary media-session diagnostics during normal use.
+                            if (s.showNowPlaying && !NbaAlerts.canSeePlaying(LocalContext.current)) {
+                                SettingsStatusRow(
+                                    "Media session access",
+                                    "Notification access is needed for Now Playing. One-time setup: ${NbaAlerts.GRANT_COMMAND}",
+                                    colors,
+                                )
                             }
                             SettingsToggleRow("Continue watching", "Shows from apps that share progress with the TV.", s.watchContinue, colors) {
                                 store.update { it.copy(watchContinue = !it.watchContinue) }
