@@ -53,23 +53,40 @@ import com.aktvhome.launcher.ui.theme.ThemeColors
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
-private val dayFmt = DateTimeFormatter.ofPattern("EEE d")
+/** The same three sections as before, with tabs instead of a single long list. */
+private enum class WatchTab(val label: String) {
+    NBA("NBA"),
+    LIVE("Live channels"),
+    CONTINUE("Continue watching"),
+}
 
-/** The glass Watch Now drawer on the right: NBA (team card, day picker, games), Continue Watching, Live Channels. */
+/**
+ * The glass Watch Now drawer. Tabs stay visible while the selected section scrolls.
+ * The Home strip order remains user-configurable; only this drawer uses fixed tabs.
+ */
 @Composable
 fun WatchDrawer(state: HavenState, colors: ThemeColors) {
     val s = state.settingsStore.settings
     val w = state.watchNow
     val close = { state.overlay = Overlay.NONE }
     val first = remember { FocusRequester() }
+    val openingTab = remember {
+        when {
+            s.nbaCardEnabled() -> WatchTab.NBA
+            s.watchLive -> WatchTab.LIVE
+            s.watchContinue -> WatchTab.CONTINUE
+            else -> WatchTab.NBA
+        }
+    }
+    var tab by remember { mutableStateOf(openingTab) }
+    val contentScroll = rememberScrollState()
     var day by remember { mutableStateOf(w.today()) }
     val days = remember { DayFocus() }
-    var picking by remember { mutableStateOf(false) }
-    var firstUsed = false
-    fun claim(): FocusRequester? = if (!firstUsed) { firstUsed = true; first } else null
 
+    // Preserve the existing Watch Now refresh and NBA date-loading behavior.
     LaunchedEffect(Unit) { w.tick(force = true) }
     LaunchedEffect(day, s.nbaCardEnabled()) { if (s.nbaCardEnabled()) w.loadDay(day) }
+    LaunchedEffect(tab) { contentScroll.scrollTo(0) }
 
     HavenOverlay(dim = 0.35f, onDismiss = close) {
         Column(
@@ -79,7 +96,6 @@ fun WatchDrawer(state: HavenState, colors: ThemeColors) {
                 .width(540.dp)
                 .fillMaxHeight()
                 .glassPanel(colors, RoundedCornerShape(28.dp), alpha = 0.9f)
-                .verticalScroll(rememberScrollState())
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -91,42 +107,70 @@ fun WatchDrawer(state: HavenState, colors: ThemeColors) {
                 CloseButton(colors, onClick = close)
             }
 
-          for (section in s.watchOrder) when (section) {
-            "nba" -> if (s.nbaCardEnabled()) {
-                val fav = s.favoriteTeam
-                if (fav.isNotBlank()) {
-                    TeamCard(state, colors, fav, claim())
+            // Match the pill tabs elsewhere in Haven: focus with the D-pad or press OK
+            // to select a section. The tabs stay fixed above the scrolling content.
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                WatchTab.entries.forEach { section ->
+                    Pill(
+                        section.label, colors, selected = tab == section,
+                        focusRequester = if (section == openingTab) first else null,
+                        onFocused = { tab = section },
+                        onClick = { tab = section },
+                    )
                 }
-                Section("NBA", colors)
-                WeekStrip(state, colors, day, claim(), days) { day = it }
-                val list = w.games[day]
-                when {
-                    list == null && w.nbaError -> Note("Couldn't reach ESPN. Check the connection and try again.", colors)
-                    list == null -> Note("Loading games…", colors)
-                    list.isEmpty() -> Note("No NBA games on ${if (day == w.today()) "today" else day.format(DateTimeFormatter.ofPattern("EEEE, MMM d"))}.", colors)
-                    else -> list.forEachIndexed { i, g ->
-                        GameRow(g, fav, colors, modifier = if (i == 0) upTo(days.of(day)) else Modifier) { state.openGame(g) }
+            }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(colors.edge))
+
+            Column(
+                Modifier.weight(1f).verticalScroll(contentScroll),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                when (tab) {
+                    WatchTab.NBA -> if (s.nbaCardEnabled()) {
+                        val fav = s.favoriteTeam
+                        if (fav.isNotBlank()) TeamCard(state, colors, fav, null)
+                        WeekStrip(state, colors, day, null, days) { day = it }
+                        val list = w.games[day]
+                        when {
+                            list == null && w.nbaError ->
+                                Note("Couldn't reach ESPN. Check the connection and try again.", colors)
+                            list == null -> Note("Loading games…", colors)
+                            list.isEmpty() ->
+                                Note("No NBA games on ${if (day == w.today()) "today" else day.format(DateTimeFormatter.ofPattern("EEEE, MMM d"))}.", colors)
+                            else -> list.forEachIndexed { i, game ->
+                                GameRow(
+                                    game, fav, colors,
+                                    modifier = if (i == 0) upTo(days.of(day)) else Modifier,
+                                ) { state.openGame(game) }
+                            }
+                        }
+                    } else {
+                        Note("NBA is disabled for Watch Now. Enable the NBA Home card in Watching & alerts → NBA League.", colors)
+                    }
+
+                    WatchTab.LIVE -> if (s.watchLive) {
+                        LiveGrid(state, colors, null)
+                    } else {
+                        Note("Live channels are turned off in Watching & alerts → Watch Now.", colors)
+                    }
+
+                    WatchTab.CONTINUE -> if (s.watchContinue) {
+                        ContinueList(state, colors, null)
+                    } else {
+                        Note("Continue watching is turned off in Watching & alerts → Watch Now.", colors)
                     }
                 }
+
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    when (tab) {
+                        WatchTab.NBA -> "Scores from ESPN; games open in the NBA app."
+                        WatchTab.LIVE -> "Channels open in the app that shared them."
+                        WatchTab.CONTINUE -> "Items resume in the app that shared them."
+                    },
+                    color = colors.inkSoft, fontSize = 10.sp,
+                )
             }
-
-            "continue" -> if (s.watchContinue) {
-                Section("Continue watching", colors)
-                ContinueList(state, colors, claim())
-            }
-
-            "live" -> if (s.watchLive) {
-                Section("Live channels", colors)
-                LiveGrid(state, colors, claim())
-            }
-
-          }
-
-            Spacer(Modifier.height(4.dp))
-            Text(
-                listOfNotNull(if (s.nbaCardEnabled()) "Scores from ESPN; games open in the NBA app." else null, "Items open in the app that shared them.").joinToString(" "),
-                color = colors.inkSoft, fontSize = 10.sp,
-            )
         }
     }
 
@@ -194,11 +238,6 @@ fun result(g: Game, fav: String): String {
     val theirs = if (g.home.abbr == fav) g.away else g.home
     val won = (mine.score.toIntOrNull() ?: 0) > (theirs.score.toIntOrNull() ?: 0)
     return "${if (won) "W" else "L"} ${mine.score}–${theirs.score}"
-}
-
-@Composable
-private fun Section(title: String, colors: ThemeColors) {
-    Text(title, color = colors.ink, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp))
 }
 
 @Composable
