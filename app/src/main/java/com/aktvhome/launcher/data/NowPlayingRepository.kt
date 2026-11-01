@@ -70,7 +70,7 @@ class NowPlayingRepository(private val context: Context) {
                     val title = description?.title?.toString()?.trim()
                         ?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                     val art = runCatching {
-                        val image = description.iconBitmap
+                        val image = description?.iconBitmap
                             ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
                             ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
                             ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
