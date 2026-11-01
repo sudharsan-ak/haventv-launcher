@@ -206,11 +206,12 @@ private fun RowScope.NowPlayingCard(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        val image = media.artwork ?: state.apps[media.pkg]?.icon
+        val app = state.apps[media.pkg]
+        val image = media.artwork ?: app?.icon
         if (image != null) {
             Image(
                 image, media.title,
-                Modifier.size(36.dp).clip(RoundedCornerShape(6.dp)),
+                Modifier.size(width = 54.dp, height = 39.dp).clip(RoundedCornerShape(6.dp)),
                 contentScale = ContentScale.Crop,
             )
         } else {
@@ -225,12 +226,17 @@ private fun RowScope.NowPlayingCard(
             )
             Text(media.title, color = ink, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(
-                (state.apps[media.pkg]?.label ?: media.pkg.substringAfterLast('.')) +
-                    " · " + (if (media.kind == PlaybackKind.PAUSED) "Paused" else if (media.kind == PlaybackKind.BUFFERING) "Buffering" else "Playing"),
-                color = ink.copy(alpha = 0.75f), fontSize = 10.sp, maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                app?.icon?.let { icon ->
+                    Image(icon, null, Modifier.size(12.dp).clip(RoundedCornerShape(3.dp)))
+                }
+                Text(
+                    (app?.label ?: media.pkg.substringAfterLast('.')) +
+                        " · " + (if (media.kind == PlaybackKind.PAUSED) "Paused" else if (media.kind == PlaybackKind.BUFFERING) "Buffering" else "Playing"),
+                    color = ink.copy(alpha = 0.75f), fontSize = 10.sp, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         if (sessions.size > 1) {
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {

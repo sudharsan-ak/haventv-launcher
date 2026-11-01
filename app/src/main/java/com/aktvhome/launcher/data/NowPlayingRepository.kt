@@ -3,7 +3,9 @@ package com.aktvhome.launcher.data
 import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.media.MediaMetadata
+import android.net.Uri
 import android.util.Log
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
@@ -16,6 +18,10 @@ import androidx.compose.ui.graphics.asImageBitmap
 import com.aktvhome.launcher.HavenMediaListener
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.LinkedHashMap
 
 enum class PlaybackKind { PLAYING, BUFFERING, PAUSED }
 
@@ -43,6 +49,14 @@ fun sortMediaSessions(items: List<PlayingMedia>): List<PlayingMedia> =
 
 /** Shares the same Notification Listener access used by Haven's NBA alert suppression. */
 class NowPlayingRepository(private val context: Context) {
+    // SmartTube provides ALBUM_ART_URI rather than a bitmap. Cache artwork across the
+    // 3-second media-session polls to avoid downloading the same thumbnail repeatedly.
+    private data class CachedArt(val image: ImageBitmap?, val fetchedAt: Long)
+    private val artworkCache = object : LinkedHashMap<String, CachedArt>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CachedArt>?): Boolean =
+            size > MAX_ARTWORK_CACHE
+    }
+
     var sessions by mutableStateOf<List<PlayingMedia>>(emptyList())
         private set
 
@@ -95,12 +109,18 @@ class NowPlayingRepository(private val context: Context) {
                                     metadata?.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE),
                                     metadata?.getString(MediaMetadata.METADATA_KEY_TITLE),
                                 )
+                                // Prefer actual video artwork before generic media or app icons.
+                                // SmartTube stores its thumbnail URL in METADATA_KEY_ALBUM_ART_URI.
                                 val art = runCatching {
-                                    val image = description?.iconBitmap
-                                        ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
-                                        ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
+                                    val bitmap = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
                                         ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
-                                    image?.asImageBitmap()
+                                    bitmap?.asImageBitmap() ?: listOfNotNull(
+                                        metadata?.getString(MediaMetadata.METADATA_KEY_ART_URI),
+                                        metadata?.getString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI),
+                                        description?.iconUri?.toString(),
+                                        metadata?.getString(MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI),
+                                    ).distinct().firstNotNullOfOrNull { loadArtwork(it) }
+                                        ?: description?.iconBitmap?.asImageBitmap()
                                 }.getOrNull()
                                 PlayingMedia(
                                     id = "${controller.packageName}:${controller.sessionToken}",
@@ -142,6 +162,67 @@ class NowPlayingRepository(private val context: Context) {
         }
     }
 
+    /**
+     * Decode only a small thumbnail, off the main thread. Cache failed requests briefly too,
+     * because some players publish an artwork URI that cannot be opened by other apps.
+     */
+    private fun loadArtwork(rawUri: String): ImageBitmap? {
+        val uri = runCatching { Uri.parse(rawUri.trim()) }.getOrNull() ?: return null
+        if (uri.scheme !in listOf("https", "http", "content", "android.resource")) return null
+        val now = System.currentTimeMillis()
+        artworkCache[rawUri]?.let { cached ->
+            if (cached.image != null || now - cached.fetchedAt < RETRY_ARTWORK_AFTER_MS) {
+                return cached.image
+            }
+        }
+
+        val image = runCatching {
+            val bytes = when (uri.scheme) {
+                "https", "http" -> {
+                    val connection = URL(rawUri).openConnection() as HttpURLConnection
+                    connection.connectTimeout = 5_000
+                    connection.readTimeout = 5_000
+                    connection.instanceFollowRedirects = true
+                    try {
+                        if (connection.responseCode !in 200..299 ||
+                            connection.contentLengthLong > MAX_ARTWORK_BYTES) null
+                        else connection.inputStream.use { readLimited(it) }
+                    } finally {
+                        connection.disconnect()
+                    }
+                }
+                else -> context.contentResolver.openInputStream(uri)?.use { readLimited(it) }
+            } ?: return@runCatching null
+
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+            var sampleSize = 1
+            while (bounds.outWidth / sampleSize > MAX_ARTWORK_WIDTH * 2 ||
+                   bounds.outHeight / sampleSize > MAX_ARTWORK_HEIGHT * 2) {
+                sampleSize *= 2
+            }
+            BitmapFactory.decodeByteArray(
+                bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sampleSize },
+            )?.asImageBitmap()
+        }.getOrNull()
+        artworkCache[rawUri] = CachedArt(image, now)
+        return image
+    }
+
+    /** Bound network and content-provider reads so untrusted media apps cannot exhaust memory. */
+    private fun readLimited(stream: java.io.InputStream): ByteArray? {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(8_192)
+        while (true) {
+            val count = stream.read(buffer)
+            if (count < 0) break
+            if (output.size() + count > MAX_ARTWORK_BYTES) return null
+            output.write(buffer, 0, count)
+        }
+        return output.toByteArray()
+    }
+
     /** Prefer the app-provided media return action, then its normal TV launch intent. */
     fun open(session: PlayingMedia): Boolean {
         val pending = session.returnToSession
@@ -158,5 +239,10 @@ class NowPlayingRepository(private val context: Context) {
     companion object {
         private const val MAX_SESSIONS = 8
         private const val MAX_PAUSED_AGE_MS = 2 * 60 * 60 * 1000L
+        private const val MAX_ARTWORK_CACHE = 12
+        private const val MAX_ARTWORK_BYTES = 3 * 1024 * 1024
+        private const val MAX_ARTWORK_WIDTH = 384
+        private const val MAX_ARTWORK_HEIGHT = 216
+        private const val RETRY_ARTWORK_AFTER_MS = 2 * 60 * 1000L
     }
 }
