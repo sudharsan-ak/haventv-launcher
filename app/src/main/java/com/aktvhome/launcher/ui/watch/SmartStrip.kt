@@ -234,21 +234,23 @@ private fun RowScope.NowPlayingCard(
                 // This bounded viewport is important: the marquee measures its child using
                 // unbounded width, while only this box's width is visible on the Home card.
                 Box(Modifier.fillMaxWidth()) {
+                    val scrollTitles = state.settingsStore.settings.scrollNowPlayingTitles
+                    val titlePauseSeconds = state.settingsStore.settings.nowPlayingTitlePauseSeconds
                     Text(
                         media.title,
-                        modifier = Modifier.basicMarquee(
+                        modifier = if (scrollTitles) Modifier.basicMarquee(
                             iterations = if (state.overlay == Overlay.NONE && !state.wallpaperView) Int.MAX_VALUE else 0,
                             spacing = MarqueeSpacing(12.dp),
                             initialDelayMillis = 1_000,
-                            repeatDelayMillis = 1_400,
+                            repeatDelayMillis = titlePauseSeconds * 1_000,
                             velocity = 48.dp,
-                        ),
+                        ) else Modifier.fillMaxWidth(),
                         color = ink,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         softWrap = false,
-                        overflow = TextOverflow.Clip,
+                        overflow = if (scrollTitles) TextOverflow.Clip else TextOverflow.Ellipsis,
                     )
                 }
             }

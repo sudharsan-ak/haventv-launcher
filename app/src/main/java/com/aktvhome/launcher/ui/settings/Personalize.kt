@@ -608,6 +608,25 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                                 "Replace the Continue card while a TV media app has an active playing or paused session.",
                                 s.showNowPlaying, colors,
                             ) { store.update { it.copy(showNowPlaying = !it.showNowPlaying) } }
+                            SettingsToggleRow(
+                                "Scroll long video titles",
+                                "Scroll titles that don't fit inside the Now Playing card.",
+                                s.scrollNowPlayingTitles, colors,
+                                enabled = s.showNowPlaying,
+                            ) { store.update { it.copy(scrollNowPlayingTitles = !it.scrollNowPlayingTitles) } }
+                            SettingsChoiceRow(
+                                "Pause between title scrolls",
+                                "Wait before repeating a long video title. Off means no extra pause.",
+                                if (s.nowPlayingTitlePauseSeconds == 0) "Off (No pause)" else "${s.nowPlayingTitlePauseSeconds} seconds",
+                                listOf(SettingsPickerOption("0", "Off (No pause)")) +
+                                    (3..10).map { seconds ->
+                                        SettingsPickerOption(seconds.toString(), "$seconds seconds" + if (seconds == 3) " (Default)" else "")
+                                    },
+                                s.nowPlayingTitlePauseSeconds.toString(), colors,
+                                enabled = s.showNowPlaying && s.scrollNowPlayingTitles,
+                            ) { value ->
+                                store.update { it.copy(nowPlayingTitlePauseSeconds = value.toInt()) }
+                            }
                             if (s.showNowPlaying) {
                                 if (!NbaAlerts.canSeePlaying(LocalContext.current)) {
                                     SettingsStatusRow(

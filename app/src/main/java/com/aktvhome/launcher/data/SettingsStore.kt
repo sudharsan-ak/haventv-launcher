@@ -100,6 +100,10 @@ data class Settings(
     val watchContinue: Boolean = true,
     /** Show Android media sessions in place of the Home Continue card when available. */
     val showNowPlaying: Boolean = true,
+    /** Scroll titles too long to fit the Now Playing card. Disabled uses a static ellipsis. */
+    val scrollNowPlayingTitles: Boolean = true,
+    /** 0 = no pause; otherwise 3-10 seconds between marquee repeats. */
+    val nowPlayingTitlePauseSeconds: Int = 3,
     val watchLive: Boolean = true,
     /** ESPN team abbreviation of the favorite team ("" = none), e.g. "GS". */
     val favoriteTeam: String = "",
@@ -194,6 +198,8 @@ class SettingsStore(context: Context) {
             .putString("nbaRotationInterval", next.nbaRotationInterval.name)
             .putBoolean("watchContinue", next.watchContinue)
             .putBoolean("showNowPlaying", next.showNowPlaying)
+            .putBoolean("scrollNowPlayingTitles", next.scrollNowPlayingTitles)
+            .putInt("nowPlayingTitlePauseSeconds", next.nowPlayingTitlePauseSeconds)
             .putBoolean("watchLive", next.watchLive)
             .putString("favoriteTeam", next.favoriteTeam)
             .putString("localStations", next.localStations.entries.joinToString("\n") { "${it.key}=${it.value}" })
@@ -261,6 +267,9 @@ class SettingsStore(context: Context) {
         nbaRotationInterval = enumOr(prefs.getString("nbaRotationInterval", null), NbaRotationInterval.TEN),
         watchContinue = prefs.getBoolean("watchContinue", true),
         showNowPlaying = prefs.getBoolean("showNowPlaying", true),
+        scrollNowPlayingTitles = prefs.getBoolean("scrollNowPlayingTitles", true),
+        nowPlayingTitlePauseSeconds = prefs.getInt("nowPlayingTitlePauseSeconds", 3)
+            .takeIf { it == 0 || it in 3..10 } ?: 3,
         watchLive = prefs.getBoolean("watchLive", true),
         favoriteTeam = prefs.getString("favoriteTeam", null) ?: "",
         localStations = (prefs.getString("localStations", null) ?: "").lines().mapNotNull { line ->
