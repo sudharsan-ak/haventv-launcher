@@ -500,7 +500,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                                                 }
                                         }
                                         SettingsActionRow(
-                                            "Send from device", "Transfer securely from a phone or PC on your local network.",
+                                            "Send from device", "Transfer from a phone or PC on the same trusted local network.",
                                             "Send", colors,
                                         ) {
                                             if (uploadServer.start()) uploadVisible = true
