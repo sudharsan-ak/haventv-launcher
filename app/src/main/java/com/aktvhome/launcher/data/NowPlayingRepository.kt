@@ -71,16 +71,16 @@ class NowPlayingRepository(private val context: Context) {
                         ?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                     val art = runCatching {
                         val image = description.iconBitmap
-                            ?: metadata.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
-                            ?: metadata.getBitmap(MediaMetadata.METADATA_KEY_ART)
-                            ?: metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+                            ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
+                            ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
+                            ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
                         image?.asImageBitmap()
                     }.getOrNull()
                     PlayingMedia(
                         id = "${controller.packageName}:${controller.sessionToken}",
                         pkg = controller.packageName,
                         title = title,
-                        subtitle = description.subtitle?.toString(),
+                        subtitle = description?.subtitle?.toString(),
                         kind = kind,
                         lastUpdated = updated,
                         artwork = art,

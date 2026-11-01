@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.aktvhome.launcher.data.Background
 import com.aktvhome.launcher.data.HomeOverride
 import com.aktvhome.launcher.data.PrivateDns
