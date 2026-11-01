@@ -84,6 +84,7 @@ import com.aktvhome.launcher.data.LOCAL_NETWORKS
 import com.aktvhome.launcher.data.PrivateDns
 import com.aktvhome.launcher.data.Motion
 import com.aktvhome.launcher.data.ThemeId
+import com.aktvhome.launcher.data.YouTubeSearchPreference
 import com.aktvhome.launcher.ui.CollectionIcons
 import com.aktvhome.launcher.ui.CollectionPickerDialog
 import com.aktvhome.launcher.ui.GlassDialog
@@ -138,6 +139,7 @@ private enum class Page(val label: String, val group: SettingsGroup, val availab
     DISPLAY("Display", SettingsGroup.HOME),
     COLLECTIONS("Collections", SettingsGroup.HOME),
     HIDDEN("Hidden apps", SettingsGroup.HOME),
+    SEARCH("Search", SettingsGroup.HOME),
     WATCH_NOW("Watch Now", SettingsGroup.WATCHING),
     NBA_LEAGUE("NBA League", SettingsGroup.WATCHING),
     LIVE_CHANNELS("Live channels", SettingsGroup.WATCHING, available = false),
@@ -568,6 +570,23 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                                     }
                                 }
                             }
+                        }
+                        Page.SEARCH -> {
+                            Eyebrow("Universal Search", colors)
+                            SettingsChoiceRow(
+                                "Preferred YouTube app",
+                                "Automatic uses SmartTube first. If your choice is disabled or unavailable, Haven uses the other enabled app.",
+                                s.youtubeSearchPreference.label,
+                                YouTubeSearchPreference.entries.map { SettingsPickerOption(it.name, it.label) },
+                                s.youtubeSearchPreference.name, colors, modifier = first,
+                            ) { value ->
+                                store.update { it.copy(youtubeSearchPreference = YouTubeSearchPreference.valueOf(value)) }
+                            }
+                            SettingsStatusRow(
+                                "Currently used",
+                                state.selectedYouTubeSearchProvider()?.label ?: "None available. The YouTube search action is hidden.",
+                                colors,
+                            )
                         }
                         Page.ABOUT -> AboutCard(colors, first)
                         Page.THIS_TV -> ThisTvPage(state, colors, first)

@@ -20,7 +20,7 @@ and tested on a Sony BRAVIA running Google TV (Android 12).
   on first run. Move apps between collections, reorder anything, create and rename your own,
   pick an icon from 24, hide apps you don't use. HDMI inputs are a row of their own.
 - **Universal Search**: find and open apps, settings, collections, HDMI inputs, Watch Now content
-  and NBA teams/games from one place, with SmartTube handoff for YouTube searches.
+  and NBA teams/games from one place, with a configurable SmartTube or YouTube search handoff.
 - **Real app art**: uses each app's own TV banner or icon; the glow follows the focused app's color.
 - **Quick settings and Personalize**: a gear opens quick toggles; *All settings* opens a glass
   panel over the live home, so every change previews instantly. Settings are grouped into
