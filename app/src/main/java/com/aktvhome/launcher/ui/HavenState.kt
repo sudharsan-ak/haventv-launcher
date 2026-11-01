@@ -3,6 +3,7 @@ package com.aktvhome.launcher.ui
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.app.SearchManager
 import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.runtime.getValue
@@ -24,6 +25,8 @@ import com.aktvhome.launcher.data.WatchNow
 import com.aktvhome.launcher.data.NbaCompanionStore
 import com.aktvhome.launcher.data.NowPlayingRepository
 import com.aktvhome.launcher.data.PlayingMedia
+import com.aktvhome.launcher.data.YouTubeSearchProvider
+import com.aktvhome.launcher.data.chooseYouTubeSearchProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.time.LocalTime
@@ -34,7 +37,7 @@ enum class Overlay { NONE, QUICK, SEARCH, PERSONALIZE, WATCH, NBA, LIVE, CONTINU
 
 /** The All settings page requested by search. Names intentionally mirror Personalize's pages. */
 enum class SettingsDestination {
-    STYLE, WALLPAPER, DISPLAY, COLLECTIONS, HIDDEN, NBA_ALERTS, NBA_LEAGUE, WATCH_NOW,
+    STYLE, WALLPAPER, DISPLAY, COLLECTIONS, HIDDEN, SEARCH, NBA_ALERTS, NBA_LEAGUE, WATCH_NOW,
     HOME_BUTTON, DNS, TV_CONTROLS, CLEANUP, ACCESSIBILITY, THIS_TV, BACKUP, ABOUT,
 }
 
@@ -222,7 +225,7 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
     }
 
     fun openPlayingMedia(media: PlayingMedia) {
-        if (!nowPlaying.open(media)) toast("Can't return to ${apps[media.pkg]?.label ?: media.pkg}")
+        if (!nowPlaying.open(media)) toast("Can\'t return to ${apps[media.pkg]?.label ?: media.pkg}")
     }
 
     fun switchTo(input: TvInput) {
@@ -230,21 +233,53 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
             .onFailure { toast("Can't switch to ${input.label}") }
     }
 
-    fun searchSmartTube(query: String) {
+    fun availableYouTubeSearchProviders(): Set<YouTubeSearchProvider> =
+        YouTubeSearchProvider.entries.filterTo(mutableSetOf()) { provider ->
+            provider.packageName in apps && appRepo.isEnabled(provider.packageName)
+        }
+
+    fun selectedYouTubeSearchProvider(): YouTubeSearchProvider? =
+        chooseYouTubeSearchProvider(
+            settingsStore.settings.youtubeSearchPreference,
+            availableYouTubeSearchProviders(),
+        )
+
+    /** Hand off to the selected enabled app; never redirect a query into a disabled package. */
+    fun searchYouTube(query: String, requested: YouTubeSearchProvider) {
+        val available = availableYouTubeSearchProviders()
+        val provider = requested.takeIf { it in available }
+            ?: chooseYouTubeSearchProvider(settingsStore.settings.youtubeSearchPreference, available)
+        if (provider == null) {
+            toast("Enable SmartTube or YouTube to search")
+            return
+        }
+        val term = query.trim()
+        if (term.isBlank()) return
         val uri = Uri.Builder()
             .scheme("https")
             .authority("www.youtube.com")
             .appendPath("results")
-            .appendQueryParameter("search_query", query.trim())
+            .appendQueryParameter("search_query", term)
             .build()
-        val search = Intent(Intent.ACTION_VIEW, uri)
-            .setPackage("org.smarttube.stable")
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        val fallback = context.packageManager.getLeanbackLaunchIntentForPackage("org.smarttube.stable")
-            ?: context.packageManager.getLaunchIntentForPackage("org.smarttube.stable")
-        runCatching { context.startActivity(search) }
-            .recoverCatching { context.startActivity(fallback ?: error("SmartTube is not installed")) }
-            .onFailure { toast("Can't open SmartTube") }
+        // SmartTube already supports the results URL. The official YouTube TV app may accept
+        // search intents on some versions and links on others; fall back to opening the app.
+        val intents = if (provider == YouTubeSearchProvider.SMARTTUBE) {
+            listOf(Intent(Intent.ACTION_VIEW, uri))
+        } else {
+            listOf(
+                Intent("com.google.android.gms.actions.SEARCH_ACTION").putExtra("query", term),
+                Intent(Intent.ACTION_SEARCH).putExtra(SearchManager.QUERY, term),
+                Intent(Intent.ACTION_VIEW, uri),
+            )
+        }
+        for (intent in intents) {
+            intent.setPackage(provider.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (runCatching { context.startActivity(intent) }.isSuccess) return
+        }
+        val fallback = appRepo.launchIntent(provider.packageName)
+        if (fallback == null || runCatching { context.startActivity(fallback) }.isFailure) {
+            toast("Can't open ${provider.label}")
+        }
     }
 
     private fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()

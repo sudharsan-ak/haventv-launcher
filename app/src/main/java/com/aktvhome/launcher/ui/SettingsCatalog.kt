@@ -47,6 +47,7 @@ internal val HAVEN_SETTINGS = listOf(
     setting("your_name", "Your name", SettingsDestination.DISPLAY, "Home & layout · Display", "Change the name used in the greeting.", "profile welcome"),
     setting("collections", "Collections", SettingsDestination.COLLECTIONS, "Home & layout · Collections", "Reorder, rename and organize app collections.", "manage move apps rows", null),
     setting("hidden_apps", "Hidden apps", SettingsDestination.HIDDEN, "Home & layout · Hidden apps", "Choose which installed apps appear on Home.", "hide visibility", null),
+    setting("youtube_search_app", "Preferred YouTube app", SettingsDestination.SEARCH, "Home & layout · Search", "Choose SmartTube or YouTube for search handoffs, with an automatic fallback.", "search videos provider preferred app"),
 
     setting("alerts_your_team", "Your team alerts", SettingsDestination.NBA_LEAGUE, "Watching & alerts · NBA League · Alerts", "Enable alerts for your favorite team.", "basketball notifications", "Your team"),
     setting("teams_followed", "Teams you follow", SettingsDestination.NBA_LEAGUE, "Watching & alerts · NBA League · Overview", "Choose the NBA teams whose games you follow.", "basketball favorite logos"),

@@ -20,7 +20,7 @@ and tested on a Sony BRAVIA running Google TV (Android 12).
   on first run. Move apps between collections, reorder anything, create and rename your own,
   pick an icon from 24, hide apps you don't use. HDMI inputs are a row of their own.
 - **Universal Search**: find and open apps, settings, collections, HDMI inputs, Watch Now content
-  and NBA teams/games from one place, with SmartTube handoff for YouTube searches.
+  and NBA teams/games from one place, with a configurable SmartTube or YouTube search handoff.
 - **Now Playing**: optionally show available Android media sessions in the Home Continue card,
   browse playing and paused sessions with Left/Right or tappable arrows, and return to the app.
   Requires Android notification-listener access; availability depends on each media app.

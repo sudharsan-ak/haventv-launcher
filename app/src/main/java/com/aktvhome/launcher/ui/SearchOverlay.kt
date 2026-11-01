@@ -66,6 +66,7 @@ import com.aktvhome.launcher.data.Game
 import com.aktvhome.launcher.data.Nba
 import com.aktvhome.launcher.data.TvInput
 import com.aktvhome.launcher.data.TvItem
+import com.aktvhome.launcher.data.YouTubeSearchProvider
 import com.aktvhome.launcher.ui.settings.CloseButton
 import com.aktvhome.launcher.ui.settings.Eyebrow
 import com.aktvhome.launcher.ui.settings.HavenOverlay
@@ -79,8 +80,7 @@ private enum class SearchCategory(val label: String) {
 }
 
 private const val MAX_RESULTS = 15
-private const val SMARTTUBE_PACKAGE = "org.smarttube.stable"
-private const val SMARTTUBE_MIN_QUERY = 3
+private const val YOUTUBE_MIN_QUERY = 3
 
 private sealed interface SearchTarget {
     data class App(val app: AppEntry) : SearchTarget
@@ -88,7 +88,7 @@ private sealed interface SearchTarget {
     data class Collection(val id: String) : SearchTarget
     data class Input(val input: TvInput) : SearchTarget
     data class Tv(val item: TvItem) : SearchTarget
-    data class SmartTube(val query: String) : SearchTarget
+    data class YouTube(val query: String, val provider: YouTubeSearchProvider) : SearchTarget
     data class Team(val abbr: String) : SearchTarget
     data class NbaGame(val game: Game) : SearchTarget
 }
@@ -123,17 +123,20 @@ fun SearchOverlay(state: HavenState, colors: ThemeColors) {
     // The TV can publish the same program in Watch Next and a preview row.
     val allItems = searchItems(state).distinctBy { it.document.id }
     val categoryItems = allItems.filter { category == SearchCategory.ALL || it.category == category }
-    val smartTube = query.trim().takeIf {
-        category == SearchCategory.ALL && it.length >= SMARTTUBE_MIN_QUERY && SMARTTUBE_PACKAGE in state.apps
-    }?.let { smartTubeItem(it, state.apps.getValue(SMARTTUBE_PACKAGE)) }
-    val localLimit = MAX_RESULTS - if (smartTube == null) 0 else 1
+    val youtubeProvider = state.selectedYouTubeSearchProvider()
+    val youtube = if (category == SearchCategory.ALL && query.trim().length >= YOUTUBE_MIN_QUERY) {
+        youtubeProvider?.let { provider ->
+            state.apps[provider.packageName]?.let { app -> youtubeItem(query.trim(), provider, app) }
+        }
+    } else null
+    val localLimit = MAX_RESULTS - if (youtube == null) 0 else 1
     val localResults = if (query.isBlank()) {
         if (category == SearchCategory.ALL) suggestions(state, allItems) else categoryItems.take(MAX_RESULTS)
     } else {
         val byId = categoryItems.associateBy { it.document.id }
         SearchMatcher.ranked(categoryItems.map { it.document }, query, localLimit).mapNotNull { byId[it.id] }
     }
-    val results = listOfNotNull(smartTube) + localResults
+    val results = listOfNotNull(youtube) + localResults
     val listState = rememberLazyListState()
     // Moving focus scrolls the list just enough to show the focused row; scrolling it here as well
     // made the two fight on every press. A new query or tab starts from the top.
@@ -153,7 +156,7 @@ fun SearchOverlay(state: HavenState, colors: ThemeColors) {
             is SearchTarget.Collection -> { state.selectedCollection = target.id; state.overlay = Overlay.NONE }
             is SearchTarget.Input -> { state.overlay = Overlay.NONE; state.switchTo(target.input) }
             is SearchTarget.Tv -> { state.overlay = Overlay.NONE; state.watchNow.open(target.item) }
-            is SearchTarget.SmartTube -> { state.overlay = Overlay.NONE; state.searchSmartTube(target.query) }
+            is SearchTarget.YouTube -> { state.overlay = Overlay.NONE; state.searchYouTube(target.query, target.provider) }
             is SearchTarget.Team -> state.openSchedule(target.abbr)
             is SearchTarget.NbaGame -> state.openGame(target.game)
         }
@@ -410,7 +413,7 @@ private fun SearchArtwork(item: SearchItem, state: HavenState, colors: ThemeColo
 private fun iconFor(category: SearchCategory, target: SearchTarget): ImageVector = when {
     target is SearchTarget.Input -> Icons.Rounded.SettingsInputHdmi
     target is SearchTarget.Collection -> Icons.Rounded.Apps
-    target is SearchTarget.SmartTube -> Icons.Rounded.Search
+    target is SearchTarget.YouTube -> Icons.Rounded.Search
     category == SearchCategory.APPS -> Icons.Rounded.Apps
     category == SearchCategory.SETTINGS -> Icons.Rounded.Settings
     category == SearchCategory.SPORTS -> Icons.Rounded.SportsBasketball
@@ -424,7 +427,7 @@ private fun actionLabel(item: SearchItem, state: HavenState): String = when (val
     is SearchTarget.Collection -> "Open collection"
     is SearchTarget.Input -> "Switch to ${item.document.name}"
     is SearchTarget.Tv -> "Open in ${state.apps[target.item.pkg]?.label ?: "TV app"}"
-    is SearchTarget.SmartTube -> "Search in SmartTube"
+    is SearchTarget.YouTube -> "Search in ${target.provider.label}"
     is SearchTarget.Team -> "Open team schedule"
     is SearchTarget.NbaGame -> "Open game"
 }
@@ -435,7 +438,7 @@ private fun destinationLabel(item: SearchItem, state: HavenState): String = when
     is SearchTarget.Collection -> "Haven Home"
     is SearchTarget.Input -> "TV input"
     is SearchTarget.Tv -> state.apps[target.item.pkg]?.label ?: "TV app"
-    is SearchTarget.SmartTube -> "SmartTube · YouTube results"
+    is SearchTarget.YouTube -> "${target.provider.label} · YouTube results"
     is SearchTarget.Team, is SearchTarget.NbaGame -> "Haven NBA"
 }
 
@@ -445,12 +448,12 @@ private fun resultCountLabel(query: String, count: Int): String = when {
     else -> "$count results"
 }
 
-private fun smartTubeItem(query: String, app: AppEntry) = SearchItem(
+private fun youtubeItem(query: String, provider: YouTubeSearchProvider, app: AppEntry) = SearchItem(
     SearchDocument(
-        "smarttube:$query", "Search YouTube for “$query”", "YouTube results · SmartTube",
-        "Open current YouTube results for “$query” in SmartTube.", "YouTube video search SmartTube",
+        "youtube:${provider.name}:$query", "Search YouTube for “$query”", "YouTube results · ${provider.label}",
+        "Search for “$query” in ${provider.label}.", "YouTube video search ${provider.label}",
     ),
-    SearchCategory.TV, SearchTarget.SmartTube(query), app = app,
+    SearchCategory.TV, SearchTarget.YouTube(query, provider), app = app,
 )
 
 private fun searchItems(state: HavenState): List<SearchItem> = buildList {
