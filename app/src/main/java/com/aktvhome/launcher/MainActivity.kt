@@ -83,6 +83,21 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            // Media sessions refresh only while Haven is visible. Avoid polling in the background.
+            val mediaLifecycle = LocalLifecycleOwner.current.lifecycle
+            LaunchedEffect(mediaLifecycle, s.showNowPlaying) {
+                if (!s.showNowPlaying) {
+                    state.nowPlaying.clear()
+                } else {
+                    mediaLifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                        while (true) {
+                            state.nowPlaying.refresh()
+                            delay(3_000)
+                        }
+                    }
+                }
+            }
+
             // Live games: today's scores every 10 s, only while Haven is in front.
             val lifecycle = LocalLifecycleOwner.current.lifecycle
             LaunchedEffect(Unit) {
