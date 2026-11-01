@@ -141,6 +141,7 @@ class Wallpapers(context: Context, private val scope: CoroutineScope, private va
             s.copy(
                 wallpaperMode = WallpaperMode.MY_PHOTO,
                 wallpaperFit = fit,
+                customWallpaperRevision = s.customWallpaperRevision + 1,
                 bgKingdom = if (s.theme == ThemeId.KINGDOM) Background.PHOTO else s.bgKingdom,
                 bgTide = if (s.theme == ThemeId.TIDE) Background.PHOTO else s.bgTide,
             )
@@ -178,9 +179,9 @@ class Wallpapers(context: Context, private val scope: CoroutineScope, private va
         val wanted = s.bgKingdom == Background.PHOTO || s.bgTide == Background.PHOTO
         if (!wanted && !force) return
         if (rotatingPhoto == null) loadSaved()
-        // The imported wallpaper never rotates; if it is missing, the saved online
-        // photo remains a safe fallback rather than showing a blank screen.
-        if (s.wallpaperMode == WallpaperMode.MY_PHOTO && customPhoto != null) return
+        // The imported wallpaper never rotates. If it is missing, the most recently
+        // saved online photo remains as a fallback without fetching new images.
+        if (s.wallpaperMode == WallpaperMode.MY_PHOTO) return
         // Pinning always wins, even over the explicit Next photo action.
         if (s.wallpaperPinned && s.wallpaperMode == WallpaperMode.ROTATING) return
         val now = System.currentTimeMillis()
