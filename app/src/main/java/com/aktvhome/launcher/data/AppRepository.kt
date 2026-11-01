@@ -35,12 +35,24 @@ class AppRepository(private val context: Context) {
         // Prefer the TV entry when an app has both.
         for (ri in tv + phone) {
             val pkg = ri.activityInfo.packageName
-            if (pkg == context.packageName) continue
+            if (pkg == context.packageName || !isEnabled(pkg)) continue
             byPkg.putIfAbsent(pkg, ri)
         }
         byPkg.values.mapNotNull { ri -> runCatching { toEntry(ri) }.getOrNull() }
             .sortedBy { it.label.lowercase() }
     }
+
+    /** A disabled system app is installed but must not be offered as a search provider. */
+    fun isEnabled(pkg: String): Boolean = runCatching {
+        val info = pm.getApplicationInfo(pkg, 0)
+        when (pm.getApplicationEnabledSetting(pkg)) {
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER,
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED_UNTIL_USED -> false
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> true
+            else -> info.enabled
+        }
+    }.getOrDefault(false)
 
     fun launchIntent(pkg: String): Intent? =
         (pm.getLeanbackLaunchIntentForPackage(pkg) ?: pm.getLaunchIntentForPackage(pkg))

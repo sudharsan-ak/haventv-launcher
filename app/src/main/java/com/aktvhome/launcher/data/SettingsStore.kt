@@ -72,6 +72,8 @@ data class Settings(
     /** Shared Kingdom/Tide headline: dynamic context or the fixed default. */
     val headlineChanging: Boolean = true,
     val cardSize: CardSize = CardSize.MEDIUM,
+    /** App to use for YouTube search handoffs, with fallback if it is unavailable. */
+    val youtubeSearchPreference: YouTubeSearchPreference = YouTubeSearchPreference.AUTO,
     /** The Private DNS the user picked (what "Keep enforced" restores). */
     val dnsChoice: DnsChoice = DnsChoice.AUTO,
     /** The last filtering provider picked; what the Quick settings switch turns on. */
@@ -169,6 +171,7 @@ class SettingsStore(context: Context) {
             .putBoolean("showGreeting", next.showGreeting)
             .putBoolean("headlineChanging", next.headlineChanging)
             .putString("cardSize", next.cardSize.name)
+            .putString("youtubeSearchPreference", next.youtubeSearchPreference.name)
             .putString("dnsChoice", next.dnsChoice.name)
             .putString("dnsProvider", next.dnsProvider.name)
             .putString("dnsCustom", next.dnsCustom)
@@ -224,6 +227,7 @@ class SettingsStore(context: Context) {
         showGreeting = prefs.getBoolean("showGreeting", true),
         headlineChanging = prefs.getBoolean("headlineChanging", true),
         cardSize = enumOr(prefs.getString("cardSize", null), CardSize.MEDIUM),
+        youtubeSearchPreference = enumOr(prefs.getString("youtubeSearchPreference", null), YouTubeSearchPreference.AUTO),
         dnsChoice = enumOr(prefs.getString("dnsChoice", null), DnsChoice.AUTO),
         dnsProvider = enumOr(prefs.getString("dnsProvider", null), DnsChoice.ADGUARD),
         dnsCustom = prefs.getString("dnsCustom", null) ?: "",
