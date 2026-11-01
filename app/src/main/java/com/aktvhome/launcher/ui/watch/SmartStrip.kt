@@ -5,6 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.MarqueeSpacing
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -226,27 +227,30 @@ private fun RowScope.NowPlayingCard(
                 color = ink.copy(alpha = 0.72f), fontSize = 9.sp,
                 fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp, maxLines = 1,
             )
-            // A single lightweight Compose marquee reveals long titles without moving
-            // the artwork, provider icon or carousel arrows. Keep the node keyed to the
-            // media title so selecting a different session restarts at the beginning.
-            key(media.id, media.title) {
-                Text(
-                    media.title,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .basicMarquee(
+            // The media repository refreshes every few seconds. Anchor the marquee to the
+            // visible app/title, not the framework session token, so polling cannot restart
+            // a long title midway through its scroll.
+            key(media.pkg, media.title) {
+                // This bounded viewport is important: the marquee measures its child using
+                // unbounded width, while only this box's width is visible on the Home card.
+                Box(Modifier.fillMaxWidth()) {
+                    Text(
+                        media.title,
+                        modifier = Modifier.basicMarquee(
                             iterations = if (state.overlay == Overlay.NONE && !state.wallpaperView) Int.MAX_VALUE else 0,
-                            initialDelayMillis = 1_400,
-                            repeatDelayMillis = 1_800,
-                            velocity = 32.dp,
+                            spacing = MarqueeSpacing(12.dp),
+                            initialDelayMillis = 1_000,
+                            repeatDelayMillis = 1_400,
+                            velocity = 48.dp,
                         ),
-                    color = ink,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Clip,
-                )
+                        color = ink,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Clip,
+                    )
+                }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 app?.icon?.let { icon ->
