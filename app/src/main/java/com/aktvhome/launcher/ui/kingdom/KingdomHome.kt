@@ -30,6 +30,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,6 +65,9 @@ import com.aktvhome.launcher.ui.AppCard
 import com.aktvhome.launcher.ui.AppMenuOverlays
 import com.aktvhome.launcher.ui.GearButton
 import com.aktvhome.launcher.ui.WatchNowButton
+import com.aktvhome.launcher.ui.CollapsedAppsHandle
+import com.aktvhome.launcher.ui.SlidingApps
+import com.aktvhome.launcher.ui.collapseOnLastDown
 import com.aktvhome.launcher.ui.SearchButton
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.IconBadge
@@ -101,12 +107,42 @@ fun KingdomHome(state: HavenState, colors: ThemeColors, preview: Boolean = false
     val currentIndex = shown.indexOfFirst { it.collection.id == current?.collection?.id }.coerceAtLeast(0)
     val showStrip = settings.showWatchNowCards && state.stripVisible()
     val stripFirst = remember { FocusRequester() }
+    val collapsedHandleFocus = remember { FocusRequester() }
+    var appsCollapsed by remember { mutableStateOf(false) }
+    var restoreAppFocus by remember { mutableStateOf(false) }
+    var lastAppIndex by remember { mutableStateOf(0) }
+    var lastInputIndex by remember { mutableStateOf(0) }
     // Under the tiles: HDMI inputs in one row, or the apps in lines sized by card size.
     // One instance each so the tiles can move focus into them.
     val items = rememberWrapRow(if (current?.isInputs == true) state.inputs.size else 0)
     val grid = rememberAppGrid(if (current?.isInputs == true) 0 else current?.apps?.size ?: 0, settings.cardSize.columns)
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
+    val collapseApps: () -> Unit = {
+        if (!appsCollapsed && state.moving == null && state.overlay == Overlay.NONE) {
+            restoreAppFocus = true
+            appsCollapsed = true
+            // When a collection has many app rows, bring the header back into view
+            // before removing the scrolled content.
+            scope.launch { scroll.scrollTo(0) }
+        }
+    }
+    val expandApps: () -> Unit = { appsCollapsed = false }
+    LaunchedEffect(appsCollapsed) {
+        if (appsCollapsed) {
+            delay(45)
+            runCatching { collapsedHandleFocus.requestFocus() }
+        } else if (restoreAppFocus) {
+            // AnimatedVisibility composes its content at the start of expansion.
+            delay(75)
+            when {
+                current?.isInputs == true && state.inputs.isNotEmpty() -> items.focus(lastInputIndex)
+                current?.apps?.isNotEmpty() == true -> grid.focus(lastAppIndex)
+                else -> tiles.focus(currentIndex)
+            }
+            restoreAppFocus = false
+        }
+    }
     // Collections and apps always show with the full header above them.
     val toTop: () -> Unit = { scope.launch { scroll.scrollTo(0) } }
 
@@ -167,11 +203,12 @@ fun KingdomHome(state: HavenState, colors: ThemeColors, preview: Boolean = false
                 // Keep the full Watch Now drawer accessible even with the strip hidden.
                 if (!settings.showWatchNowCards) {
                     WatchNowButton(colors, Modifier.focusProperties {
-                        down = tiles.requester(currentIndex)
+                        down = if (appsCollapsed) collapsedHandleFocus else tiles.requester(currentIndex)
                     }) { state.overlay = Overlay.WATCH }
                     Spacer(Modifier.width(8.dp))
                 }
-                val downTarget = if (showStrip) stripFirst else tiles.requester(currentIndex)
+                val downTarget = if (showStrip) stripFirst else
+                    if (appsCollapsed) collapsedHandleFocus else tiles.requester(currentIndex)
                 SearchButton(colors, Modifier.focusProperties { down = downTarget }) {
                     state.overlay = Overlay.SEARCH
                 }
@@ -191,101 +228,128 @@ fun KingdomHome(state: HavenState, colors: ThemeColors, preview: Boolean = false
             if (showStrip) {
                 SmartStrip(
                     state, colors, stripFirst,
-                    side.fillMaxWidth().onKeyDown(KeyEvent.KEYCODE_DPAD_DOWN) { tiles.focus(currentIndex) },
+                    side.fillMaxWidth().onKeyDown(KeyEvent.KEYCODE_DPAD_DOWN) {
+                        if (appsCollapsed) runCatching { collapsedHandleFocus.requestFocus() }
+                        else tiles.focus(currentIndex)
+                    },
                 )
             } else {
                 Spacer(Modifier.height(68.dp))
             }
             Spacer(Modifier.height(14.dp))
-            LazyRow(
-                state = tiles.state,
-                modifier = tiles.keys,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                contentPadding = PaddingValues(vertical = 4.dp, horizontal = SIDE),
-            ) {
-                itemsIndexed(shown, key = { _, sc -> sc.collection.id }) { i, sc ->
-                    CollectionTab(
-                        sc, colors,
-                        selected = sc.collection.id == current?.collection?.id,
-                        // Down enters this collection at the app last opened from it (or the first).
-                        modifier = tiles.item(i).onKeyDown(KeyEvent.KEYCODE_DPAD_DOWN) {
-                            if (sc.isInputs) items.focus(0) else grid.focus(state.entryIndex(sc))
-                        },
-                        onFocused = {
-                            tiles.onItemFocused(i)
-                            state.selectedCollection = sc.collection.id
-                            toTop()
-                        },
-                    )
-                }
-            }
-
-            // A hairline under the tabs, like Settings; the open tab already names the row below.
-            Box(side.fillMaxWidth().padding(top = 6.dp).height(1.dp).background(colors.edge))
-            if (current != null) {
-                Spacer(Modifier.height(4.dp))
-                when {
-                    current.isInputs -> {
-                        val row = items
-                        LazyRow(
-                            state = row.state,
-                            modifier = row.keys.onKeyDown(KeyEvent.KEYCODE_DPAD_UP) { tiles.focus(currentIndex) },
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            contentPadding = PaddingValues(vertical = 12.dp, horizontal = SIDE),
-                        ) {
-                            itemsIndexed(state.inputs, key = { _, input -> input.id }) { i, input ->
-                                InputCard(
-                                    input.label, colors, width = settings.cardSize.width.dp, modifier = row.item(i),
-                                    onFocused = { row.onItemFocused(i); state.focusedApp = null; toTop() },
-                                ) { state.switchTo(input) }
-                            }
+            SlidingApps(visible = !appsCollapsed, motion = if (preview) Motion.OFF else settings.motion) {
+                Column {
+                    LazyRow(
+                        state = tiles.state,
+                        modifier = tiles.keys,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        contentPadding = PaddingValues(vertical = 4.dp, horizontal = SIDE),
+                    ) {
+                        itemsIndexed(shown, key = { _, sc -> sc.collection.id }) { i, sc ->
+                            CollectionTab(
+                                sc, colors,
+                                selected = sc.collection.id == current?.collection?.id,
+                                // Down enters this collection at the app last opened from it (or the first).
+                                modifier = tiles.item(i)
+                                    .collapseOnLastDown({
+                                        if (sc.isInputs) state.inputs.isEmpty() else sc.apps.isEmpty()
+                                    }, collapseApps)
+                                    .onKeyDown(KeyEvent.KEYCODE_DPAD_DOWN, {
+                                        if (sc.isInputs) state.inputs.isNotEmpty() else sc.apps.isNotEmpty()
+                                    }) {
+                                        if (sc.isInputs) items.focus(0) else grid.focus(state.entryIndex(sc))
+                                    },
+                                onFocused = {
+                                    tiles.onItemFocused(i)
+                                    state.selectedCollection = sc.collection.id
+                                    toTop()
+                                },
+                            )
                         }
                     }
-                    current.apps.isEmpty() -> Text(
-                        "Empty. Hold OK on any app and choose \"Move to collection\".",
-                        color = colors.inkSoft, fontSize = 13.sp, modifier = side.padding(vertical = 30.dp),
-                    )
-                    else -> {
-                        val visible = current.apps.map { it.pkg }
-                        val cols = settings.cardSize.columns
-                        grid.paused = state.moving != null
-                        Column(
-                            // Up from the first line goes back to this collection's tile (not while moving an app).
-                            side.then(grid.keys)
-                                .onKeyDown(KeyEvent.KEYCODE_DPAD_UP, { state.moving == null && grid.inTopRow }) {
-                                    tiles.focus(currentIndex)
+
+                    // A hairline under the tabs, like Settings; the open tab already names the row below.
+                    Box(side.fillMaxWidth().padding(top = 6.dp).height(1.dp).background(colors.edge))
+                    if (current != null) {
+                        Spacer(Modifier.height(4.dp))
+                        when {
+                            current.isInputs -> {
+                                val row = items
+                                LazyRow(
+                                    state = row.state,
+                                    modifier = row.keys
+                                        .collapseOnLastDown({ row.count > 0 && state.moving == null }, collapseApps)
+                                        .onKeyDown(KeyEvent.KEYCODE_DPAD_UP) { tiles.focus(currentIndex) },
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                    contentPadding = PaddingValues(vertical = 12.dp, horizontal = SIDE),
+                                ) {
+                                    itemsIndexed(state.inputs, key = { _, input -> input.id }) { i, input ->
+                                        InputCard(
+                                            input.label, colors, width = settings.cardSize.width.dp, modifier = row.item(i),
+                                            onFocused = { row.onItemFocused(i); lastInputIndex = i; state.focusedApp = null; toTop() },
+                                        ) { state.switchTo(input) }
+                                    }
                                 }
-                                .padding(vertical = 12.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
-                        ) {
-                            current.apps.chunked(cols).forEachIndexed { r, line ->
-                                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                    line.forEachIndexed { c, app ->
-                                        val i = r * cols + c
-                                        key(app.pkg) {
-                                            val bring = remember { BringIntoViewRequester() }
-                                            AppCard(
-                                                app, colors, width = settings.cardSize.width.dp,
-                                                moving = state.moving == app.pkg,
-                                                modifier = grid.item(i).bringIntoViewRequester(bring).moveKeys(state, app.pkg, visible),
-                                                onFocused = {
-                                                    grid.onItemFocused(i)
-                                                    state.focusedApp = app
-                                                    // The first line keeps the header in view; lower lines scroll up to show.
-                                                    if (r == 0) toTop() else scope.launch { bring.bringIntoView() }
-                                                },
-                                                onClick = { state.launch(app) },
-                                                onLongClick = { state.menuFor = app },
-                                            )
+                            }
+                            current.apps.isEmpty() -> Text(
+                                "Empty. Hold OK on any app and choose \"Move to collection\".",
+                                color = colors.inkSoft, fontSize = 13.sp, modifier = side.padding(vertical = 30.dp),
+                            )
+                            else -> {
+                                val visible = current.apps.map { it.pkg }
+                                val cols = settings.cardSize.columns
+                                grid.paused = state.moving != null
+                                Column(
+                                    // Up from the first line goes back to this collection's tile (not while moving an app).
+                                    side.then(grid.keys)
+                                        .collapseOnLastDown({ state.moving == null && grid.inBottomRow }, collapseApps)
+                                        .onKeyDown(KeyEvent.KEYCODE_DPAD_UP, { state.moving == null && grid.inTopRow }) {
+                                            tiles.focus(currentIndex)
+                                        }
+                                        .padding(vertical = 12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                                ) {
+                                    current.apps.chunked(cols).forEachIndexed { r, line ->
+                                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                                            line.forEachIndexed { c, app ->
+                                                val i = r * cols + c
+                                                key(app.pkg) {
+                                                    val bring = remember { BringIntoViewRequester() }
+                                                    AppCard(
+                                                        app, colors, width = settings.cardSize.width.dp,
+                                                        moving = state.moving == app.pkg,
+                                                        modifier = grid.item(i).bringIntoViewRequester(bring).moveKeys(state, app.pkg, visible),
+                                                        onFocused = {
+                                                            grid.onItemFocused(i)
+                                                            lastAppIndex = i
+                                                            state.focusedApp = app
+                                                            // The first line keeps the header in view; lower lines scroll up to show.
+                                                            if (r == 0) toTop() else scope.launch { bring.bringIntoView() }
+                                                        },
+                                                        onClick = { state.launch(app) },
+                                                        onLongClick = { state.menuFor = app },
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     }
+                    Spacer(Modifier.height(30.dp))
                 }
             }
-            Spacer(Modifier.height(30.dp))
+        }
+        if (appsCollapsed) {
+            CollapsedAppsHandle(
+                colors = colors,
+                focusRequester = collapsedHandleFocus,
+                modifier = Modifier.align(Alignment.BottomCenter)
+                    .padding(bottom = 14.dp)
+                    .graphicsLayer { alpha = homeAlpha },
+                expand = expandApps,
+            )
         }
     }
 
@@ -297,7 +361,8 @@ fun KingdomHome(state: HavenState, colors: ThemeColors, preview: Boolean = false
         if (state.overlay == Overlay.NONE && shown.isNotEmpty() && !state.popupShowing) {
             delay(80) // let the closing window hand focus back first
             tiles.state.scrollToItem(currentIndex)
-            runCatching { tiles.requester(currentIndex).requestFocus() }
+            if (appsCollapsed) runCatching { collapsedHandleFocus.requestFocus() }
+            else runCatching { tiles.requester(currentIndex).requestFocus() }
         }
     }
 
@@ -305,7 +370,8 @@ fun KingdomHome(state: HavenState, colors: ThemeColors, preview: Boolean = false
         if (shown.isNotEmpty() && !state.popupShowing) {
             scroll.scrollTo(0)
             tiles.state.scrollToItem(0)
-            runCatching { tiles.requester(0).requestFocus() }
+            if (appsCollapsed) runCatching { collapsedHandleFocus.requestFocus() }
+            else runCatching { tiles.requester(0).requestFocus() }
         }
     }
 }
