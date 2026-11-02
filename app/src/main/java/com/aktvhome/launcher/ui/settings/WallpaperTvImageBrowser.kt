@@ -5,19 +5,34 @@ import android.content.ContentUris
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.graphics.Bitmap
+import android.media.ThumbnailUtils
+import android.util.LruCache
+import android.util.Size
 import android.os.Build
 import android.os.Environment
 import android.os.storage.StorageManager
 import android.provider.MediaStore
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -26,12 +41,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aktvhome.launcher.ui.Pill
+import com.aktvhome.launcher.ui.tvClickable
 import com.aktvhome.launcher.ui.theme.ThemeColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -70,6 +94,14 @@ internal fun WallpaperTvImageBrowser(
     var error by remember { mutableStateOf("") }
     val canBrowseFiles = Environment.isExternalStorageManager()
     val canReadPhotos = hasMediaPermission(context)
+    // Only thumb-sized bitmaps are retained, capped at 12 MB across visible grid cells.
+    // This cache belongs to the open browser, and disappears when the browser closes.
+    val thumbCache = remember {
+        object : LruCache<String, Bitmap>(12 * 1024) {
+            override fun sizeOf(key: String, value: Bitmap): Int =
+                (value.byteCount / 1024).coerceAtLeast(1)
+        }
+    }
 
     LaunchedEffect(folder, canBrowseFiles, permissionRevision) {
         loading = true
@@ -142,15 +174,26 @@ internal fun WallpaperTvImageBrowser(
                 )
             }
             if (entries.isNotEmpty()) {
-                LazyColumn(
+                // A TV-friendly four-column gallery instead of a long filename list.
+                // Lazy composition avoids decoding offscreen photos all at once.
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(4),
                     modifier = Modifier.weight(1f).fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                    horizontalArrangement = Arrangement.spacedBy(9.dp),
+                    verticalArrangement = Arrangement.spacedBy(9.dp),
                 ) {
-                    itemsIndexed(entries) { index, item ->
-                        Pill(
-                            (if (item.isFolder) "📁  " else "🖼  ") + item.name,
-                            colors,
-                            modifier = Modifier.fillMaxWidth(),
+                    itemsIndexed(
+                        entries,
+                        key = { _, item ->
+                            item.folder?.absolutePath ?: item.image?.absolutePath
+                                ?: item.mediaUri?.toString() ?: item.name
+                        },
+                    ) { index, item ->
+                        WallpaperBrowserTile(
+                            entry = item,
+                            context = context,
+                            colors = colors,
+                            thumbCache = thumbCache,
                             focusRequester = if (index == 0) first else null,
                         ) {
                             if (item.folder != null) {
@@ -173,6 +216,82 @@ internal fun WallpaperTvImageBrowser(
     }
     LaunchedEffect(folder, entries, loading, canReadPhotos, canBrowseFiles) {
         if (!loading) runCatching { first.requestFocus() }
+    }
+}
+
+/**
+ * Remote-focusable gallery card. Thumbnail decoding is IO-only and downsized by
+ * Android's thumbnail APIs, not by decoding the full image in the Compose UI.
+ */
+@Composable
+private fun WallpaperBrowserTile(
+    entry: TvWallpaperEntry,
+    context: Context,
+    colors: ThemeColors,
+    thumbCache: LruCache<String, Bitmap>,
+    focusRequester: FocusRequester?,
+    onClick: () -> Unit,
+) {
+    val imageKey = entry.image?.let { "${it.absolutePath}:${it.lastModified()}:${it.length()}" }
+        ?: entry.mediaUri?.toString().orEmpty()
+    var thumbnail by remember(imageKey) {
+        mutableStateOf<ImageBitmap?>(thumbCache.get(imageKey)?.asImageBitmap())
+    }
+    var focused by remember { mutableStateOf(false) }
+    LaunchedEffect(imageKey) {
+        if (entry.isFolder || thumbnail != null || imageKey.isEmpty()) return@LaunchedEffect
+        val bitmap = withContext(Dispatchers.IO) {
+            thumbCache.get(imageKey) ?: runCatching {
+                val size = Size(240, 160)
+                when {
+                    entry.image != null -> ThumbnailUtils.createImageThumbnail(entry.image, size, null)
+                    entry.mediaUri != null -> context.contentResolver.loadThumbnail(entry.mediaUri, size, null)
+                    else -> null
+                }
+            }.getOrNull()?.also { thumbCache.put(imageKey, it) }
+        }
+        thumbnail = bitmap?.asImageBitmap()
+    }
+
+    val shape = RoundedCornerShape(12.dp)
+    val clickable = if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier
+    Column(
+        clickable
+            .fillMaxWidth()
+            .clip(shape)
+            .background(if (focused) colors.pill else colors.glass)
+            .border(if (focused) 2.dp else 1.dp, if (focused) colors.accent else colors.edge, shape)
+            .onFocusChanged { focused = it.isFocused }
+            .tvClickable(onClick = onClick)
+            .padding(7.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
+            Modifier.fillMaxWidth().height(84.dp).clip(RoundedCornerShape(8.dp))
+                .background(Color.Black.copy(alpha = 0.23f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (entry.isFolder) {
+                Icon(Icons.Rounded.Folder, contentDescription = null,
+                    tint = if (focused) colors.pillInk else colors.inkSoft,
+                    modifier = Modifier.width(39.dp).height(39.dp))
+            } else if (thumbnail != null) {
+                Image(thumbnail!!, contentDescription = null, modifier = Modifier.fillMaxWidth().height(84.dp),
+                    contentScale = ContentScale.Crop)
+            } else {
+                Icon(Icons.Rounded.Image, contentDescription = null,
+                    tint = if (focused) colors.pillInk else colors.inkSoft,
+                    modifier = Modifier.width(32.dp).height(32.dp))
+            }
+        }
+        Text(
+            entry.name,
+            color = if (focused) colors.pillInk else colors.ink,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
