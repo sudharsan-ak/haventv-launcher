@@ -30,6 +30,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.MotionDurationScale
@@ -57,6 +59,9 @@ import com.aktvhome.launcher.ui.AppMenuOverlays
 import com.aktvhome.launcher.ui.CollectionIcons
 import com.aktvhome.launcher.ui.GearButton
 import com.aktvhome.launcher.ui.WatchNowButton
+import com.aktvhome.launcher.ui.CollapsedAppsHandle
+import com.aktvhome.launcher.ui.SlidingApps
+import com.aktvhome.launcher.ui.collapseOnLastDown
 import com.aktvhome.launcher.ui.SearchButton
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.Overlay
@@ -90,8 +95,35 @@ fun TideHome(state: HavenState, colors: ThemeColors, preview: Boolean = false) {
     val currentIndex = shown.indexOfFirst { it.collection.id == current?.collection?.id }.coerceAtLeast(0)
     val showStrip = settings.showWatchNowCards && state.stripVisible()
     val stripFirst = remember { FocusRequester() }
+    val collapsedHandleFocus = remember { FocusRequester() }
+    var appsCollapsed by remember { mutableStateOf(false) }
+    var restoreDockFocus by remember { mutableStateOf(false) }
+    var lastDockIndex by remember { mutableStateOf(0) }
     // The dock (apps, or HDMI inputs). One instance so the chips can move focus into it.
     val dockRow = rememberWrapRow(if (current?.isInputs == true) state.inputs.size else current?.apps?.size ?: 0)
+    // Keep the existing dock's measured height even after its children leave the
+    // composition. Otherwise Tide's weighted spacer would pull the Watch Now row down.
+    var appsSlotHeightPx by remember(settings.cardSize, current?.isInputs) { mutableStateOf(0) }
+    val density = LocalDensity.current
+    val collapseApps: () -> Unit = {
+        if (!appsCollapsed && state.moving == null && state.overlay == Overlay.NONE) {
+            restoreDockFocus = true
+            appsCollapsed = true
+        }
+    }
+    val expandApps: () -> Unit = { appsCollapsed = false }
+    LaunchedEffect(appsCollapsed) {
+        if (appsCollapsed) {
+            delay(45)
+            runCatching { collapsedHandleFocus.requestFocus() }
+        } else if (restoreDockFocus) {
+            delay(75)
+            if ((current?.isInputs == true && state.inputs.isNotEmpty()) ||
+                (current?.isInputs != true && current?.apps?.isNotEmpty() == true)
+            ) dockRow.focus(lastDockIndex) else chips.focus(currentIndex)
+            restoreDockFocus = false
+        }
+    }
 
     // The greeting fades in each time home comes back into view; with Motion off it just appears.
     val greetAlpha = remember { Animatable(1f) }
@@ -127,7 +159,8 @@ fun TideHome(state: HavenState, colors: ThemeColors, preview: Boolean = false) {
             Modifier.align(Alignment.TopEnd).padding(top = 44.dp, end = 48.dp).graphicsLayer { alpha = homeAlpha },
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            val downTarget = if (showStrip) stripFirst else chips.requester(currentIndex)
+            val downTarget = if (showStrip) stripFirst else
+                if (appsCollapsed) collapsedHandleFocus else chips.requester(currentIndex)
             if (!settings.showWatchNowCards) {
                 WatchNowButton(colors, Modifier.focusProperties { down = downTarget }) {
                     state.overlay = Overlay.WATCH
@@ -167,85 +200,129 @@ fun TideHome(state: HavenState, colors: ThemeColors, preview: Boolean = false) {
                 SmartStrip(
                     state, colors, stripFirst,
                     Modifier.fillMaxWidth().padding(horizontal = 96.dp)
-                        .onKeyDown(KeyEvent.KEYCODE_DPAD_DOWN) { chips.focus(currentIndex) },
+                        .onKeyDown(KeyEvent.KEYCODE_DPAD_DOWN) {
+                            if (appsCollapsed) runCatching { collapsedHandleFocus.requestFocus() }
+                            else chips.focus(currentIndex)
+                        },
                 )
             } else {
                 Spacer(Modifier.height(68.dp))
             }
             Spacer(Modifier.height(18.dp))
 
-            LazyRow(
-                state = chips.state,
-                modifier = chips.keys,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(horizontal = 48.dp, vertical = 6.dp),
+            // Tide's Watch Now strip and centered clock stay fixed. The empty dock slot
+            // is retained when its content animates below the screen.
+            Box(
+                Modifier.fillMaxWidth().then(
+                    if (appsSlotHeightPx > 0) Modifier.height(with(density) { appsSlotHeightPx.toDp() })
+                    else Modifier
+                ),
             ) {
-                itemsIndexed(shown, key = { _, sc -> sc.collection.id }) { i, sc ->
-                    Pill(
-                        sc.collection.name, colors,
-                        selected = sc.collection.id == current?.collection?.id,
-                        // Down enters this collection at the app last opened from it (or the first).
-                        modifier = chips.item(i).onKeyDown(KeyEvent.KEYCODE_DPAD_DOWN) {
-                            dockRow.focus(if (sc.isInputs) 0 else state.entryIndex(sc))
+                SlidingApps(visible = !appsCollapsed, motion = motion) {
+                    Column(
+                        Modifier.fillMaxWidth().onSizeChanged { size ->
+                            if (!appsCollapsed && size.height > 0 && appsSlotHeightPx != size.height)
+                                appsSlotHeightPx = size.height
                         },
-                        icon = CollectionIcons.of(sc.collection.icon),
-                        // Leaving the dock drops the app name so the label shows the collection again.
-                        onFocused = { chips.onItemFocused(i); state.selectedCollection = sc.collection.id; state.focusedApp = null },
-                    ) { state.selectedCollection = sc.collection.id }
-                }
-            }
-
-            Spacer(Modifier.height(12.dp))
-            Text(
-                state.focusedApp?.label ?: current?.collection?.name.orEmpty(),
-                color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium,
-            )
-            Spacer(Modifier.height(8.dp))
-
-            Row(
-                Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(colors.glass)
-                    .border(1.dp, colors.edge, RoundedCornerShape(50))
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                when {
-                    current?.isInputs == true -> {
-                        val dock = dockRow
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
                         LazyRow(
-                            state = dock.state,
-                            modifier = dock.keys.onKeyDown(KeyEvent.KEYCODE_DPAD_UP) { chips.focus(currentIndex) },
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            itemsIndexed(state.inputs, key = { _, input -> input.id }) { i, input ->
-                                Pill(
-                                    input.label, colors, modifier = dock.item(i), icon = CollectionIcons.of("hdmi"),
-                                    onFocused = { dock.onItemFocused(i) },
-                                ) { state.switchTo(input) }
-                            }
-                        }
-                    }
-                    current == null || current.apps.isEmpty() ->
-                        Text("Empty. Hold OK on any app to move it here.", color = colors.ink, fontSize = 13.sp, modifier = Modifier.padding(10.dp))
-                    else -> {
-                        val visible = current.apps.map { it.pkg }
-                        val dock = dockRow.also { it.paused = state.moving != null }
-                        LazyRow(
-                            state = dock.state,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
-                            modifier = Modifier.height((76 * settings.cardSize.scale).dp).then(dock.keys)
-                                .onKeyDown(KeyEvent.KEYCODE_DPAD_UP, { state.moving == null }) { chips.focus(currentIndex) },
+                            state = chips.state,
+                            modifier = chips.keys,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            contentPadding = PaddingValues(horizontal = 48.dp, vertical = 6.dp),
                         ) {
-                            itemsIndexed(current.apps, key = { _, app -> app.pkg }) { i, app ->
-                                DockIcon(state, app, colors, visible, settings.cardSize.scale, dock.item(i)) { dock.onItemFocused(i) }
+                            itemsIndexed(shown, key = { _, sc -> sc.collection.id }) { i, sc ->
+                                Pill(
+                                    sc.collection.name, colors,
+                                    selected = sc.collection.id == current?.collection?.id,
+                                    // Down enters this collection at the app last opened from it (or the first).
+                                    modifier = chips.item(i)
+                                        .collapseOnLastDown({
+                                            if (sc.isInputs) state.inputs.isEmpty() else sc.apps.isEmpty()
+                                        }, collapseApps)
+                                        .onKeyDown(KeyEvent.KEYCODE_DPAD_DOWN, {
+                                            if (sc.isInputs) state.inputs.isNotEmpty() else sc.apps.isNotEmpty()
+                                        }) {
+                                            dockRow.focus(if (sc.isInputs) 0 else state.entryIndex(sc))
+                                        },
+                                    icon = CollectionIcons.of(sc.collection.icon),
+                                    // Leaving the dock drops the app name so the label shows the collection again.
+                                    onFocused = { chips.onItemFocused(i); state.selectedCollection = sc.collection.id; state.focusedApp = null },
+                                ) { state.selectedCollection = sc.collection.id }
                             }
                         }
+
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            state.focusedApp?.label ?: current?.collection?.name.orEmpty(),
+                            color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium,
+                        )
+                        Spacer(Modifier.height(8.dp))
+
+                        Row(
+                            Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(colors.glass)
+                                .border(1.dp, colors.edge, RoundedCornerShape(50))
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            when {
+                                current?.isInputs == true -> {
+                                    val dock = dockRow
+                                    LazyRow(
+                                        state = dock.state,
+                                        modifier = dock.keys
+                                            .collapseOnLastDown({ dock.count > 0 && state.moving == null }, collapseApps)
+                                            .onKeyDown(KeyEvent.KEYCODE_DPAD_UP) { chips.focus(currentIndex) },
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        itemsIndexed(state.inputs, key = { _, input -> input.id }) { i, input ->
+                                            Pill(
+                                                input.label, colors, modifier = dock.item(i), icon = CollectionIcons.of("hdmi"),
+                                                onFocused = { dock.onItemFocused(i); lastDockIndex = i },
+                                            ) { state.switchTo(input) }
+                                        }
+                                    }
+                                }
+                                current == null || current.apps.isEmpty() ->
+                                    Text("Empty. Hold OK on any app to move it here.", color = colors.ink, fontSize = 13.sp, modifier = Modifier.padding(10.dp))
+                                else -> {
+                                    val visible = current.apps.map { it.pkg }
+                                    val dock = dockRow.also { it.paused = state.moving != null }
+                                    LazyRow(
+                                        state = dock.state,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                                        modifier = Modifier.height((76 * settings.cardSize.scale).dp).then(dock.keys)
+                                            .collapseOnLastDown({ dock.count > 0 && state.moving == null }, collapseApps)
+                                            .onKeyDown(KeyEvent.KEYCODE_DPAD_UP, { state.moving == null }) { chips.focus(currentIndex) },
+                                    ) {
+                                        itemsIndexed(current.apps, key = { _, app -> app.pkg }) { i, app ->
+                                            DockIcon(state, app, colors, visible, settings.cardSize.scale, dock.item(i)) {
+                                                dock.onItemFocused(i)
+                                                lastDockIndex = i
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(30.dp))
                     }
                 }
             }
-            Spacer(Modifier.height(30.dp))
+        }
+        if (appsCollapsed) {
+            CollapsedAppsHandle(
+                colors = colors,
+                focusRequester = collapsedHandleFocus,
+                modifier = Modifier.align(Alignment.BottomCenter)
+                    .padding(bottom = 14.dp)
+                    .graphicsLayer { alpha = homeAlpha },
+                expand = expandApps,
+            )
         }
     }
 
@@ -257,14 +334,16 @@ fun TideHome(state: HavenState, colors: ThemeColors, preview: Boolean = false) {
         if (state.overlay == Overlay.NONE && shown.isNotEmpty() && !state.popupShowing) {
             delay(80) // let the closing window hand focus back first
             chips.state.scrollToItem(currentIndex)
-            runCatching { chips.requester(currentIndex).requestFocus() }
+            if (appsCollapsed) runCatching { collapsedHandleFocus.requestFocus() }
+            else runCatching { chips.requester(currentIndex).requestFocus() }
         }
     }
 
     LaunchedEffect(shown.isNotEmpty(), state.homePresses) {
         if (shown.isNotEmpty() && !state.popupShowing) {
             chips.state.scrollToItem(0)
-            runCatching { chips.requester(0).requestFocus() }
+            if (appsCollapsed) runCatching { collapsedHandleFocus.requestFocus() }
+            else runCatching { chips.requester(0).requestFocus() }
         }
     }
 }
