@@ -103,7 +103,7 @@ class AppGrid internal constructor() {
 
     /** Down past any app on the final line can collapse the collections and apps. */
     val inBottomRow: Boolean get() = count > 0 && columns > 0 &&
-        focused in (((count - 1) / columns) * columns) until count
+        focused in ((((count - 1) / columns) * columns) until count)
 
     fun focus(index: Int) {
         if (count == 0) return

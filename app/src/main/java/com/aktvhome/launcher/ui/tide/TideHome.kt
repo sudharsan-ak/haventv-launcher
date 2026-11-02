@@ -333,17 +333,23 @@ fun TideHome(state: HavenState, colors: ThemeColors, preview: Boolean = false) {
     LaunchedEffect(state.overlay) {
         if (state.overlay == Overlay.NONE && shown.isNotEmpty() && !state.popupShowing) {
             delay(80) // let the closing window hand focus back first
-            chips.state.scrollToItem(currentIndex)
-            if (appsCollapsed) runCatching { collapsedHandleFocus.requestFocus() }
-            else runCatching { chips.requester(currentIndex).requestFocus() }
+            if (appsCollapsed) {
+                runCatching { collapsedHandleFocus.requestFocus() }
+            } else {
+                chips.state.scrollToItem(currentIndex)
+                runCatching { chips.requester(currentIndex).requestFocus() }
+            }
         }
     }
 
     LaunchedEffect(shown.isNotEmpty(), state.homePresses) {
         if (shown.isNotEmpty() && !state.popupShowing) {
-            chips.state.scrollToItem(0)
-            if (appsCollapsed) runCatching { collapsedHandleFocus.requestFocus() }
-            else runCatching { chips.requester(0).requestFocus() }
+            if (appsCollapsed) {
+                runCatching { collapsedHandleFocus.requestFocus() }
+            } else {
+                chips.state.scrollToItem(0)
+                runCatching { chips.requester(0).requestFocus() }
+            }
         }
     }
 }

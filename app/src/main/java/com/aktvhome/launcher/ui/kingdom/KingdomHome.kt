@@ -360,18 +360,24 @@ fun KingdomHome(state: HavenState, colors: ThemeColors, preview: Boolean = false
     LaunchedEffect(state.overlay) {
         if (state.overlay == Overlay.NONE && shown.isNotEmpty() && !state.popupShowing) {
             delay(80) // let the closing window hand focus back first
-            tiles.state.scrollToItem(currentIndex)
-            if (appsCollapsed) runCatching { collapsedHandleFocus.requestFocus() }
-            else runCatching { tiles.requester(currentIndex).requestFocus() }
+            if (appsCollapsed) {
+                runCatching { collapsedHandleFocus.requestFocus() }
+            } else {
+                tiles.state.scrollToItem(currentIndex)
+                runCatching { tiles.requester(currentIndex).requestFocus() }
+            }
         }
     }
 
     LaunchedEffect(shown.isNotEmpty(), state.homePresses) {
         if (shown.isNotEmpty() && !state.popupShowing) {
             scroll.scrollTo(0)
-            tiles.state.scrollToItem(0)
-            if (appsCollapsed) runCatching { collapsedHandleFocus.requestFocus() }
-            else runCatching { tiles.requester(0).requestFocus() }
+            if (appsCollapsed) {
+                runCatching { collapsedHandleFocus.requestFocus() }
+            } else {
+                tiles.state.scrollToItem(0)
+                runCatching { tiles.requester(0).requestFocus() }
+            }
         }
     }
 }
