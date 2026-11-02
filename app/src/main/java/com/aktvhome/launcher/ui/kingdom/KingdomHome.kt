@@ -121,28 +121,30 @@ fun KingdomHome(state: HavenState, colors: ThemeColors, preview: Boolean = false
     val grid = rememberAppGrid(if (current?.isInputs == true) 0 else current?.apps?.size ?: 0, settings.cardSize.columns)
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
-    val collapseApps: () -> Unit = {
-        if (!appsCollapsed && state.moving == null && state.overlay == Overlay.NONE) {
-            restoreAppFocus = true
-            appsCollapsed = true
-            // When a collection has many app rows, bring the header back into view
-            // before removing the scrolled content.
-            scope.launch { scroll.scrollTo(0) }
-        }
-    }
-    val expandApps: () -> Unit = { appsCollapsed = false }
-
-    // Collapsing apps never traps focus on the handle. Prefer a Watch Now card,
-    // or the header Watch Now shortcut if the cards are hidden.
+    // FocusRequester.requestFocus() returns Unit in Haven's Compose 1.7.x.
+    // Request focus on the upper control while the collapsing app is still mounted.
+    // A missing first card falls back to the header action, without focusing the handle.
     val focusUpper: () -> Unit = {
         val preferred = when {
             showStrip -> stripFirst
             !settings.showWatchNowCards -> headerWatchFocus
             else -> headerSearchFocus
         }
-        val focused = runCatching { preferred.requestFocus() }.getOrDefault(false)
-        if (!focused) runCatching { headerSearchFocus.requestFocus() }
+        runCatching { preferred.requestFocus() }
+            .onFailure { runCatching { headerSearchFocus.requestFocus() } }
     }
+    val collapseApps: () -> Unit = {
+        if (!appsCollapsed && state.moving == null && state.overlay == Overlay.NONE) {
+            // Transfer focus while the old app is still mounted and focusable.
+            // Waiting until its AnimatedVisibility exit can strand focus on the handle.
+            focusUpper()
+            restoreAppFocus = true
+            appsCollapsed = true
+            scope.launch { scroll.scrollTo(0) }
+        }
+    }
+    val expandApps: () -> Unit = { appsCollapsed = false }
+
     LaunchedEffect(appsCollapsed, showStrip, settings.showWatchNowCards) {
         if (appsCollapsed) {
             delay(80)
