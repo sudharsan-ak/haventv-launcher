@@ -22,6 +22,14 @@ enum class CardSize(val label: String, val width: Int, val scale: Float, val col
 /** What sits behind a theme's layout: its own animated scene, or a rotating photo. */
 enum class Background(val label: String) { SCENE("Scene"), PHOTO("Photo") }
 
+/** Source shared by Kingdom and Tide whenever either theme uses a photo background. */
+enum class WallpaperMode(val label: String) {
+    ROTATING("Rotating photos"),
+    MY_PHOTO("My photo"),
+}
+
+enum class WallpaperFit(val label: String) { FILL("Fill"), FIT("Fit") }
+
 enum class WallSource(val label: String, val note: String) {
     BING("Bing", "Bing's photo of the day and the past week"),
     EARTH("Earth View", "1,500 satellite photos from Google"),
@@ -89,6 +97,10 @@ data class Settings(
     val wallCredit: Boolean = true,
     /** Preserve the current photo and suspend all wallpaper rotation until unpinned. */
     val wallpaperPinned: Boolean = false,
+    val wallpaperMode: WallpaperMode = WallpaperMode.ROTATING,
+    val wallpaperFit: WallpaperFit = WallpaperFit.FILL,
+    /** Changes on every successful import, even when all other preferences stay unchanged. */
+    val customWallpaperRevision: Long = 0L,
     val unsplashKey: String = "",
     /** Watch Now sections. NBA is a personal module and starts off for everyone. */
     /** Global league switch: off preserves all previously selected options. */
@@ -191,6 +203,9 @@ class SettingsStore(context: Context) {
             .putString("wallInterval", next.wallInterval.name)
             .putBoolean("wallCredit", next.wallCredit)
             .putBoolean("wallpaperPinned", next.wallpaperPinned)
+            .putString("wallpaperMode", next.wallpaperMode.name)
+            .putString("wallpaperFit", next.wallpaperFit.name)
+            .putLong("customWallpaperRevision", next.customWallpaperRevision)
             .putString("unsplashKey", next.unsplashKey)
             .putBoolean("nbaLeagueEnabled", next.nbaLeagueEnabled)
             .putBoolean("watchNba", next.watchNba)
@@ -254,6 +269,9 @@ class SettingsStore(context: Context) {
         wallInterval = enumOr(prefs.getString("wallInterval", null), WallInterval.SIX),
         wallCredit = prefs.getBoolean("wallCredit", true),
         wallpaperPinned = prefs.getBoolean("wallpaperPinned", false),
+        wallpaperMode = enumOr(prefs.getString("wallpaperMode", null), WallpaperMode.ROTATING),
+        wallpaperFit = enumOr(prefs.getString("wallpaperFit", null), WallpaperFit.FILL),
+        customWallpaperRevision = prefs.getLong("customWallpaperRevision", 0L),
         unsplashKey = prefs.getString("unsplashKey", null) ?: "",
         // Upgraded installations keep their previous NBA card/alert behavior.
         // Fresh installs have no legacy NBA keys, so the optional league starts disabled.

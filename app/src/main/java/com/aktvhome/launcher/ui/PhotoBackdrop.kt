@@ -37,8 +37,8 @@ import kotlinx.coroutines.delay
  * In wallpaper view the gradient fades with the layout ([tint]), so the photo shows as it is.
  */
 @Composable
-fun BoxScope.PhotoBackdrop(photo: ImageBitmap, dayness: Float, credit: String?, tint: Float = 1f) {
-    Image(photo, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+fun BoxScope.PhotoBackdrop(photo: ImageBitmap, dayness: Float, credit: String?, tint: Float = 1f, fit: Boolean = false) {
+    Image(photo, null, Modifier.fillMaxSize(), contentScale = if (fit) ContentScale.Fit else ContentScale.Crop)
     val night = 1f - dayness
     Box(
         Modifier

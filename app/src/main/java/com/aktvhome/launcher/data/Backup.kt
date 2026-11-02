@@ -9,6 +9,8 @@ import androidx.compose.runtime.setValue
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 /**
  * Keeps a copy of everything you've set up in Download/Haven, outside Haven's own data folder,
@@ -30,6 +32,9 @@ class Backup(private val context: Context, private val onRestored: () -> Unit) {
     private val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Haven")
     private val file = File(dir, "haven-backup.json")
     private val prev = File(dir, "haven-backup-prev.json")
+    /** One custom photo stored separately so the JSON stays small and backward-compatible. */
+    private val photoBackup = File(dir, "haven-wallpaper.jpg")
+    private val customPhoto = File(context.filesDir, "wallpapers/custom_wallpaper.jpg")
     private val meta = context.getSharedPreferences("backup_meta", Context.MODE_PRIVATE)
 
     /** Set when Haven starts with no settings but a backup exists; the home screen offers to restore. */
@@ -97,6 +102,22 @@ class Backup(private val context: Context, private val onRestored: () -> Unit) {
             }
             editor.commit()
         }
+        // Restore the image before reloading wallpaper settings. Missing legacy backup
+        // images fall back to rotating photos rather than displaying a blank background.
+        val photoRestored = runCatching {
+            if (!photoBackup.isFile) return@runCatching customPhoto.isFile
+            customPhoto.parentFile?.mkdirs()
+            val tmp = File(customPhoto.parentFile, "custom_restore.tmp")
+            photoBackup.copyTo(tmp, overwrite = true)
+            Files.move(tmp.toPath(), customPhoto.toPath(),
+                StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            true
+        }.getOrDefault(false)
+        if (!photoRestored && context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+                .getString("wallpaperMode", null) == WallpaperMode.MY_PHOTO.name) {
+            context.getSharedPreferences("settings", Context.MODE_PRIVATE).edit()
+                .putString("wallpaperMode", WallpaperMode.ROTATING.name).commit()
+        }
         decided()
         lastWritten = null
         problem = ""
@@ -122,6 +143,20 @@ class Backup(private val context: Context, private val onRestored: () -> Unit) {
 
     private fun write(snapshot: String): Boolean = runCatching {
         dir.mkdirs()
+        // Backup the photo before its settings, and never replace a valid asset with
+        // an incomplete copy. A later import replaces this single backup photo.
+        if (customPhoto.isFile) {
+            val photoTmp = File(dir, "haven-wallpaper.tmp")
+            try {
+                customPhoto.copyTo(photoTmp, overwrite = true)
+                Files.move(photoTmp.toPath(), photoBackup.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            } finally {
+                photoTmp.delete()
+            }
+        } else {
+            photoBackup.delete()
+        }
         if (file.exists()) file.copyTo(prev, overwrite = true)
         val tmp = File(dir, "haven-backup.tmp")
         tmp.writeText(JSONObject(snapshot).put("savedAt", System.currentTimeMillis()).toString(2))
@@ -145,7 +180,12 @@ class Backup(private val context: Context, private val onRestored: () -> Unit) {
     private fun snapshot(): String {
         val prefs = JSONObject()
         for (name in BACKED_UP) prefs.put(name, encode(context.getSharedPreferences(name, Context.MODE_PRIVATE)))
-        return JSONObject().put("app", "Haven").put("version", 1).put("prefs", prefs).toString()
+        // Include the asset's generation so replacing a photo triggers automatic backup
+        // even when the remaining settings values have not changed.
+        val photoStamp = if (customPhoto.isFile)
+            customPhoto.lastModified().toString() + ":" + customPhoto.length() else ""
+        return JSONObject().put("app", "Haven").put("version", 1)
+            .put("prefs", prefs).put("customPhotoStamp", photoStamp).toString()
     }
 
     private fun encode(p: SharedPreferences): JSONObject {

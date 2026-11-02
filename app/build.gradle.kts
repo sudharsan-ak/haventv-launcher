@@ -67,6 +67,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.palette:palette-ktx:1.0.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    // Render a QR code for the temporary, local-only wallpaper upload page.
+    implementation("com.google.zxing:core:3.5.3")
     implementation(project(":haven-core"))
     testImplementation("junit:junit:4.13.2")
 }

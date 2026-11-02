@@ -123,7 +123,9 @@ fun KingdomHome(state: HavenState, colors: ThemeColors, preview: Boolean = false
     ) {
         val photo = state.wallpapers.current
         if (settings.bgKingdom == Background.PHOTO && photo != null) {
-            PhotoBackdrop(photo, state.dayness(), state.wallpapers.credit.takeIf { settings.wallCredit }, tint = homeAlpha)
+            PhotoBackdrop(photo, state.dayness(), state.wallpapers.credit.takeIf { settings.wallCredit }, tint = homeAlpha,
+                fit = settings.wallpaperMode == com.aktvhome.launcher.data.WallpaperMode.MY_PHOTO &&
+                    settings.wallpaperFit == com.aktvhome.launcher.data.WallpaperFit.FIT)
         } else {
             KingdomBackdrop(colors, glow, if (preview) Motion.OFF else settings.motion, Modifier.fillMaxSize())
         }

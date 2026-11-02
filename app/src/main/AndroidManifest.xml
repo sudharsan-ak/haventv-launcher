@@ -21,6 +21,10 @@
         tools:ignore="ProtectedPermissions" />
     <!-- Wallpapers (Bing, Earth View, Wikimedia, Unsplash). -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- In-app TV photo browser fallback, on devices without DocumentsUI/file picker. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
     <!-- Backup file in Download/Haven that survives reinstalls. Granted once over ADB (appops). -->
     <uses-permission
         android:name="android.permission.MANAGE_EXTERNAL_STORAGE"

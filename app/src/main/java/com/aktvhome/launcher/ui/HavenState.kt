@@ -64,6 +64,7 @@ class HavenState(private val context: Context, private val scope: CoroutineScope
         settingsStore.reload()
         layoutStore.reload()
         cleanup.reload()
+        wallpapers.reload()
         refresh()
     }
     val wallpapers = Wallpapers(context, scope, settingsStore)

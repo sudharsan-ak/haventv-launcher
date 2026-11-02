@@ -62,8 +62,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aktvhome.launcher.R
 import com.aktvhome.launcher.data.DnsChoice
+import com.aktvhome.launcher.data.WallpaperMode
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.Overlay
+import com.aktvhome.launcher.ui.SettingsDestination
 import com.aktvhome.launcher.ui.theme.ThemeColors
 import com.aktvhome.launcher.ui.tvClickable
 
@@ -158,7 +160,11 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
                         Tile("DNS", if (dnsOn) dns.label else "Off", R.drawable.fluent_shield) { state.toggleDns() }
                             .takeIf { device.available(Capability.SECURE_SETTINGS) },
                         Tile("Wallpaper", state.wallpapers.credit.ifBlank { "Photo is off" }, R.drawable.fluent_framed_picture) {
-                            state.wallpapers.tick(force = true)
+                            // A custom photo does not rotate. Open its settings instead of
+                            // leaving this Quick Settings tile as a no-op.
+                            if (s.wallpaperMode == WallpaperMode.MY_PHOTO)
+                                state.openSettings(SettingsDestination.WALLPAPER)
+                            else state.wallpapers.tick(force = true)
                         },
                     ),
                 )

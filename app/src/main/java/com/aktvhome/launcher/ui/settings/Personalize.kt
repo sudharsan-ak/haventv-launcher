@@ -2,6 +2,11 @@
 
 package com.aktvhome.launcher.ui.settings
 
+import android.Manifest
+import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -43,6 +48,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,6 +66,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -73,6 +81,9 @@ import com.aktvhome.launcher.data.Background
 import com.aktvhome.launcher.data.WALL_TOPICS
 import com.aktvhome.launcher.data.WallInterval
 import com.aktvhome.launcher.data.WallSource
+import com.aktvhome.launcher.data.WallpaperMode
+import com.aktvhome.launcher.data.WallpaperFit
+import com.aktvhome.launcher.data.WallpaperUploadServer
 import com.aktvhome.launcher.data.CardSize
 import com.aktvhome.launcher.data.DayMode
 import com.aktvhome.launcher.data.Defaults
@@ -104,6 +115,10 @@ import com.aktvhome.launcher.ui.tide.TideHome
 import com.aktvhome.launcher.ui.tvClickable
 import com.aktvhome.launcher.ui.watch.NetImage
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 
 private enum class SettingsGroup(
     val label: String,
@@ -154,6 +169,8 @@ private enum class Page(val label: String, val group: SettingsGroup, val availab
     ABOUT("About Haven", SettingsGroup.ABOUT),
 }
 
+private enum class WallpaperSubtab(val label: String) { GENERAL("General"), SOURCES("Sources") }
+
 private fun SettingsGroup.pages(): List<Page> = Page.entries.filter { it.group == this && it.available }
 
 private val visibleGroups = SettingsGroup.entries.filter { it.pages().isNotEmpty() }
@@ -187,6 +204,40 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
     var searchFocusPending by remember { mutableStateOf(initialRequest?.settingId != null) }
     val first = Modifier.focusRequester(pageFirst)
     val contentScroll = rememberScrollState()
+    var wallpaperSubtab by remember { mutableStateOf(WallpaperSubtab.GENERAL) }
+
+    // The photo importer is deliberately local and exists only while settings is open.
+    val context = LocalContext.current
+    val importScope = rememberCoroutineScope()
+    var uploadVisible by remember { mutableStateOf(false) }
+    val uploadServer = remember(importScope) {
+        WallpaperUploadServer(importScope) { bytes, filename ->
+            importScope.launch {
+                state.wallpapers.prepare(bytes, filename)
+                uploadVisible = false
+            }
+        }
+    }
+    DisposableEffect(uploadServer) { onDispose { uploadServer.stop() } }
+    // Android TVs often have no DocumentsUI picker installed. Browse inside Haven
+    // instead, using the TV/USB filesystem when available or the photo library.
+    var showTvBrowser by remember { mutableStateOf(false) }
+    var photoPermissionRevision by remember { mutableStateOf(0) }
+    val requestPhotoPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { photoPermissionRevision++ }
+    val askForPhotoAccess = {
+        requestPhotoPermission.launch(
+            when {
+                Build.VERSION.SDK_INT >= 34 -> arrayOf(
+                    Manifest.permission.READ_MEDIA_IMAGES,
+                    Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
+                )
+                Build.VERSION.SDK_INT >= 33 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
+                else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+            },
+        )
+    }
 
     LaunchedEffect(Unit) { state.settingsDestination = null }
 
@@ -205,7 +256,7 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
         searchFocusPending = false
     }
 
-    LaunchedEffect(page, openId) { contentScroll.scrollTo(0) }
+    LaunchedEffect(page, openId, wallpaperSubtab) { contentScroll.scrollTo(0) }
 
     // Named focus targets for things that move (collections and their arrows), so focus can follow them.
     val targets = remember { mutableMapOf<String, FocusRequester>() }
@@ -397,63 +448,141 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                         }
                         Page.WALLPAPER -> {
                             val walls = state.wallpapers
-                            SettingsToggleRow("Kingdom", "Background: ${s.bgKingdom.label}", s.bgKingdom == Background.PHOTO, colors) {
-                                store.update { it.copy(bgKingdom = if (it.bgKingdom == Background.PHOTO) Background.SCENE else Background.PHOTO) }
-                                walls.tick()
-                            }
-                            SettingsToggleRow("Tide", "Background: ${s.bgTide.label}", s.bgTide == Background.PHOTO, colors) {
-                                store.update { it.copy(bgTide = if (it.bgTide == Background.PHOTO) Background.SCENE else Background.PHOTO) }
-                                walls.tick()
-                            }
-                            SettingsActionRow(
-                                "Next photo now",
-                                if (s.wallpaperPinned) "Unpin the current photo before changing it." else "Fetch a new one",
-                                "Next photo now", colors, enabled = !s.wallpaperPinned,
-                            ) { walls.tick(force = true) }
-                            SettingsToggleRow(
-                                "Keep current photo",
-                                if (s.wallpaperPinned) "Pinned. Automatic wallpaper changes are paused." else "Keep this photo until you turn this off.",
-                                s.wallpaperPinned, colors, enabled = s.wallpaperPinned || walls.current != null,
-                            ) {
-                                walls.setPinned(!s.wallpaperPinned)
-                            }
-                            SettingsStatusRow(
-                                "Wallpaper view",
-                                "Press Back on the home screen to see just the wallpaper. Press any button to bring Haven back.",
-                                colors,
-                            )
-                            Eyebrow("Sources", colors)
-                            WallSource.entries.forEach { src ->
-                                val on = src in s.wallSources
-                                val sub = if (src == WallSource.UNSPLASH && s.unsplashKey.isBlank()) "Needs your key (below)" else src.note
-                                SettingsToggleRow(src.label, sub, on, colors) {
-                                    store.update { it.copy(wallSources = if (on) it.wallSources - src else it.wallSources + src) }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                WallpaperSubtab.entries.forEach { section ->
+                                    Pill(
+                                        section.label, colors,
+                                        selected = wallpaperSubtab == section,
+                                        onFocused = { wallpaperSubtab = section },
+                                        onClick = { wallpaperSubtab = section },
+                                    )
                                 }
                             }
-                            SettingsMultiChoiceRow(
-                                "Unsplash topics", "", if (s.wallTopics.isEmpty()) "None" else "${s.wallTopics.size} selected",
-                                WALL_TOPICS.map { (label, value) -> SettingsPickerOption(label, label, value) }, s.wallTopics, colors,
-                            ) { label ->
-                                val on = label in s.wallTopics
-                                store.update { it.copy(wallTopics = if (on) it.wallTopics - label else it.wallTopics + label) }
+                            when (wallpaperSubtab) {
+                                WallpaperSubtab.GENERAL -> {
+                                    SettingsToggleRow("Kingdom", "Background: ${s.bgKingdom.label}",
+                                        s.bgKingdom == Background.PHOTO, colors) {
+                                        store.update { it.copy(bgKingdom = if (it.bgKingdom == Background.PHOTO) Background.SCENE else Background.PHOTO) }
+                                        walls.tick()
+                                    }
+                                    SettingsToggleRow("Tide", "Background: ${s.bgTide.label}",
+                                        s.bgTide == Background.PHOTO, colors) {
+                                        store.update { it.copy(bgTide = if (it.bgTide == Background.PHOTO) Background.SCENE else Background.PHOTO) }
+                                        walls.tick()
+                                    }
+                                    SettingsChoiceRow(
+                                        "Wallpaper type", "Use automatic photo sources, or one of your own photos.",
+                                        s.wallpaperMode.label,
+                                        WallpaperMode.entries.map { SettingsPickerOption(it.name, it.label) },
+                                        s.wallpaperMode.name, colors,
+                                    ) { choice -> walls.setMode(WallpaperMode.valueOf(choice)) }
+                                    if (s.wallpaperMode == WallpaperMode.MY_PHOTO) {
+                                        if (walls.customPhoto != null) {
+                                            Image(
+                                                walls.customPhoto!!, "Current custom wallpaper",
+                                                Modifier.fillMaxWidth().height(112.dp)
+                                                    .clip(RoundedCornerShape(12.dp)),
+                                                contentScale = if (s.wallpaperFit == WallpaperFit.FILL)
+                                                    ContentScale.Crop else ContentScale.Fit,
+                                            )
+                                        }
+                                        SettingsStatusRow(
+                                            "My photo",
+                                            if (walls.customPhoto == null) "No image selected. Choose or send a photo below."
+                                            else "One saved custom photo. A new import replaces it only after you apply.",
+                                            colors,
+                                        )
+                                        SettingsActionRow(
+                                            "Choose from TV", "Select a JPG, PNG or WebP from internal storage or USB.",
+                                            "Browse", colors,
+                                        ) {
+                                            showTvBrowser = true
+                                        }
+                                        SettingsActionRow(
+                                            "Send from device", "Transfer from a phone or PC on the same trusted local network.",
+                                            "Send", colors,
+                                        ) {
+                                            if (uploadServer.start()) uploadVisible = true
+                                            else Toast.makeText(context, uploadServer.error, Toast.LENGTH_LONG).show()
+                                        }
+                                        if (walls.customPhoto != null) {
+                                            SettingsChoiceRow(
+                                                "Photo fit", "Fill crops edges. Fit shows the entire photo.",
+                                                s.wallpaperFit.label,
+                                                WallpaperFit.entries.map { SettingsPickerOption(it.name, it.label) },
+                                                s.wallpaperFit.name, colors,
+                                            ) { option -> store.update { it.copy(wallpaperFit = WallpaperFit.valueOf(option)) } }
+                                        }
+                                    }
+                                    SettingsActionRow(
+                                        "Next photo now",
+                                        if (s.wallpaperMode == WallpaperMode.MY_PHOTO)
+                                            "Not used for your custom photo."
+                                        else if (s.wallpaperPinned) "Unpin the current photo before changing it."
+                                        else "Fetch a new photo from your sources.",
+                                        "Next photo now", colors,
+                                        enabled = s.wallpaperMode == WallpaperMode.ROTATING && !s.wallpaperPinned,
+                                    ) { walls.tick(force = true) }
+                                    SettingsToggleRow(
+                                        "Keep current photo",
+                                        if (s.wallpaperMode == WallpaperMode.MY_PHOTO)
+                                            "Custom photos remain fixed automatically."
+                                        else if (s.wallpaperPinned)
+                                            "Pinned. Automatic wallpaper changes are paused."
+                                        else "Keep this photo until you turn this off.",
+                                        s.wallpaperPinned, colors,
+                                        enabled = s.wallpaperMode == WallpaperMode.ROTATING &&
+                                            (s.wallpaperPinned || walls.current != null),
+                                    ) { walls.setPinned(!s.wallpaperPinned) }
+                                    SettingsStatusRow(
+                                        "Wallpaper view",
+                                        "Press Back on the home screen to see just the wallpaper. Press any button to bring Haven back.",
+                                        colors,
+                                    )
+                                    SettingsStatusRow(
+                                        "Now showing",
+                                        listOf(walls.credit, walls.status).filter { it.isNotBlank() }.distinct()
+                                            .joinToString(" · ").ifBlank { "No photo yet" },
+                                        colors,
+                                    )
+                                }
+                                WallpaperSubtab.SOURCES -> {
+                                    Eyebrow("Online photo sources", colors)
+                                    WallSource.entries.forEach { source ->
+                                        val enabled = source in s.wallSources
+                                        val note = if (source == WallSource.UNSPLASH && s.unsplashKey.isBlank())
+                                            "Needs your key (below)" else source.note
+                                        SettingsToggleRow(source.label, note, enabled, colors) {
+                                            store.update { it.copy(wallSources =
+                                                if (enabled) it.wallSources - source else it.wallSources + source) }
+                                        }
+                                    }
+                                    SettingsMultiChoiceRow(
+                                        "Unsplash topics", "",
+                                        if (s.wallTopics.isEmpty()) "None" else "${s.wallTopics.size} selected",
+                                        WALL_TOPICS.map { (label, value) -> SettingsPickerOption(label, label, value) },
+                                        s.wallTopics, colors,
+                                    ) { label ->
+                                        val on = label in s.wallTopics
+                                        store.update { it.copy(wallTopics = if (on) it.wallTopics - label else it.wallTopics + label) }
+                                    }
+                                    SettingsChoiceRow(
+                                        "Change every", "", s.wallInterval.label,
+                                        WallInterval.entries.map { SettingsPickerOption(it.name, it.label) },
+                                        s.wallInterval.name, colors,
+                                    ) { value -> store.update { it.copy(wallInterval = WallInterval.valueOf(value)) } }
+                                    SettingsActionRow(
+                                        "Unsplash key",
+                                        if (s.unsplashKey.isBlank()) "Not set. OK to paste it"
+                                        else "Set (ends in ${s.unsplashKey.takeLast(4)})",
+                                        if (s.unsplashKey.isBlank()) "Not set" else "••••••••", colors,
+                                    ) { editingKey = true }
+                                    SettingsToggleRow(
+                                        "Photo credit", if (s.wallCredit) "Shown in the corner" else "Hidden",
+                                        s.wallCredit, colors,
+                                    ) { store.update { it.copy(wallCredit = !it.wallCredit) } }
+                                }
                             }
-                            SettingsChoiceRow(
-                                "Change every", "", s.wallInterval.label,
-                                WallInterval.entries.map { SettingsPickerOption(it.name, it.label) }, s.wallInterval.name, colors,
-                            ) { value -> store.update { it.copy(wallInterval = WallInterval.valueOf(value)) } }
-                            SettingsActionRow(
-                                "Unsplash key",
-                                if (s.unsplashKey.isBlank()) "Not set. OK to paste it" else "Set (ends in ${s.unsplashKey.takeLast(4)})",
-                                if (s.unsplashKey.isBlank()) "Not set" else "••••••••", colors,
-                            ) { editingKey = true }
-                            SettingsToggleRow("Photo credit", if (s.wallCredit) "Shown in the corner" else "Hidden", s.wallCredit, colors) {
-                                store.update { it.copy(wallCredit = !it.wallCredit) }
-                            }
-                            SettingsStatusRow(
-                                "Now showing",
-                                listOf(walls.credit, walls.status).filter { it.isNotBlank() }.distinct().joinToString(" · ").ifBlank { "No photo yet" },
-                                colors,
-                            )
                         }
                         Page.HOME_BUTTON -> {
                             val ctx = LocalContext.current
@@ -710,6 +839,47 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                 }
             }
         }
+    }
+
+    // A built-in browser avoids the missing system file-picker problem on Android TV.
+    if (showTvBrowser) {
+        WallpaperTvImageBrowser(
+            context = context,
+            colors = colors,
+            permissionRevision = photoPermissionRevision,
+            onRequestPhotoAccess = askForPhotoAccess,
+            onPick = { entry ->
+                showTvBrowser = false
+                importScope.launch {
+                    val bytes = withContext(Dispatchers.IO) {
+                        runCatching {
+                            val input = entry.image?.inputStream()
+                                ?: entry.mediaUri?.let { context.contentResolver.openInputStream(it) }
+                            input?.use { stream ->
+                                val output = ByteArrayOutputStream()
+                                val chunk = ByteArray(8192)
+                                while (output.size() <= 16 * 1024 * 1024) {
+                                    val amount = stream.read(chunk)
+                                    if (amount < 0) break
+                                    output.write(chunk, 0, amount)
+                                }
+                                output.toByteArray()
+                            }
+                        }.getOrNull()
+                    }
+                    state.wallpapers.prepare(bytes ?: byteArrayOf(), entry.name)
+                }
+            },
+            onDismiss = { showTvBrowser = false },
+        )
+    }
+    // Custom photo transfer and preview are scoped to this settings overlay.
+    if (uploadVisible) WallpaperUploadDialog(uploadServer, colors) {
+        uploadServer.stop()
+        uploadVisible = false
+    }
+    if (state.wallpapers.pendingPhoto != null) {
+        WallpaperImportPreview(state, colors) { state.wallpapers.cancelPending() }
     }
 
     // Dialogs, each over the panel.
