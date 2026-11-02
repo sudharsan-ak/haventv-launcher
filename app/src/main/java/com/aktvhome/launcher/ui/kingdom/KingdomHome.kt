@@ -53,6 +53,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextOverflow
 import com.aktvhome.launcher.data.Background
 import com.aktvhome.launcher.data.Motion
 import com.aktvhome.launcher.ui.PhotoBackdrop
@@ -60,6 +61,7 @@ import com.aktvhome.launcher.ui.homeShown
 import com.aktvhome.launcher.ui.AppCard
 import com.aktvhome.launcher.ui.AppMenuOverlays
 import com.aktvhome.launcher.ui.GearButton
+import com.aktvhome.launcher.ui.WatchNowButton
 import com.aktvhome.launcher.ui.SearchButton
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.IconBadge
@@ -97,7 +99,7 @@ fun KingdomHome(state: HavenState, colors: ThemeColors, preview: Boolean = false
     val current = state.currentCollection(shown)
     val tiles = rememberWrapRow(shown.size)
     val currentIndex = shown.indexOfFirst { it.collection.id == current?.collection?.id }.coerceAtLeast(0)
-    val showStrip = state.stripVisible()
+    val showStrip = settings.showWatchNowCards && state.stripVisible()
     val stripFirst = remember { FocusRequester() }
     // Under the tiles: HDMI inputs in one row, or the apps in lines sized by card size.
     // One instance each so the tiles can move focus into them.
@@ -138,40 +140,58 @@ fun KingdomHome(state: HavenState, colors: ThemeColors, preview: Boolean = false
                 .padding(top = 30.dp, bottom = 24.dp),
         ) {
             val side = Modifier.padding(horizontal = SIDE)
-            Row(side, verticalAlignment = Alignment.CenterVertically) {
-                Spacer(Modifier.weight(1f))
-                Text(clockText(state.now, settings.clock24), color = colors.ink, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            // A single compact header: greeting and headline on the left, clock and
+            // actions on the right. Its fixed height prevents text changes from moving apps.
+            Row(side.height(76.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    state.greetingLine()?.let {
+                        Text(it, color = colors.inkSoft, fontSize = 14.sp, maxLines = 1,
+                            overflow = TextOverflow.Ellipsis)
+                    }
+                    // Keep the existing game-aware headline and its crossfade.
+                    Crossfade(
+                        targetState = rememberHeadline(state, preview),
+                        animationSpec = tween(600), label = "headline",
+                    ) { line ->
+                        Text(
+                            line, color = colors.ink, fontSize = 28.sp,
+                            fontWeight = FontWeight.Bold, letterSpacing = (-0.7).sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                Spacer(Modifier.width(18.dp))
+                Text(clockText(state.now, settings.clock24), color = colors.ink,
+                    fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                 Spacer(Modifier.width(16.dp))
-                SearchButton(colors, Modifier.focusProperties { down = if (showStrip) stripFirst else tiles.requester(currentIndex) }) {
+                // Keep the full Watch Now drawer accessible even with the strip hidden.
+                if (!settings.showWatchNowCards) {
+                    WatchNowButton(colors, Modifier.focusProperties {
+                        down = tiles.requester(currentIndex)
+                    }) { state.overlay = Overlay.WATCH }
+                    Spacer(Modifier.width(8.dp))
+                }
+                val downTarget = if (showStrip) stripFirst else tiles.requester(currentIndex)
+                SearchButton(colors, Modifier.focusProperties { down = downTarget }) {
                     state.overlay = Overlay.SEARCH
                 }
                 Spacer(Modifier.width(8.dp))
-                // Down from the gear: the Watch Now strip if shown, else the collection you were on.
-                GearButton(colors, Modifier.focusProperties { down = if (showStrip) stripFirst else tiles.requester(currentIndex) }) {
+                GearButton(colors, Modifier.focusProperties { down = downTarget }) {
                     state.overlay = Overlay.QUICK
                 }
             }
 
+            // The row is *reserved* even when hidden: collection tabs and app cards
+            // must not jump upward when the Watch Now visibility switch changes.
             Spacer(Modifier.height(14.dp))
-            state.greetingLine()?.let { Text(it, color = colors.inkSoft, fontSize = 14.sp, modifier = side) }
-            // Follows your team's game live, otherwise fits the time of day, with notable games
-            // taking turns; crossfades when it changes.
-            Crossfade(targetState = rememberHeadline(state, preview), animationSpec = tween(600), label = "headline") { line ->
-                Text(
-                    line, color = colors.ink, fontSize = 34.sp,
-                    fontWeight = FontWeight.Bold, letterSpacing = (-1).sp, modifier = side, maxLines = 1,
-                )
-            }
-
             if (showStrip) {
-                Spacer(Modifier.height(14.dp))
-                // Above the tiles, so Down from a tile still goes straight to its apps.
                 SmartStrip(
                     state, colors, stripFirst,
                     side.fillMaxWidth().onKeyDown(KeyEvent.KEYCODE_DPAD_DOWN) { tiles.focus(currentIndex) },
                 )
+            } else {
+                Spacer(Modifier.height(68.dp))
             }
-
             Spacer(Modifier.height(14.dp))
             LazyRow(
                 state = tiles.state,

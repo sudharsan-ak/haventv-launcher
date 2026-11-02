@@ -56,6 +56,7 @@ import com.aktvhome.launcher.ui.homeShown
 import com.aktvhome.launcher.ui.AppMenuOverlays
 import com.aktvhome.launcher.ui.CollectionIcons
 import com.aktvhome.launcher.ui.GearButton
+import com.aktvhome.launcher.ui.WatchNowButton
 import com.aktvhome.launcher.ui.SearchButton
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.Overlay
@@ -87,7 +88,7 @@ fun TideHome(state: HavenState, colors: ThemeColors, preview: Boolean = false) {
     // Chips: every shown collection, Inputs included. Settings is the gear at the top right, as on every theme.
     val chips = rememberWrapRow(shown.size)
     val currentIndex = shown.indexOfFirst { it.collection.id == current?.collection?.id }.coerceAtLeast(0)
-    val showStrip = state.stripVisible()
+    val showStrip = settings.showWatchNowCards && state.stripVisible()
     val stripFirst = remember { FocusRequester() }
     // The dock (apps, or HDMI inputs). One instance so the chips can move focus into it.
     val dockRow = rememberWrapRow(if (current?.isInputs == true) state.inputs.size else current?.apps?.size ?: 0)
@@ -120,12 +121,18 @@ fun TideHome(state: HavenState, colors: ThemeColors, preview: Boolean = false) {
             TideBackdrop(colors, motion)
         }
 
-        // Search and settings share the same top-right entry points in every theme.
+        // Keep Tide's centered clock and headline. The Watch Now shortcut joins the
+        // two top-right actions only when the large Watch Now strip is hidden.
         Row(
             Modifier.align(Alignment.TopEnd).padding(top = 44.dp, end = 48.dp).graphicsLayer { alpha = homeAlpha },
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             val downTarget = if (showStrip) stripFirst else chips.requester(currentIndex)
+            if (!settings.showWatchNowCards) {
+                WatchNowButton(colors, Modifier.focusProperties { down = downTarget }) {
+                    state.overlay = Overlay.WATCH
+                }
+            }
             SearchButton(colors, Modifier.focusProperties { down = downTarget }) { state.overlay = Overlay.SEARCH }
             GearButton(colors, Modifier.focusProperties { down = downTarget }) { state.overlay = Overlay.QUICK }
         }
@@ -154,14 +161,18 @@ fun TideHome(state: HavenState, colors: ThemeColors, preview: Boolean = false) {
             }
             Spacer(Modifier.weight(1f))
 
+            // Reserve the same 68 dp strip slot even when cards are hidden. The
+            // collection chips and dock keep their original screen positions.
             if (showStrip) {
                 SmartStrip(
                     state, colors, stripFirst,
                     Modifier.fillMaxWidth().padding(horizontal = 96.dp)
                         .onKeyDown(KeyEvent.KEYCODE_DPAD_DOWN) { chips.focus(currentIndex) },
                 )
-                Spacer(Modifier.height(18.dp))
+            } else {
+                Spacer(Modifier.height(68.dp))
             }
+            Spacer(Modifier.height(18.dp))
 
             LazyRow(
                 state = chips.state,

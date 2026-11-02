@@ -79,6 +79,8 @@ data class Settings(
     val showGreeting: Boolean = true,
     /** Shared Kingdom/Tide headline: dynamic context or the fixed default. */
     val headlineChanging: Boolean = true,
+    /** Visibility of the full Watch Now Home strip (not its data, alerts or drawer). */
+    val showWatchNowCards: Boolean = true,
     val cardSize: CardSize = CardSize.MEDIUM,
     /** App to use for YouTube search handoffs, with fallback if it is unavailable. */
     val youtubeSearchPreference: YouTubeSearchPreference = YouTubeSearchPreference.AUTO,
@@ -190,6 +192,7 @@ class SettingsStore(context: Context) {
             .putString("name", next.name)
             .putBoolean("showGreeting", next.showGreeting)
             .putBoolean("headlineChanging", next.headlineChanging)
+            .putBoolean("showWatchNowCards", next.showWatchNowCards)
             .putString("cardSize", next.cardSize.name)
             .putString("youtubeSearchPreference", next.youtubeSearchPreference.name)
             .putString("dnsChoice", next.dnsChoice.name)
@@ -253,6 +256,7 @@ class SettingsStore(context: Context) {
         name = prefs.getString("name", null) ?: "",
         showGreeting = prefs.getBoolean("showGreeting", true),
         headlineChanging = prefs.getBoolean("headlineChanging", true),
+        showWatchNowCards = prefs.getBoolean("showWatchNowCards", true),
         cardSize = enumOr(prefs.getString("cardSize", null), CardSize.MEDIUM),
         youtubeSearchPreference = enumOr(prefs.getString("youtubeSearchPreference", null), YouTubeSearchPreference.AUTO),
         dnsChoice = enumOr(prefs.getString("dnsChoice", null), DnsChoice.AUTO),

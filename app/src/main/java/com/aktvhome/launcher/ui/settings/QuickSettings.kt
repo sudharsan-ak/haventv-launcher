@@ -64,6 +64,7 @@ import com.aktvhome.launcher.R
 import com.aktvhome.launcher.data.DnsChoice
 import com.aktvhome.launcher.data.WallpaperMode
 import com.aktvhome.launcher.ui.HavenState
+import com.aktvhome.launcher.ui.Pill
 import com.aktvhome.launcher.ui.Overlay
 import com.aktvhome.launcher.ui.SettingsDestination
 import com.aktvhome.launcher.ui.theme.ThemeColors
@@ -127,6 +128,14 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
                 Column(Modifier.weight(1f)) {
                     Eyebrow(if (current == null) "Haven · Preferences" else "Quick settings · TV", colors)
                     Text(current?.title ?: "Quick settings", color = colors.ink, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                }
+                // Compact and always visible in Quick Settings, without adding a
+                // seventh grid tile or increasing the panel's height.
+                if (current == null) {
+                    Pill(
+                        if (s.showWatchNowCards) "Watch: On" else "Watch: Off",
+                        colors, selected = s.showWatchNowCards,
+                    ) { store.update { it.copy(showWatchNowCards = !it.showWatchNowCards) } }
                 }
                 CloseButton(colors, onClick = close)
             }
