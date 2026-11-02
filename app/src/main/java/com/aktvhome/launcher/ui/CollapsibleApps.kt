@@ -76,6 +76,7 @@ fun CollapsedAppsHandle(
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
     expand: () -> Unit,
+    leaveToUpperControls: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(50)
@@ -89,11 +90,19 @@ fun CollapsedAppsHandle(
             .border(if (focused) 2.dp else 1.dp, if (focused) colors.accent else colors.edge, shape)
             .onFocusChanged { focused = it.isFocused }
             .onPreviewKeyEvent { e ->
-                if (e.nativeKeyEvent.keyCode != KeyEvent.KEYCODE_DPAD_UP) {
-                    false
-                } else {
-                    if (e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount == 0) expand()
-                    true
+                when (e.nativeKeyEvent.keyCode) {
+                    KeyEvent.KEYCODE_DPAD_UP -> {
+                        if (e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount == 0) expand()
+                        true
+                    }
+                    KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> {
+                        // Leave the handle without expanding the apps or invoking
+                        // Android's ordinary Home/Back wallpaper-view behavior.
+                        if (e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount == 0)
+                            leaveToUpperControls()
+                        true
+                    }
+                    else -> false
                 }
             }
             .semantics { contentDescription = "Expand app collections" }

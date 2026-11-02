@@ -40,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -107,6 +108,8 @@ fun KingdomHome(state: HavenState, colors: ThemeColors, preview: Boolean = false
     val currentIndex = shown.indexOfFirst { it.collection.id == current?.collection?.id }.coerceAtLeast(0)
     val showStrip = settings.showWatchNowCards && state.stripVisible()
     val stripFirst = remember { FocusRequester() }
+    val headerWatchFocus = remember { FocusRequester() }
+    val headerSearchFocus = remember { FocusRequester() }
     val collapsedHandleFocus = remember { FocusRequester() }
     var appsCollapsed by remember { mutableStateOf(false) }
     var restoreAppFocus by remember { mutableStateOf(false) }
@@ -128,10 +131,22 @@ fun KingdomHome(state: HavenState, colors: ThemeColors, preview: Boolean = false
         }
     }
     val expandApps: () -> Unit = { appsCollapsed = false }
-    LaunchedEffect(appsCollapsed) {
+
+    // Collapsing apps never traps focus on the handle. Prefer a Watch Now card,
+    // or the header Watch Now shortcut if the cards are hidden.
+    val focusUpper: () -> Unit = {
+        val preferred = when {
+            showStrip -> stripFirst
+            !settings.showWatchNowCards -> headerWatchFocus
+            else -> headerSearchFocus
+        }
+        val focused = runCatching { preferred.requestFocus() }.getOrDefault(false)
+        if (!focused) runCatching { headerSearchFocus.requestFocus() }
+    }
+    LaunchedEffect(appsCollapsed, showStrip, settings.showWatchNowCards) {
         if (appsCollapsed) {
-            delay(45)
-            runCatching { collapsedHandleFocus.requestFocus() }
+            delay(80)
+            focusUpper()
         } else if (restoreAppFocus) {
             // AnimatedVisibility composes its content at the start of expansion.
             delay(75)
@@ -202,14 +217,14 @@ fun KingdomHome(state: HavenState, colors: ThemeColors, preview: Boolean = false
                 Spacer(Modifier.width(16.dp))
                 // Keep the full Watch Now drawer accessible even with the strip hidden.
                 if (!settings.showWatchNowCards) {
-                    WatchNowButton(colors, Modifier.focusProperties {
+                    WatchNowButton(colors, Modifier.focusRequester(headerWatchFocus).focusProperties {
                         down = if (appsCollapsed) collapsedHandleFocus else tiles.requester(currentIndex)
                     }) { state.overlay = Overlay.WATCH }
                     Spacer(Modifier.width(8.dp))
                 }
                 val downTarget = if (showStrip) stripFirst else
                     if (appsCollapsed) collapsedHandleFocus else tiles.requester(currentIndex)
-                SearchButton(colors, Modifier.focusProperties { down = downTarget }) {
+                SearchButton(colors, Modifier.focusRequester(headerSearchFocus).focusProperties { down = downTarget }) {
                     state.overlay = Overlay.SEARCH
                 }
                 Spacer(Modifier.width(8.dp))
@@ -349,6 +364,7 @@ fun KingdomHome(state: HavenState, colors: ThemeColors, preview: Boolean = false
                     .padding(bottom = 14.dp)
                     .graphicsLayer { alpha = homeAlpha },
                 expand = expandApps,
+                leaveToUpperControls = focusUpper,
             )
         }
     }
@@ -361,7 +377,7 @@ fun KingdomHome(state: HavenState, colors: ThemeColors, preview: Boolean = false
         if (state.overlay == Overlay.NONE && shown.isNotEmpty() && !state.popupShowing) {
             delay(80) // let the closing window hand focus back first
             if (appsCollapsed) {
-                runCatching { collapsedHandleFocus.requestFocus() }
+                focusUpper()
             } else {
                 tiles.state.scrollToItem(currentIndex)
                 runCatching { tiles.requester(currentIndex).requestFocus() }
@@ -373,7 +389,7 @@ fun KingdomHome(state: HavenState, colors: ThemeColors, preview: Boolean = false
         if (shown.isNotEmpty() && !state.popupShowing) {
             scroll.scrollTo(0)
             if (appsCollapsed) {
-                runCatching { collapsedHandleFocus.requestFocus() }
+                focusUpper()
             } else {
                 tiles.state.scrollToItem(0)
                 runCatching { tiles.requester(0).requestFocus() }
