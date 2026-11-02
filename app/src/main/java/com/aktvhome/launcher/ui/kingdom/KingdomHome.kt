@@ -181,8 +181,12 @@ fun KingdomHome(state: HavenState, colors: ThemeColors, preview: Boolean = false
                 }
             }
 
-            // The row is *reserved* even when hidden: collection tabs and app cards
-            // must not jump upward when the Watch Now visibility switch changes.
+            // The greeting and headline used to occupy their own rows below the clock.
+            // Keep that original vertical space after moving them into the top header,
+            // so the Watch Now strip AND the collections/apps stay at their old Y positions.
+            Spacer(Modifier.height(28.dp))
+            // The strip slot is reserved even when hidden. Toggling its visibility
+            // must not move the collections or app cards.
             Spacer(Modifier.height(14.dp))
             if (showStrip) {
                 SmartStrip(
