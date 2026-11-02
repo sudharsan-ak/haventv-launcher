@@ -101,6 +101,10 @@ class AppGrid internal constructor() {
     /** True while focus is on the first line, so Up leaves the grid. */
     val inTopRow: Boolean get() = focused in 0 until columns
 
+    /** Down past any app on the final line can collapse the collections and apps. */
+    val inBottomRow: Boolean get() = count > 0 && columns > 0 &&
+        focused in ((((count - 1) / columns) * columns) until count)
+
     fun focus(index: Int) {
         if (count == 0) return
         runCatching { requester(index.coerceIn(0, count - 1)).requestFocus() }

@@ -430,6 +430,11 @@ fun Personalize(state: HavenState, colors: ThemeColors) {
                             ) { value -> store.update { it.copy(motion = Motion.entries.first { motion -> motion.label == value }) } }
                         }
                         Page.DISPLAY -> {
+                            SettingsToggleRow(
+                                "Show Watch Now cards",
+                                "Show the NBA, Live TV and Continue/Now Playing row. When off, a Watch Now button appears by Search.",
+                                s.showWatchNowCards, colors,
+                            ) { store.update { it.copy(showWatchNowCards = !it.showWatchNowCards) } }
                             SettingsChoiceRow(
                                 "Card size", "Applies to Kingdom cards and Tide dock icons.", s.cardSize.label,
                                 CardSize.entries.map { SettingsPickerOption(it.label) }, s.cardSize.label, colors,

@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -144,6 +145,12 @@ fun AppCard(
 @Composable
 fun GearButton(colors: ThemeColors, modifier: Modifier = Modifier, onClick: () -> Unit) {
     TopActionButton(Icons.Rounded.Settings, "Settings", colors, modifier, onClick)
+}
+
+/** Opens the existing Watch Now drawer when the large Home cards are hidden. */
+@Composable
+fun WatchNowButton(colors: ThemeColors, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    TopActionButton(Icons.Rounded.LiveTv, "Open Watch Now", colors, modifier, onClick)
 }
 
 /** Round glass search button beside the gear on both themes. */
