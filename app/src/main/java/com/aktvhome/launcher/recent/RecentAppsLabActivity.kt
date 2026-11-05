@@ -244,20 +244,27 @@ class RecentAppsLabActivity : ComponentActivity() {
                     BitmapFactory.decodeFile(file.absolutePath) else null
                 val partial = screenshot != null &&
                     RecentPreviewStore.isPartialDark(applicationContext, task.pkg)
-                // Media sessions are available only when the app publishes metadata
-                // and Haven's existing Notification Listener is authorized.
-                val media = if (screenshot == null || partial)
+                // Dark backgrounds are normal for TV apps. This flag is diagnostic
+                // only, not a reason to replace an actual usable screenshot.
+                // Avoid querying media sessions/Watch Next when a screenshot exists.
+                val media = if (screenshot == null)
                     RecentMediaArtwork.find(applicationContext, task.pkg) else null
-                val bitmap = when {
-                    media?.bitmap != null -> media.bitmap
-                    screenshot != null -> screenshot
-                    else -> RecentMediaArtwork.appFallback(applicationContext, task.pkg)
+                val choice = RecentPreviewSelection.choose(
+                    screenshotAvailable = screenshot != null,
+                    mediaAvailable = media?.bitmap != null,
+                )
+                val bitmap = when (choice) {
+                    RecentPreviewChoice.SCREENSHOT -> screenshot
+                    RecentPreviewChoice.MEDIA -> media?.bitmap
+                    RecentPreviewChoice.APP_ARTWORK ->
+                        RecentMediaArtwork.appFallback(applicationContext, task.pkg)
                 }
-                val label = when {
-                    media?.bitmap != null -> media.label
-                    screenshot != null && partial -> "Saved screenshot (large dark area)"
-                    screenshot != null -> "Saved screenshot"
-                    else -> "App artwork fallback"
+                val label = when (choice) {
+                    RecentPreviewChoice.SCREENSHOT -> if (partial)
+                        "Saved screenshot (dark UI; screenshot preferred)"
+                        else "Saved screenshot"
+                    RecentPreviewChoice.MEDIA -> media?.label ?: "Media artwork fallback"
+                    RecentPreviewChoice.APP_ARTWORK -> "App artwork fallback"
                 }
                 Triple(bitmap, label, media?.detail.orEmpty())
             }
@@ -298,7 +305,7 @@ class RecentAppsLabActivity : ComponentActivity() {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("Haven · Recent Apps Lab", fontSize = 30.sp, fontWeight = FontWeight.Bold)
-            Text("COMMIT 4 · FOREGROUND MEDIA / WATCH NEXT DIAGNOSTICS · NOT FINAL UI", color = Color(0xFF92AEB6), fontSize = 13.sp)
+            Text("COMMIT 5 · SCREENSHOT PRIORITY FIX · NOT FINAL UI", color = Color(0xFF92AEB6), fontSize = 13.sp)
             Text(data.shizuku, color = Color(0xFF8CE6E8))
             Text(data.message, color = Color.White)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

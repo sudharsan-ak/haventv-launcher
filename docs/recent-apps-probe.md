@@ -46,3 +46,34 @@ If metadata is missing, confirm Notification access for Haven is enabled (its ex
 - No capture of DRM-protected video is attempted.
 - Source changes still need Android Gradle compilation and Sony TV verification by the user; no on-device test has run in this environment.
 - Leave PR #36 open and unmerged until testing and the final switcher UI are completed.
+
+
+## Commit 5: prefer real screenshots to generic media artwork
+
+Commit 4 introduced a UI selection regression: its "large dark area" heuristic
+overrode a valid YouTube TV browse/home screenshot with Friends artwork from
+the media session. Most TV app interfaces are intentionally dark. A mostly
+dark screenshot is not necessarily a failed or protected capture.
+
+The diagnostic viewer now always displays a **usable saved screenshot first**,
+regardless of the "large dark region" flag. That flag remains visible as a
+diagnostic, not a fallback selector. MediaSession artwork and Watch Next are
+only queried for the preview if no screenshot was saved; app artwork is still
+the last fallback. Four selection unit tests cover the expected priority.
+
+### Sony TV regression test
+
+1. Leave Automatic previews ON. Browse YouTube TV's Home/Library/Live pages,
+   spend several seconds there, then return Home to Haven.
+2. Open the lab and choose Cached preview. The *actual YouTube TV interface*
+   should appear, even if tagged "dark UI"; it must not be replaced by Friends
+   media artwork.
+3. Try a YouTube TV channel. Protected video may still be black or cause the
+   screenshot to be discarded; this is expected, not a capture bypass.
+4. Prime Video browse screens and SmartTube should continue showing captured
+   screenshots. Netflix or Prime's protected video may still show fallbacks.
+5. If the screen is not updating, inspect Last attempt and Last success; do not
+   confuse a missing JPEG with the separate media metadata cache.
+
+No screenshot cadence, permissions, capture-security logic, or launcher layouts
+changed in this fix. Build and Sony TV behavior still need local verification.
