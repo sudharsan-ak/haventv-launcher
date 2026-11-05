@@ -221,6 +221,7 @@ class RecentAppsLabActivity : ComponentActivity() {
         val enabled = !RecentPreviewStore.enabled(this)
         RecentPreviewStore.setEnabled(this, enabled)
         RecentCapture.resetAuto()
+        if (!enabled) RecentMediaCollector.stop()
         view = view.copy(automatic = enabled,
             message = if (enabled) "Automatic previews ON. Open another app, then return to this lab."
                 else "Automatic previews OFF. Existing local previews are retained.")
@@ -228,6 +229,7 @@ class RecentAppsLabActivity : ComponentActivity() {
 
     private fun clearCached() {
         RecentPreviewStore.clearAll(this)
+        RecentMediaStore.clearAll(this)
         view = view.copy(cachedPreview = null, cachedPackage = null,
             message = "All saved Recent Apps previews cleared.")
     }
@@ -296,7 +298,7 @@ class RecentAppsLabActivity : ComponentActivity() {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("Haven · Recent Apps Lab", fontSize = 30.sp, fontWeight = FontWeight.Bold)
-            Text("COMMIT 3 · PREVIEW ACCURACY / MEDIA FALLBACK · NOT FINAL UI", color = Color(0xFF92AEB6), fontSize = 13.sp)
+            Text("COMMIT 4 · FOREGROUND MEDIA / WATCH NEXT DIAGNOSTICS · NOT FINAL UI", color = Color(0xFF92AEB6), fontSize = 13.sp)
             Text(data.shizuku, color = Color(0xFF8CE6E8))
             Text(data.message, color = Color.White)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -310,8 +312,8 @@ class RecentAppsLabActivity : ComponentActivity() {
                 }
                 OutlinedButton(onClick = onClearCache) { Text("Clear previews") }
             }
-            Text("Opt-in only. One JPEG per app, max 12. Nothing is uploaded. " +
-                "Navigation now refreshes previews more often. Media artwork is used only when published by the app.",
+            Text("Opt-in previews: on-device screenshots plus optional foreground media metadata. " +
+                "Watch Next suggestions are labeled and may not match current playback.",
                 color = Color(0xFF9CB2BA), fontSize = 12.sp)
             Text("Cached previews: " + RecentPreviewStore.count(this@RecentAppsLabActivity) +
                 " / " + RecentPreviewPolicy.MAX_CACHED_APPS,
@@ -327,6 +329,8 @@ class RecentAppsLabActivity : ComponentActivity() {
                     Text(labelFor(task.pkg) + "  ·  task #" + task.taskId, fontWeight = FontWeight.Bold)
                     Text(task.pkg, color = Color(0xFF9DB1B9), fontSize = 12.sp)
                     Text(RecentPreviewStore.description(this@RecentAppsLabActivity, task.pkg),
+                        color = Color(0xFF9DB1B9), fontSize = 12.sp)
+                    Text(RecentMediaStore.status(this@RecentAppsLabActivity, task.pkg),
                         color = Color(0xFF9DB1B9), fontSize = 12.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         OutlinedButton(onClick = { onSnapshot(task) }, enabled = !data.busy) { Text("Snapshot") }

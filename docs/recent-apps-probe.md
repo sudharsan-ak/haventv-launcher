@@ -1,31 +1,48 @@
-# Recent Apps: Commit 3 TV test
+# Haven Recent Apps: Commit 4 media metadata investigation
 
-This commit improves opt-in cached previews on PR #36. It does not add the finished app-switcher carousel or alter Kingdom, Tide or Shizuku task actions.
+This is a diagnostic continuation of PR #36. It does NOT implement the final carousel, does not change Kingdom/Tide, and does not bypass protected video.
 
-## Build on Windows
+## What changed
 
-Run git fetch origin, git switch feature/recent-apps-switcher, git pull, then .\gradlew.bat assembleDebug. Install the debug APK using your normal ADB process.
+- While an application is foregrounded, Haven observes its existing MediaSession through the same Notification Listener permission used by Now Playing/NBA alerts. Media-session callbacks catch metadata changes even when the app stops producing Accessibility UI events.
+- Haven stores the last permitted title and at most one small artwork JPEG per app. This makes metadata available after the app goes to the background and its MediaSession disappears.
+- Artwork can come from MediaMetadata bitmaps or its artwork URI fields, decoded/downscaled with bounded reads. HTTP(S) artwork URIs may cause a small image download; no video or screen is uploaded.
+- Secure apps with no readable Accessibility root can still supply metadata through a foreground window event.
+- Cached preview now chooses actual screenshot when usable, then last foreground media metadata, live session metadata, a recent Watch Next item, and finally the app's own banner/icon. Partially black screenshots prefer useful alternative artwork when available.
+- Watch Next is read using Haven's existing READ_TV_LISTINGS permission. A recent Watch Next item is ALWAYS labeled as a recommendation/history item, not an exact playing frame.
+- More diagnostics report notification access, no sessions, missing metadata, unreadable artwork URI, cached media title/source/time, and missing Watch Next rows.
+- Clear previews removes both screenshot and media caches. All screenshot behavior and Shizuku task actions are retained.
 
-Open the diagnostics with:
-adb shell am start -n com.aktvhome.launcher/.recent.RecentAppsLabActivity
+## Pull and test on Sony TV
 
-## Test cases
+In PowerShell in your existing repository:
 
-1. Enable Automatic previews in the lab if not already ON. Open SmartTube, navigate between several different screens for at least 10 seconds, and return Home. Reopen the lab, refresh tasks and choose Cached preview for SmartTube. Verify the image reflects recent navigation.
-2. Repeat with SmartTube playback and press Home directly. The Home key now requests a last screenshot while the app is still visible, without waiting before showing Haven. This is best-effort, not guaranteed.
-3. Check Last attempt and Last success timestamps and the outcome under the app entry. Wait a few seconds, change screens, and verify the times update. Only one JPEG per app should exist.
-4. Open YouTube TV, including a live channel, and inspect its preview. Protected video pixels can remain black. If the app exposes MediaSession artwork or a title, Cached preview may use it instead. The label indicates the actual source.
-5. Open Netflix and inspect Cached preview. If Netflix doesn't publish usable media metadata, its banner/icon remains the expected fallback. Do not assume protected video can be captured.
-6. Check that a secure/blank capture does not reuse a misleading stale image. Check that an unrelated capture failure retains an existing good image.
-7. Leave automatic previews OFF when finished if you do not want screenshots stored. Clear previews removes files, but does not change the ON/OFF setting.
+    git fetch origin
+    git switch feature/recent-apps-switcher
+    git pull
+    .\gradlew.bat assembleDebug
+    adb install -r app\build\outputs\apk\debug\app-debug.apk
+    adb shell am start -n com.aktvhome.launcher/.recent.RecentAppsLabActivity
 
-## Limits and expectations
+If necessary, re-enable Haven's existing Home button Accessibility service after updating the APK. Automatic previews must be ON in the diagnostic screen.
 
-- All previews stay in Haven's private on-device cache. No network upload and no new service.
-- Only launchable apps are captured, not Haven itself. Capture is event-driven: after app entry, relevant navigation, or the intercepted Home key.
-- Normal navigation captures are limited to a six-second per-app cooldown, app re-entry to eight seconds, and a global 1.5-second cooldown. There is no periodic background capture.
-- One JPEG (max width 480px) per app, maximum twelve apps in cache. A new successful image replaces the old image.
-- A mostly black preview is rejected; a partly dark preview is labeled, and media artwork is preferred when publicly exposed by that app's media session.
-- We do not try to bypass protected DRM video. Metadata availability is controlled by the streaming app, not Haven.
-- Pressing Home is never delayed for the screenshot; Android may finish capturing after the app is gone, in which case the late capture is discarded.
-- Android Gradle build and Sony TV behavior have not been verified from this environment. Keep the draft PR open until the local build and device tests pass.
+Test each service separately:
+
+1. SmartTube: navigate and return Home. It should still display a normal screenshot. The new media diagnostics may additionally show metadata.
+2. YouTube TV: start live playback, remain there 10-20 seconds, return Home, reopen diagnostic screen, press Connect / Refresh tasks, then Cached preview. Check the media status line and the label. Video pixels are still protected.
+3. Netflix: start playing a title, remain there 10-20 seconds, return Home, inspect Cached preview and the media status. It may still only show the app banner if Netflix exposes no usable metadata or provider rows.
+4. Prime Video: repeat the Netflix test.
+5. Inspect the text for each app: last screenshot attempt, last successful screenshot, last media observation, media source, any Watch Next query result, and final preview label.
+6. Switch automatic previews OFF and ON, verify it remains responsive. Clear previews should remove the media and screenshot cache entries.
+
+If metadata is missing, confirm Notification access for Haven is enabled (its existing Now Playing functionality depends on it). The optional Watch Next query also requires READ_TV_LISTINGS; a missing grant is reported, not silently treated as no content.
+
+## Behavior limits
+
+- Media artwork and program titles come from Android APIs when apps publish them. Netflix and Prime Video are not guaranteed to expose them.
+- Last foreground media is retained for up to 30 minutes and labeled by source; it is not represented as an exact screenshot.
+- Watch Next is limited to the 500 visible provider rows queried, and only uses same-package items engaged within 48 hours. It may reflect a previously watched title rather than the current session.
+- The separate screenshot cache retains one JPEG per app, max 12 apps. The media artwork cache similarly retains at most one artwork JPEG per app, max 12 files.
+- No capture of DRM-protected video is attempted.
+- Source changes still need Android Gradle compilation and Sony TV verification by the user; no on-device test has run in this environment.
+- Leave PR #36 open and unmerged until testing and the final switcher UI are completed.

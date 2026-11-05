@@ -42,10 +42,12 @@ object RecentCapture {
     fun resetAuto() {
         cancelPending()
         foreground = null
+        RecentMediaCollector.leaveForeground()
     }
 
     fun onServiceStopped() {
         resetAuto()
+        RecentMediaCollector.stop()
         armedPackage = null
     }
 
@@ -56,8 +58,13 @@ object RecentCapture {
      */
     fun onHomeKeyDown(service: AccessibilityService) {
         if (!RecentPreviewStore.enabled(service)) return
-        val pkg = service.rootInActiveWindow?.packageName?.toString() ?: return
-        if (pkg != foreground || !eligible(service, pkg)) return
+        val active = service.rootInActiveWindow?.packageName?.toString()
+        val pkg = active ?: RecentMediaCollector.currentForeground() ?: return
+        if (!eligible(service, pkg)) return
+        RecentMediaCollector.beforeHome(service, pkg)
+        // A protected app may not expose a readable root; metadata can still be used.
+        // Only the real foreground window is eligible for a screen capture.
+        if (pkg != foreground || active != pkg) return
         cancelPending()
         capture(service, pkg, "Home press", manual = false)
     }
@@ -86,8 +93,14 @@ object RecentCapture {
             if (window) resetAuto()
             return
         }
-        // Ignore notifications/background changes from a different process.
-        if (service.rootInActiveWindow?.packageName?.toString() != pkg) return
+        // Secure windows may expose a foreground event but no readable root.
+        // Such apps can still publish permitted MediaSession metadata.
+        val active = service.rootInActiveWindow?.packageName?.toString()
+        if (active == pkg || (window && active == null)) {
+            RecentMediaCollector.onForeground(service, pkg)
+        }
+        // A readable active root is still required for actual screenshots.
+        if (active != pkg) return
         val reentered = pkg != foreground
         if (reentered) {
             foreground = pkg
