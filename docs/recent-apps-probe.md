@@ -114,3 +114,91 @@ Keep **Automatic previews ON**, and confirm Haven's **Notification access** is e
 6. Use **Clear previews** to remove saved screenshots, media records, and title-history artwork after testing.
 
 **These changes have not been compiled or run on your Sony TV in this environment. Keep PR #36 unmerged until the build and device tests pass.**
+
+
+## Commit 7: Testable Apple TV-inspired Recent Apps carousel
+
+This is the **first implementation for Sony TV testing**. The diagnostic lab stays
+available until the new UI is validated. The UI follows the previously approved
+Haven carousel prototype, with screenshot-first previews and distinct Kingdom/Tide accents.
+
+### Open Recents
+
+- Short Home: behaves exactly as before; goes to Haven's home.
+- Hold Home for about 650 milliseconds: attempts to open the Recent Apps carousel
+  directly over the app you were using.
+- If Sony's firmware reserves long Home and prevents Haven from seeing the press,
+  go to Haven and select the new **Recent Apps** icon alongside Search and Settings
+  in either Kingdom or Tide.
+- Recents is a temporary translucent Activity rather than changing Haven's Home
+  layout. On Sony TVs with protected playback, the app behind the translucent
+  screen may still appear black; cached cards do not depend on that background.
+
+### Remote controls
+
+| Remote | Result |
+|---|---|
+| Left / Right | Select previous or next app |
+| OK / Enter | Move the actual Android task to front through Shizuku |
+| Up | Hide selected task from Haven's Recents list (no Android task removal) |
+| Down | Ask to hide all listed cards |
+| OK after Down | Hide all cards, no app is stopped |
+| Up or Back after Down | Cancel hide all |
+| Back | Close Recents and return to the previous app |
+| Short Home | Open Haven as normal |
+
+The empty state says *No Recent Apps* and offers **Show hidden apps**.
+The selected card displays a real cached screenshot if available. If the screenshot
+is unavailable, it uses the existing media/Watch Next/app-banner fallbacks.
+Black/dark-themed YouTube TV browse-page screenshots are not replaced with
+Friends or other artwork when the screenshot is valid.
+
+### Non-destructive removal
+
+Hide and Clear All only store hidden task IDs in Haven's own private preferences.
+They do NOT call `removeTask`, `forceStopPackage`, `am force-stop`, or kill any app.
+The old diagnostic Remove button now hides only as well, and the legacy Shizuku
+dismiss transaction has been disabled. Opening a hidden app later can make it
+reappear; Show hidden apps clears the hidden list immediately.
+
+### Resume semantics
+
+OK calls Shizuku's existing `moveTaskToFront(taskId)` for the **actual task ID**.
+The selected thumbnail does not determine the destination, so even Netflix
+can restore to the existing task if the OS/app still retains it. Haven does not
+silently launch the app's main Activity if this fails. It shows an error instead.
+A restored task may still reset playback if the streaming app itself chooses to
+restart playback or recreate its UI.
+
+### Build and acceptance tests
+
+```powershell
+git fetch origin
+git switch feature/recent-apps-switcher
+git pull
+.\gradlew.bat assembleDebug
+adb install -r app\build\outputs\apk\debug\app-debug.apk
+```
+
+Ensure Haven's Accessibility service and Shizuku are running.
+
+1. **Home behavior:** Short Home from SmartTube/Netflix still goes to Haven.
+   Long-press Home from an app should open Recents directly (without flashing
+   Google TV Home). If long press is not delivered, use Haven's new Recents icon.
+2. **Back:** Open Recents from within an app; Back must dismiss the switcher and
+   return to the previous app, not always to Haven.
+3. **Restore:** Move to Prime Video or YouTube TV using Left/Right and OK.
+   Verify it reopens the existing screen/session. Repeat with Netflix.
+   If restore fails, the UI should report it without a new app launch.
+4. **Hide only:** Press Up on a card. The card disappears, but its Android task
+   remains alive. Reopen the app normally and check it returns to Recents.
+5. **Clear All:** Press Down, confirm with OK. The carousel becomes empty while
+   apps remain running. **Show hidden apps** restores cards.
+6. **Previews:** SmartTube and YouTube TV Home use real screenshot tiles.
+   Protected video uses best available media artwork/banner. Netflix may be
+   only the Netflix banner, pending an accessible media source.
+7. **Themes:** Confirm both Kingdom and Tide accents and D-pad layout fit the TV.
+
+**Not yet verified:** Android Gradle compilation, timing on the physical Sony
+remote, cross-task/translucent back stack behavior, and restoration across
+protected apps. Keep PR #36 open and unmerged until these pass.

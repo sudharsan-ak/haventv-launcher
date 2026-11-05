@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Shizuku UserService. This runs under the shell identity in a separate process.
- * It never uses force-stop and never runs until the user explicitly opens the lab.
+ * It never stops or removes Android tasks and only starts when the user opens the switcher/lab.
  * All privileged operations are reached through its small, bounded Binder protocol.
  */
 class RecentTaskUserService : Binder() {
@@ -48,9 +48,11 @@ class RecentTaskUserService : Binder() {
                     reply?.writeInt(if (ok) 1 else 0)
                 }
                 DISMISS -> {
-                    val ok = remove(data.readInt())
+                    // Reserved legacy transaction. Deleting an Android task can finish
+                    // its activities, so the final switcher never performs this action.
+                    data.readInt()
                     reply?.writeNoException()
-                    reply?.writeInt(if (ok) 1 else 0)
+                    reply?.writeInt(0)
                 }
             }
         } catch (t: Throwable) {
@@ -92,15 +94,6 @@ class RecentTaskUserService : Binder() {
         }.toTypedArray()
         method.invoke(tm, *args)
         true
-    }.getOrDefault(false)
-
-    /** Removes the task only. Does not call forceStopPackage or am force-stop. */
-    private fun remove(taskId: Int): Boolean = runCatching {
-        val tm = taskManager()
-        val result = tm.javaClass
-            .getMethod("removeTask", Int::class.javaPrimitiveType)
-            .invoke(tm, taskId)
-        (result as? Boolean) ?: true
     }.getOrDefault(false)
 
     /** Inspect an existing OS task snapshot without force-creating one. */

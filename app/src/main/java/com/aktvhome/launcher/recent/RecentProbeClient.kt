@@ -18,7 +18,7 @@ import kotlin.coroutines.resume
 class RecentProbeClient(private val context: Context) {
     private val args = Shizuku.UserServiceArgs(
         ComponentName(context, RecentTaskUserService::class.java)
-    ).processNameSuffix("haven_recents_probe").tag("haven_recents_probe").version(2).daemon(false)
+    ).processNameSuffix("haven_recents_probe").tag("haven_recents_probe").version(3).daemon(false)
 
     @Volatile private var remote: IBinder? = null
     private var connection: ServiceConnection? = null

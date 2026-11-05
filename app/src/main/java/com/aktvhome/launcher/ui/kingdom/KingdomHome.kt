@@ -70,6 +70,9 @@ import com.aktvhome.launcher.ui.CollapsedAppsHandle
 import com.aktvhome.launcher.ui.SlidingApps
 import com.aktvhome.launcher.ui.collapseOnLastDown
 import com.aktvhome.launcher.ui.SearchButton
+import com.aktvhome.launcher.ui.RecentsButton
+import com.aktvhome.launcher.recent.RecentAppsSwitcherActivity
+import androidx.compose.ui.platform.LocalContext
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.IconBadge
 import com.aktvhome.launcher.ui.InputCard
@@ -102,6 +105,7 @@ private val SIDE = 48.dp
 @Composable
 fun KingdomHome(state: HavenState, colors: ThemeColors, preview: Boolean = false) {
     val settings = state.settingsStore.settings
+    val context = LocalContext.current
     val shown = state.shownCollections()
     val current = state.currentCollection(shown)
     val tiles = rememberWrapRow(shown.size)
@@ -228,6 +232,10 @@ fun KingdomHome(state: HavenState, colors: ThemeColors, preview: Boolean = false
                     if (appsCollapsed) collapsedHandleFocus else tiles.requester(currentIndex)
                 SearchButton(colors, Modifier.focusRequester(headerSearchFocus).focusProperties { down = downTarget }) {
                     state.overlay = Overlay.SEARCH
+                }
+                Spacer(Modifier.width(8.dp))
+                RecentsButton(colors, Modifier.focusProperties { down = downTarget }) {
+                    RecentAppsSwitcherActivity.launch(context)
                 }
                 Spacer(Modifier.width(8.dp))
                 GearButton(colors, Modifier.focusProperties { down = downTarget }) {

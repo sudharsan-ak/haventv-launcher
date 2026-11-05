@@ -144,7 +144,18 @@
                 android:resource="@xml/home_override" />
         </service>
 
-        <!-- Temporary Commit 1 diagnostics. Start explicitly through ADB; not added to Home. -->
+        <!-- The final Recents carousel is a temporary, translucent task. Back returns
+             to the app underneath. Excluded from Android's own task list. -->
+        <activity
+            android:name=".recent.RecentAppsSwitcherActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:taskAffinity="com.aktvhome.launcher.recents"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.Haven.Recents" />
+
+        <!-- Temporary diagnostics remain available via ADB until Sony TV testing passes. -->
         <activity
             android:name=".recent.RecentAppsLabActivity"
             android:exported="true"

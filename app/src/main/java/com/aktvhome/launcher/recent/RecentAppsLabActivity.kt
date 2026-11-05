@@ -134,6 +134,7 @@ class RecentAppsLabActivity : ComponentActivity() {
                 }
                 val raw = client.list()
                 val tasks = RecentTaskParser.parse(raw, packageName)
+                    .filterNot { RecentHiddenStore.isHidden(this@RecentAppsLabActivity, it.taskId) }
                 view = view.copy(
                     busy = false, shizuku = client.status(), tasks = tasks,
                     rawStart = raw.take(280).replace('\n', ' '),
@@ -182,26 +183,17 @@ class RecentAppsLabActivity : ComponentActivity() {
         }
     }
 
+    /** Hide from Haven only. Android's task and process are untouched. */
     private fun testDismiss(task: RecentTask) {
         if (view.confirmDismiss != task.taskId) {
-            view = view.copy(confirmDismiss = task.taskId, message = "Select Remove again to confirm. No force-stop.")
+            view = view.copy(confirmDismiss = task.taskId,
+                message = "Press again to hide from Haven Recents. The app remains running.")
             return
         }
-        if (view.busy) return
-        view = view.copy(busy = true, confirmDismiss = null)
-        lifecycleScope.launch {
-            try {
-                val removed = client.dismiss(task.taskId)
-                val raw = client.list()
-                view = view.copy(
-                    busy = false, tasks = RecentTaskParser.parse(raw, packageName),
-                    message = if (removed) "Removed task " + task.taskId + " (no force-stop)"
-                        else "Android refused task removal for " + task.taskId,
-                )
-            } catch (e: Exception) {
-                problem("Remove failed: " + e.message)
-            }
-        }
+        RecentHiddenStore.hide(this, task)
+        view = view.copy(confirmDismiss = null,
+            tasks = view.tasks.filterNot { it.taskId == task.taskId },
+            message = "Hidden " + task.pkg + " from Haven Recents only (no task removal)")
     }
 
     /** Captures once after this app reaches foreground; then use ADB to reopen the lab. */
@@ -319,6 +311,10 @@ class RecentAppsLabActivity : ComponentActivity() {
                     Text(if (data.automatic) "Automatic previews: ON" else "Automatic previews: OFF")
                 }
                 OutlinedButton(onClick = onClearCache) { Text("Clear previews") }
+                OutlinedButton(onClick = {
+                    RecentHiddenStore.showAll(this@RecentAppsLabActivity)
+                    connectAndScan()
+                }) { Text("Show hidden apps") }
             }
             Text("Opt-in previews: screenshots first; then MediaSession artwork or titles, " +
                 "TV Watch Next / Preview Channels, then app banners. Provider items are NOT verified live playback.",
@@ -348,7 +344,7 @@ class RecentAppsLabActivity : ComponentActivity() {
                         OutlinedButton(onClick = { onCached(task) }) { Text("Cached preview") }
                         OutlinedButton(onClick = { onRestore(task) }, enabled = !data.busy) { Text("Resume task") }
                         OutlinedButton(onClick = { onDismiss(task) }, enabled = !data.busy) {
-                            Text(if (data.confirmDismiss == task.taskId) "Confirm remove" else "Remove")
+                            Text(if (data.confirmDismiss == task.taskId) "Confirm hide" else "Hide")
                         }
                     }
                 }
