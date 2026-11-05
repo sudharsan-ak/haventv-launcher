@@ -7,11 +7,11 @@
   - after you pick a Bluetooth speaker in Sound, it presses Connect or Disconnect on that device's
     page in the TV's Settings app (com.android.tv.settings), then goes Back. Nothing else is read
     or pressed, and it stops after 10 s.
-  It also draws Haven's NBA alert banners over other apps (an accessibility overlay). Those read
-  only ESPN's scores and, with Notification access, which media is playing; never the screen.
+  It also draws NBA alert banners over other apps. Optional Recent Apps previews can take
+  throttled screenshots when explicitly enabled in the diagnostics; screenshots stay on the TV.
 -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagRequestFilterKeyEvents|flagRetrieveInteractiveWindows"
     android:canRequestFilterKeyEvents="true"

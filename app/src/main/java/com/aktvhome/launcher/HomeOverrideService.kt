@@ -110,8 +110,8 @@ class HomeOverrideService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
-        // One-shot, opt-in screenshot diagnostics only; ordinary events are unchanged.
-        RecentCapture.onWindowChanged(this, event)
+        // Opt-in recent previews use the existing service; Home interception is unchanged.
+        RecentCapture.onEvent(this, event)
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         if (event.packageName != homePackage) return
         // Only the home page itself; the launcher's other screens (profiles, accounts, inputs) stay
@@ -213,6 +213,7 @@ class HomeOverrideService : AccessibilityService() {
         alerts?.stop()
         banner?.destroy()
         guard.cancel()
+        RecentCapture.onServiceStopped()
         connected = false
         instance = null
         pending = null

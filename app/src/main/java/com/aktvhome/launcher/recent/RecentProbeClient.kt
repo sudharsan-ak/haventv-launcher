@@ -18,7 +18,7 @@ import kotlin.coroutines.resume
 class RecentProbeClient(private val context: Context) {
     private val args = Shizuku.UserServiceArgs(
         ComponentName(context, RecentTaskUserService::class.java)
-    ).processNameSuffix("haven_recents_probe").tag("haven_recents_probe").version(1).daemon(false)
+    ).processNameSuffix("haven_recents_probe").tag("haven_recents_probe").version(2).daemon(false)
 
     @Volatile private var remote: IBinder? = null
     private var connection: ServiceConnection? = null
@@ -82,9 +82,11 @@ class RecentProbeClient(private val context: Context) {
         transact(RecentTaskUserService.LIST, {}, { it.readString().orEmpty() })
     }
 
-    suspend fun snapshot(taskId: Int): ByteArray? = withContext(Dispatchers.IO) {
+    data class SnapshotProbe(val detail: String, val bytes: ByteArray?)
+
+    suspend fun snapshot(taskId: Int): SnapshotProbe = withContext(Dispatchers.IO) {
         transact(RecentTaskUserService.SNAPSHOT, { it.writeInt(taskId) }, {
-            it.createByteArray()
+            SnapshotProbe(it.readString().orEmpty(), it.createByteArray())
         })
     }
 

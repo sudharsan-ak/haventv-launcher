@@ -53,6 +53,10 @@ private data class LabState(
     val snapshotFor: Int? = null,
     val capture: Bitmap? = null,
     val captureStatus: String = "No accessibility capture test yet",
+    val automatic: Boolean = false,
+    val cachedPreview: Bitmap? = null,
+    val cachedPackage: String? = null,
+    val cachedLabel: String = "",
     val confirmDismiss: Int? = null,
     val busy: Boolean = false,
 )
@@ -92,6 +96,9 @@ class RecentAppsLabActivity : ComponentActivity() {
                     onRestore = ::testRestore,
                     onDismiss = ::testDismiss,
                     onCapture = ::captureApp,
+                    onCached = ::showCached,
+                    onToggleAutomatic = ::toggleAutomatic,
+                    onClearCache = ::clearCached,
                     onClearConfirmation = { view = view.copy(confirmDismiss = null) },
                     onClose = ::finish,
                 )
@@ -105,6 +112,7 @@ class RecentAppsLabActivity : ComponentActivity() {
         view = view.copy(
             shizuku = client.status(),
             captureStatus = RecentCapture.status(this),
+            automatic = RecentPreviewStore.enabled(this),
             capture = if (file.exists()) BitmapFactory.decodeFile(file.absolutePath) else null,
         )
     }
@@ -141,12 +149,12 @@ class RecentAppsLabActivity : ComponentActivity() {
         view = view.copy(busy = true, message = "Reading Android snapshot for " + task.pkg)
         lifecycleScope.launch {
             try {
-                val bytes = client.snapshot(task.taskId)
+                val probe = client.snapshot(task.taskId)
+                val bytes = probe.bytes
                 val bitmap = bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
                 view = view.copy(
                     busy = false, snapshot = bitmap, snapshotFor = task.taskId,
-                    message = if (bitmap != null) "Task snapshot available for " + task.pkg
-                        else "No real task snapshot for " + task.pkg + " (secure/unsupported/not cached)",
+                    message = "Native snapshot for " + task.pkg + ": " + probe.detail,
                 )
             } catch (e: Exception) {
                 problem("Snapshot failed: " + e.javaClass.simpleName + ": " + e.message)
@@ -207,6 +215,44 @@ class RecentAppsLabActivity : ComponentActivity() {
             .onFailure { problem("Cannot open " + task.pkg + ": " + it.message) }
     }
 
+    private fun toggleAutomatic() {
+        val enabled = !RecentPreviewStore.enabled(this)
+        RecentPreviewStore.setEnabled(this, enabled)
+        RecentCapture.resetAuto()
+        view = view.copy(automatic = enabled,
+            message = if (enabled) "Automatic previews ON. Open another app, then return to this lab."
+                else "Automatic previews OFF. Existing local previews are retained.")
+    }
+
+    private fun clearCached() {
+        RecentPreviewStore.clearAll(this)
+        view = view.copy(cachedPreview = null, cachedPackage = null,
+            message = "All saved Recent Apps previews cleared.")
+    }
+
+    private fun showCached(task: RecentTask) {
+        val image = RecentPreviewStore.file(this, task.pkg)
+        val bitmap = if (image.exists()) BitmapFactory.decodeFile(image.absolutePath) else null
+        val fallback = if (bitmap == null) runCatching {
+            val drawable = packageManager.getApplicationBanner(task.pkg)
+                ?: packageManager.getApplicationIcon(task.pkg)
+            val bmp = Bitmap.createBitmap(480, 270, Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bmp)
+            canvas.drawColor(android.graphics.Color.rgb(16, 28, 34))
+            if (packageManager.getApplicationBanner(task.pkg) != null) {
+                drawable.setBounds(0, 0, 480, 270)
+            } else {
+                drawable.setBounds(176, 71, 304, 199)
+            }
+            drawable.draw(canvas)
+            bmp
+        }.getOrNull() else null
+        view = view.copy(cachedPreview = bitmap ?: fallback,
+            cachedPackage = task.pkg,
+            cachedLabel = if (bitmap != null) "Saved screenshot" else "App artwork fallback",
+            message = RecentPreviewStore.description(this, task.pkg))
+    }
+
     private fun labelFor(pkg: String): String = runCatching {
         val info = packageManager.getApplicationInfo(pkg, 0)
         packageManager.getApplicationLabel(info).toString()
@@ -221,6 +267,9 @@ class RecentAppsLabActivity : ComponentActivity() {
         onRestore: (RecentTask) -> Unit,
         onDismiss: (RecentTask) -> Unit,
         onCapture: (RecentTask) -> Unit,
+        onCached: (RecentTask) -> Unit,
+        onToggleAutomatic: () -> Unit,
+        onClearCache: () -> Unit,
         onClearConfirmation: () -> Unit,
         onClose: () -> Unit,
     ) {
@@ -232,7 +281,7 @@ class RecentAppsLabActivity : ComponentActivity() {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("Haven · Recent Apps Lab", fontSize = 30.sp, fontWeight = FontWeight.Bold)
-            Text("COMMIT 1 · ANDROID 12 DIAGNOSTICS · NOT FINAL UI", color = Color(0xFF92AEB6), fontSize = 13.sp)
+            Text("COMMIT 2 · AUTOMATIC PREVIEW DIAGNOSTICS · NOT FINAL UI", color = Color(0xFF92AEB6), fontSize = 13.sp)
             Text(data.shizuku, color = Color(0xFF8CE6E8))
             Text(data.message, color = Color.White)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -240,7 +289,20 @@ class RecentAppsLabActivity : ComponentActivity() {
                 OutlinedButton(onClick = onGrant, enabled = !data.busy) { Text("Grant Shizuku") }
                 OutlinedButton(onClick = onClose) { Text("Close") }
             }
-            Text("For one-shot Accessibility captures: choose Capture & open, use the app, then reopen this lab through ADB.", color = Color(0xFF9CB2BA), fontSize = 12.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(onClick = onToggleAutomatic) {
+                    Text(if (data.automatic) "Automatic previews: ON" else "Automatic previews: OFF")
+                }
+                OutlinedButton(onClick = onClearCache) { Text("Clear previews") }
+            }
+            Text("Opt-in only. One JPEG per app, max 12. Nothing is uploaded. " +
+                "Open an app, browse, then reopen this lab to inspect its preview.",
+                color = Color(0xFF9CB2BA), fontSize = 12.sp)
+            Text("Cached previews: " + RecentPreviewStore.count(this@RecentAppsLabActivity) +
+                " / " + RecentPreviewPolicy.MAX_CACHED_APPS,
+                color = Color(0xFF8CE6E8), fontSize = 12.sp)
+            Text("Manual one-shot test: Capture & open, then reopen via ADB.",
+                color = Color(0xFF9CB2BA), fontSize = 12.sp)
             if (data.rawStart.isNotBlank()) Text("Shell output: " + data.rawStart, color = Color(0xFF8C9EA4), fontSize = 11.sp)
             data.tasks.forEach { task ->
                 Column(
@@ -249,9 +311,12 @@ class RecentAppsLabActivity : ComponentActivity() {
                 ) {
                     Text(labelFor(task.pkg) + "  ·  task #" + task.taskId, fontWeight = FontWeight.Bold)
                     Text(task.pkg, color = Color(0xFF9DB1B9), fontSize = 12.sp)
+                    Text(RecentPreviewStore.description(this@RecentAppsLabActivity, task.pkg),
+                        color = Color(0xFF9DB1B9), fontSize = 12.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         OutlinedButton(onClick = { onSnapshot(task) }, enabled = !data.busy) { Text("Snapshot") }
                         OutlinedButton(onClick = { onCapture(task) }, enabled = !data.busy) { Text("Capture & open") }
+                        OutlinedButton(onClick = { onCached(task) }) { Text("Cached preview") }
                         OutlinedButton(onClick = { onRestore(task) }, enabled = !data.busy) { Text("Resume task") }
                         OutlinedButton(onClick = { onDismiss(task) }, enabled = !data.busy) {
                             Text(if (data.confirmDismiss == task.taskId) "Confirm remove" else "Remove")
@@ -268,7 +333,14 @@ class RecentAppsLabActivity : ComponentActivity() {
                     Image(data.snapshot.asImageBitmap(), "Android task snapshot", Modifier.width(480.dp).height(270.dp))
                 } else Text("No usable saved snapshot available")
             }
-            Text("Accessibility capture result: " + data.captureStatus, color = Color(0xFF8CE6E8))
+            if (data.cachedPackage != null) {
+                Text(data.cachedLabel + " · " + data.cachedPackage, fontWeight = FontWeight.Bold)
+                if (data.cachedPreview != null) {
+                    Image(data.cachedPreview.asImageBitmap(), "Cached screenshot or app artwork",
+                        Modifier.width(480.dp).height(270.dp))
+                } else Text("No saved screenshot or app artwork available")
+            }
+            Text("Accessibility manual test: " + data.captureStatus, color = Color(0xFF8CE6E8))
             if (data.capture != null) {
                 Image(data.capture.asImageBitmap(), "One-shot Accessibility capture", Modifier.width(480.dp).height(270.dp))
             }
