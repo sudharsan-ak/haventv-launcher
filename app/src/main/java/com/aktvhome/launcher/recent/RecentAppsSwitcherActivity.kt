@@ -48,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -94,6 +95,27 @@ private data class SwitcherState(
 )
 
 /**
+ * Whether the Recents switcher is currently the foreground Activity. MainActivity reads
+ * this (same process, so a plain Compose state works across Activities) to blur itself
+ * the same way it does for an in-process overlay: this TV can't blur across windows, so
+ * the covered Activity blurs its own content instead.
+ */
+object RecentAppsVisibility {
+    var isOpen by mutableStateOf(false)
+        private set
+    internal fun set(open: Boolean) { isOpen = open }
+}
+
+/**
+ * This screen routes every D-pad key through dispatchKeyEvent and tracks its own
+ * footerFocus, not real Compose focus traversal. Without this, Android's default
+ * focus system still auto-focuses the first focusable Pill, making it render Pill's
+ * internal "focused" fill on top of (and inconsistent with) the selected style this
+ * screen already draws from footerFocus - two focus systems fighting over one look.
+ */
+private val unfocusable = Modifier.focusProperties { canFocus = false }
+
+/**
  * First production-facing Apple TV-inspired Recents UI. Uses the same Shizuku task
  * transport already verified in the lab, but NEVER calls removeTask or force-stop.
  * The Activity is translucent and a separate temporary task so Back returns to
@@ -117,13 +139,16 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
     companion object {
         /** Open a temporary switcher task, not a fresh launch of an app. */
         fun launch(context: Context): Boolean = runCatching {
+            // Set before startActivity so MainActivity's own blur (it can't blur
+            // across windows on this TV) has a frame to ramp up on before the swap.
+            RecentAppsVisibility.set(true)
             context.startActivity(
                 Intent(context, RecentAppsSwitcherActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or
                         Intent.FLAG_ACTIVITY_NO_ANIMATION)
             )
             true
-        }.getOrDefault(false)
+        }.getOrDefault(false).also { if (!it) RecentAppsVisibility.set(false) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -359,6 +384,13 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
         return true
     }
 
+    override fun onPause() {
+        // Fires promptly on Back, resume, or any task switch away from this screen,
+        // unlike onDestroy which Android can delay well past the visual transition.
+        RecentAppsVisibility.set(false)
+        super.onPause()
+    }
+
     override fun onDestroy() {
         runCatching { Shizuku.removeRequestPermissionResultListener(permissionListener) }
         client.close()
@@ -400,8 +432,8 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
                     Text(data.notice, color = colors.inkSoft,
                         fontSize = 14.sp, textAlign = TextAlign.Center)
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Pill("Grant Shizuku", colors, onClick = ::grantShizuku)
-                        Pill("Try again", colors, onClick = ::scan)
+                        Pill("Grant Shizuku", colors, modifier = unfocusable, onClick = ::grantShizuku)
+                        Pill("Try again", colors, modifier = unfocusable, onClick = ::scan)
                     }
                 }
             } else if (data.tasks.isEmpty()) {
@@ -417,7 +449,7 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
                         else "Apps you use will appear here.",
                         color = Color.White.copy(alpha = 0.78f), fontSize = 14.sp)
                     if (!data.loading) {
-                        Pill("Show hidden apps", colors, onClick = ::showHidden)
+                        Pill("Show hidden apps", colors, modifier = unfocusable, onClick = ::showHidden)
                     }
                 }
             } else {
@@ -477,11 +509,12 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
                                     .width(cardWidth)
                                     .zIndex(if (isSelected) 5f else if (abs(distance) == 1) 3f else 1f)
                                     .graphicsLayer {
+                                        // Flat scale/sink/dim only: a 3D perspective tilt
+                                        // reads as "leaning", not as cards stacked behind
+                                        // one another.
                                         scaleX = scale
                                         scaleY = scale
                                         alpha = fade
-                                        rotationY = if (isSelected) 0f else
-                                            if (distance < 0) 8f else -8f
                                     }
                                     .clickable {
                                         if (isSelected) resume()
@@ -580,10 +613,10 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Pill("Back", colors, selected = data.footerFocus == 1,
-                    onClick = ::closeOrCancel)
+                    modifier = unfocusable, onClick = ::closeOrCancel)
                 Pill(if (data.confirmClearAll) "Confirm clear" else "Clear all",
                     colors, selected = data.footerFocus == 2,
-                    modifier = Modifier.alpha(if (data.tasks.isNotEmpty()) 1f else 0.48f),
+                    modifier = unfocusable.alpha(if (data.tasks.isNotEmpty()) 1f else 0.48f),
                     icon = Icons.Rounded.DeleteOutline,
                     onClick = { if (data.tasks.isNotEmpty()) requestClearAll() })
             }
