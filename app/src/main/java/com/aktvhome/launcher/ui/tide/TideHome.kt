@@ -64,8 +64,6 @@ import com.aktvhome.launcher.ui.CollapsedAppsHandle
 import com.aktvhome.launcher.ui.SlidingApps
 import com.aktvhome.launcher.ui.collapseOnLastDown
 import com.aktvhome.launcher.ui.SearchButton
-import com.aktvhome.launcher.ui.RecentsButton
-import com.aktvhome.launcher.recent.RecentAppsSwitcherActivity
 import androidx.compose.ui.platform.LocalContext
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.Overlay
@@ -189,9 +187,6 @@ fun TideHome(state: HavenState, colors: ThemeColors, preview: Boolean = false) {
                 }
             }
             SearchButton(colors, Modifier.focusRequester(headerSearchFocus).focusProperties { down = downTarget }) { state.overlay = Overlay.SEARCH }
-            RecentsButton(colors, Modifier.focusProperties { down = downTarget }) {
-                RecentAppsSwitcherActivity.launch(context)
-            }
             GearButton(colors, Modifier.focusProperties { down = downTarget }) { state.overlay = Overlay.QUICK }
         }
 

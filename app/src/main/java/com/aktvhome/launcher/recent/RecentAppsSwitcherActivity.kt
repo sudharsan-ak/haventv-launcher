@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -36,8 +35,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.DeleteOutline
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
@@ -48,6 +45,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -69,6 +67,7 @@ import com.aktvhome.launcher.data.SettingsStore
 import com.aktvhome.launcher.ui.theme.Palettes
 import com.aktvhome.launcher.ui.theme.dayness
 import com.aktvhome.launcher.ui.settings.glassPanel
+import com.aktvhome.launcher.ui.Pill
 import java.time.LocalTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -401,8 +400,8 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
                     Text(data.notice, color = colors.inkSoft,
                         fontSize = 14.sp, textAlign = TextAlign.Center)
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        GlassAction("Grant Shizuku", false, true, ::grantShizuku)
-                        GlassAction("Try again", false, true, ::scan)
+                        Pill("Grant Shizuku", colors, onClick = ::grantShizuku)
+                        Pill("Try again", colors, onClick = ::scan)
                     }
                 }
             } else if (data.tasks.isEmpty()) {
@@ -418,7 +417,7 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
                         else "Apps you use will appear here.",
                         color = Color.White.copy(alpha = 0.78f), fontSize = 14.sp)
                     if (!data.loading) {
-                        GlassAction("Show hidden apps", false, true, ::showHidden)
+                        Pill("Show hidden apps", colors, onClick = ::showHidden)
                     }
                 }
             } else {
@@ -444,7 +443,9 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
                     contentAlignment = Alignment.Center,
                 ) {
                     val cardWidth: Dp = (maxWidth * 0.44f).coerceIn(300.dp, 620.dp)
-                    val shift = cardWidth * 0.82f
+                    // Tight enough that neighbors genuinely overlap the focused card's
+                    // edge instead of sitting beside it as a separate, flat row.
+                    val shift = cardWidth * 0.62f
                     data.tasks.forEachIndexed { index, task ->
                         val distance = index - data.selected
                         if (abs(distance) > 2) return@forEachIndexed
@@ -453,12 +454,18 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
                             val x by animateDpAsState(shift * distance.toFloat(),
                                 animationSpec = tween(if (animationsOn) 430 else 0),
                                 label = "recentCardOffset")
+                            // Neighbors sink and recede behind the focused card, the way
+                            // a physical stack of cards would, instead of floating level.
+                            val y by animateDpAsState(
+                                if (isSelected) 0.dp else if (abs(distance) == 1) 26.dp else 44.dp,
+                                animationSpec = tween(if (animationsOn) 430 else 0),
+                                label = "recentCardSink")
                             val scale by animateFloatAsState(
-                                if (isSelected) 1f else if (abs(distance) == 1) 0.86f else 0.74f,
+                                if (isSelected) 1f else if (abs(distance) == 1) 0.84f else 0.70f,
                                 animationSpec = tween(if (animationsOn) 430 else 0),
                                 label = "recentCardScale")
                             val fade by animateFloatAsState(
-                                if (isSelected) 1f else if (abs(distance) == 1) 0.82f else 0.48f,
+                                if (isSelected) 1f else if (abs(distance) == 1) 0.72f else 0.42f,
                                 animationSpec = tween(if (animationsOn) 350 else 0),
                                 label = "recentCardFade")
                             val preview = data.previews[task.taskId]
@@ -466,7 +473,7 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
                                 ?: task.pkg.substringAfterLast('.')
                             Column(
                                 Modifier.align(Alignment.Center)
-                                    .offset(x = x, y = 7.dp)
+                                    .offset(x = x, y = y)
                                     .width(cardWidth)
                                     .zIndex(if (isSelected) 5f else if (abs(distance) == 1) 3f else 1f)
                                     .graphicsLayer {
@@ -474,7 +481,7 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
                                         scaleY = scale
                                         alpha = fade
                                         rotationY = if (isSelected) 0f else
-                                            if (distance < 0) 5f else -5f
+                                            if (distance < 0) 8f else -8f
                                     }
                                     .clickable {
                                         if (isSelected) resume()
@@ -564,18 +571,21 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
                 }
             }
 
-            // Only the two compact, always-visible liquid-glass controls.
+            // Same Pill used for every other action across Haven (Theme, Watch,
+            // Quick Settings), not a bespoke control just for this screen.
             Row(
                 Modifier.align(Alignment.BottomEnd)
                     .padding(end = 28.dp, bottom = 26.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                GlassAction("Back", data.footerFocus == 1, true,
+                Pill("Back", colors, selected = data.footerFocus == 1,
                     onClick = ::closeOrCancel)
-                GlassAction(if (data.confirmClearAll) "Confirm clear" else "Clear all",
-                    data.footerFocus == 2, data.tasks.isNotEmpty(),
-                    showDeleteIcon = true, onClick = ::requestClearAll)
+                Pill(if (data.confirmClearAll) "Confirm clear" else "Clear all",
+                    colors, selected = data.footerFocus == 2,
+                    modifier = Modifier.alpha(if (data.tasks.isNotEmpty()) 1f else 0.48f),
+                    icon = Icons.Rounded.DeleteOutline,
+                    onClick = { if (data.tasks.isNotEmpty()) requestClearAll() })
             }
             // Errors are transient; never reintroduce the permanent instruction strip.
             if (data.notice.isNotBlank() && !data.loading && !data.needsShizuku) {
@@ -590,35 +600,4 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
         }
     }
 
-    /** Shared with Haven's settings treatment, not a separate Recents color theme. */
-    @Composable
-    private fun GlassAction(
-        label: String,
-        selected: Boolean,
-        enabled: Boolean,
-        onClick: () -> Unit,
-        showDeleteIcon: Boolean = false,
-    ) {
-        val shape = RoundedCornerShape(16.dp)
-        Row(
-            Modifier
-                .glassPanel(colors, shape, alpha = if (selected) 0.86f else 0.72f)
-                .then(if (selected) Modifier.border(2.dp, colors.accent, shape)
-                    else Modifier)
-                .clickable(enabled = enabled, onClick = onClick)
-                .padding(horizontal = 18.dp, vertical = 13.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (showDeleteIcon) {
-                Icon(Icons.Rounded.DeleteOutline, null,
-                    tint = colors.ink.copy(alpha = if (enabled) 1f else 0.48f),
-                    modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(9.dp))
-            }
-            Text(label,
-                color = colors.ink.copy(alpha = if (enabled) 1f else 0.48f),
-                fontSize = 14.sp,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium)
-        }
-    }
 }

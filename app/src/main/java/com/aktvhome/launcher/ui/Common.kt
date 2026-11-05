@@ -23,7 +23,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.LiveTv
-import androidx.compose.material.icons.rounded.ViewCarousel
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -158,12 +157,6 @@ fun WatchNowButton(colors: ThemeColors, modifier: Modifier = Modifier, onClick: 
 @Composable
 fun SearchButton(colors: ThemeColors, modifier: Modifier = Modifier, onClick: () -> Unit) {
     TopActionButton(Icons.Rounded.Search, "Search Haven", colors, modifier, onClick)
-}
-
-/** A TV-remote-friendly fallback when the Sony Home long-press is reserved by firmware. */
-@Composable
-fun RecentsButton(colors: ThemeColors, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    TopActionButton(Icons.Rounded.ViewCarousel, "Recent apps", colors, modifier, onClick)
 }
 
 @Composable
