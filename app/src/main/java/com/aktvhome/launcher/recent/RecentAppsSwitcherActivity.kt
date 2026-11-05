@@ -443,8 +443,8 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
                         },
                     contentAlignment = Alignment.Center,
                 ) {
-                    val cardWidth: Dp = (maxWidth * 0.65f).coerceIn(300.dp, 760.dp)
-                    val shift = cardWidth * 0.75f
+                    val cardWidth: Dp = (maxWidth * 0.44f).coerceIn(300.dp, 620.dp)
+                    val shift = cardWidth * 0.82f
                     data.tasks.forEachIndexed { index, task ->
                         val distance = index - data.selected
                         if (abs(distance) > 2) return@forEachIndexed
@@ -480,20 +480,23 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
                                         if (isSelected) resume()
                                         else select(distance)
                                     },
-                                horizontalAlignment = Alignment.Start,
+                                horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
+                                // Name/icon label: focused card only, like Apple TV's
+                                // switcher. Neighbors carry no header row.
                                 Row(
-                                    Modifier.padding(start = 6.dp, bottom = 13.dp),
+                                    Modifier.padding(bottom = 13.dp)
+                                        .graphicsLayer { alpha = if (isSelected) 1f else 0f },
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 ) {
                                     if (preview?.icon != null) {
                                         Image(preview.icon.asImageBitmap(), null,
-                                            Modifier.size(36.dp).clip(RoundedCornerShape(9.dp)))
+                                            Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)))
                                     } else {
                                         Box(
-                                            Modifier.size(36.dp)
-                                                .glassPanel(colors, RoundedCornerShape(9.dp),
+                                            Modifier.size(30.dp)
+                                                .glassPanel(colors, RoundedCornerShape(8.dp),
                                                     alpha = 0.68f),
                                             contentAlignment = Alignment.Center,
                                         ) {
@@ -501,8 +504,8 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
                                                 fontWeight = FontWeight.Bold)
                                         }
                                     }
-                                    Text(name, color = Color.White, fontSize = 21.sp,
-                                        fontWeight = FontWeight.Medium, maxLines = 1,
+                                    Text(name, color = Color.White, fontSize = 19.sp,
+                                        fontWeight = FontWeight.SemiBold, maxLines = 1,
                                         overflow = TextOverflow.Ellipsis)
                                 }
                                 val shape = RoundedCornerShape(18.dp)
@@ -524,8 +527,30 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
                                             Modifier.fillMaxSize(),
                                             contentScale = ContentScale.Crop)
                                     } else {
-                                        Text(name.take(1).uppercase(), color = colors.ink,
-                                            fontSize = 64.sp, fontWeight = FontWeight.Bold)
+                                        // No screenshot or media artwork: a composed icon
+                                        // card, not a raw icon floating on flat glass.
+                                        Box(
+                                            Modifier.fillMaxSize()
+                                                .background(Brush.radialGradient(
+                                                    colors = listOf(
+                                                        Color.White.copy(alpha = 0.08f),
+                                                        Color.Transparent),
+                                                    radius = 900f))
+                                                .background(Brush.linearGradient(
+                                                    colors = listOf(
+                                                        colors.glass.copy(alpha = 0.34f),
+                                                        colors.ink.copy(alpha = 0.22f)))),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            if (preview?.icon != null) {
+                                                Image(preview.icon.asImageBitmap(), name,
+                                                    Modifier.size(cardWidth * 0.26f),
+                                                    contentScale = ContentScale.Fit)
+                                            } else {
+                                                Text(name.take(1).uppercase(), color = colors.ink,
+                                                    fontSize = 64.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
                                     }
                                     // Outline stays on top of the preview, never tinting its pixels.
                                     Box(Modifier.fillMaxSize().border(
