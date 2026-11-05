@@ -612,10 +612,10 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Pill("Back", colors, selected = data.footerFocus == 1,
+                Pill("Back", colors, forceFocused = data.footerFocus == 1,
                     modifier = unfocusable, onClick = ::closeOrCancel)
                 Pill(if (data.confirmClearAll) "Confirm clear" else "Clear all",
-                    colors, selected = data.footerFocus == 2,
+                    colors, forceFocused = data.footerFocus == 2,
                     modifier = unfocusable.alpha(if (data.tasks.isNotEmpty()) 1f else 0.48f),
                     icon = Icons.Rounded.DeleteOutline,
                     onClick = { if (data.tasks.isNotEmpty()) requestClearAll() })
