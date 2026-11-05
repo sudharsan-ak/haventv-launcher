@@ -18,6 +18,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -33,6 +34,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -50,6 +54,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -61,7 +66,10 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.lifecycleScope
 import com.aktvhome.launcher.data.Motion
 import com.aktvhome.launcher.data.SettingsStore
-import com.aktvhome.launcher.data.ThemeId
+import com.aktvhome.launcher.ui.theme.Palettes
+import com.aktvhome.launcher.ui.theme.dayness
+import com.aktvhome.launcher.ui.settings.glassPanel
+import java.time.LocalTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -71,7 +79,7 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.math.abs
 
-private data class SwitchPreview(val bitmap: Bitmap?, val label: String)
+private data class SwitchPreview(val bitmap: Bitmap?, val label: String, val icon: Bitmap?)
 private data class SwitcherState(
     val tasks: List<RecentTask> = emptyList(),
     val selected: Int = 0,
@@ -82,6 +90,8 @@ private data class SwitcherState(
     val notice: String = "",
     val needsShizuku: Boolean = false,
     val confirmClearAll: Boolean = false,
+    /** 0 = carousel, 1 = Back, 2 = Clear all. */
+    val footerFocus: Int = 0,
 )
 
 /**
@@ -94,13 +104,13 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
     private val client by lazy { RecentProbeClient(this) }
     private var view by mutableStateOf(SwitcherState())
     private val pendingImages = mutableSetOf<Int>()
-    private val accent by lazy {
-        if (SettingsStore(this).settings.theme == ThemeId.TIDE) Color(0xFF93C5FF)
-        else Color(0xFF92F5E7)
+    private val settings by lazy { SettingsStore(this).settings }
+    /** Same theme and liquid-glass palette as Haven Settings / Quick Settings. */
+    private val colors by lazy {
+        Palettes.colors(settings.theme, dayness(settings.dayMode, LocalTime.now()))
     }
-    private val animationsOn by lazy {
-        SettingsStore(this).settings.motion != Motion.OFF
-    }
+    private val accent get() = colors.accent
+    private val animationsOn get() = settings.motion != Motion.OFF
     private val permissionListener = Shizuku.OnRequestPermissionResultListener { _, _ ->
         runOnUiThread { scan() }
     }
@@ -119,10 +129,16 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-        val attrs = window.attributes
-        attrs.dimAmount = 0.62f
-        window.attributes = attrs
+        // A real translucent overlay: the underlying app remains visible wherever
+        // Android permits. Android 12 can blur windows behind us; a neutral dim
+        // keeps the effect readable when TV firmware disables cross-window blur.
+        window.setBackgroundDrawableResource(android.R.color.transparent)
+        window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND or
+            WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+        window.attributes = window.attributes.apply {
+            dimAmount = 0.40f
+            setBlurBehindRadius(30)
+        }
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility =
             View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
@@ -162,7 +178,7 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
                 view = view.copy(tasks = current,
                     selected = RecentSwitcherNavigation.afterHide(view.selected, current.size),
                     loading = false, notice = "", needsShizuku = false,
-                    confirmClearAll = false)
+                    confirmClearAll = false, footerFocus = 0)
                 ensureVisiblePreviews()
             } catch (e: Exception) {
                 view = view.copy(loading = false, needsShizuku = true,
@@ -194,7 +210,14 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
                         val info = packageManager.getApplicationInfo(task.pkg, 0)
                         packageManager.getApplicationLabel(info).toString()
                     }.getOrDefault(task.pkg.substringAfterLast('.'))
-                    Pair(SwitchPreview(bitmap, label), name)
+                    val icon = runCatching {
+                        val d = packageManager.getApplicationIcon(task.pkg)
+                        Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888).also { bmp ->
+                            d.setBounds(0, 0, 64, 64)
+                            d.draw(android.graphics.Canvas(bmp))
+                        }
+                    }.getOrNull()
+                    Pair(SwitchPreview(bitmap, label, icon), name)
                 }
                 pendingImages.remove(task.taskId)
                 if (view.tasks.none { it.taskId == task.taskId }) return@launch
@@ -210,12 +233,13 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
         if (view.tasks.isEmpty() || view.busy) return
         val next = RecentSwitcherNavigation.move(view.selected, delta, view.tasks.size)
         if (next == view.selected) return
-        view = view.copy(selected = next)
+        view = view.copy(selected = next, footerFocus = 0, confirmClearAll = false)
         ensureVisiblePreviews()
     }
 
     private fun resume() {
-        if (view.busy || view.loading || view.confirmClearAll) return
+        if (view.busy || view.loading || view.confirmClearAll ||
+            view.footerFocus != 0) return
         val task = view.tasks.getOrNull(view.selected) ?: return
         view = view.copy(busy = true, notice = "Resuming " +
             (view.labels[task.taskId] ?: task.pkg) + "...")
@@ -245,14 +269,14 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
         val remaining = view.tasks.filterNot { it.taskId == task.taskId }
         view = view.copy(tasks = remaining,
             selected = RecentSwitcherNavigation.afterHide(view.selected, remaining.size),
-            notice = "", confirmClearAll = false)
+            notice = "", confirmClearAll = false, footerFocus = 0)
         ensureVisiblePreviews()
     }
 
     private fun clearAll() {
         RecentHiddenStore.hideAll(this, view.tasks)
         view = view.copy(tasks = emptyList(), selected = 0, notice = "",
-            confirmClearAll = false)
+            confirmClearAll = false, footerFocus = 0)
     }
 
     private fun showHidden() {
@@ -266,43 +290,72 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
                 it.javaClass.simpleName) }
     }
 
+    private fun requestClearAll() {
+        if (view.tasks.isEmpty() || view.busy) return
+        if (view.confirmClearAll) clearAll()
+        else view = view.copy(confirmClearAll = true, footerFocus = 2)
+    }
+
+    private fun focusActions(target: Int) {
+        view = view.copy(
+            footerFocus = RecentSwitcherNavigation.actionFocus(view.footerFocus,
+                if (target == 1) -1 else 1),
+            confirmClearAll = false)
+    }
+
     private fun closeOrCancel() {
-        if (view.confirmClearAll) view = view.copy(confirmClearAll = false)
-        else finish()
+        if (view.confirmClearAll) {
+            view = view.copy(confirmClearAll = false, footerFocus = 2)
+        } else finish()
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val key = event.keyCode
         val controlled = setOf(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
             KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_BACK)
-        if (event.keyCode !in controlled) return super.dispatchKeyEvent(event)
-        if (event.keyCode == KeyEvent.KEYCODE_BACK) {
+        if (key !in controlled) return super.dispatchKeyEvent(event)
+        if (key == KeyEvent.KEYCODE_BACK) {
             if (event.action == KeyEvent.ACTION_UP) closeOrCancel()
             return true
         }
+        if (event.action != KeyEvent.ACTION_DOWN || event.repeatCount > 0) return true
+
+        // Failure/empty states keep their direct retry/restore keyboard actions.
         if (view.needsShizuku || (view.tasks.isEmpty() && !view.loading)) {
-            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
-                when (event.keyCode) {
-                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
-                    KeyEvent.KEYCODE_NUMPAD_ENTER -> if (view.needsShizuku) grantShizuku()
-                        else showHidden()
-                    KeyEvent.KEYCODE_DPAD_RIGHT -> if (view.needsShizuku) scan()
-                }
+            when (key) {
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_NUMPAD_ENTER ->
+                    if (view.needsShizuku) grantShizuku() else showHidden()
+                KeyEvent.KEYCODE_DPAD_RIGHT -> if (view.needsShizuku) scan()
             }
             return true
         }
-        if (event.action == KeyEvent.ACTION_UP) return true
-        if (event.action != KeyEvent.ACTION_DOWN || event.repeatCount > 0) return true
-        when (event.keyCode) {
-            KeyEvent.KEYCODE_BACK -> closeOrCancel()
-            KeyEvent.KEYCODE_DPAD_LEFT -> if (!view.confirmClearAll) select(-1)
-            KeyEvent.KEYCODE_DPAD_RIGHT -> if (!view.confirmClearAll) select(1)
-            KeyEvent.KEYCODE_DPAD_UP -> if (view.confirmClearAll)
-                view = view.copy(confirmClearAll = false) else hideSelected()
-            KeyEvent.KEYCODE_DPAD_DOWN -> if (view.tasks.isNotEmpty())
-                view = view.copy(confirmClearAll = true)
-            else -> if (view.confirmClearAll) clearAll() else resume()
+
+        if (view.footerFocus != 0) {
+            when (key) {
+                KeyEvent.KEYCODE_DPAD_LEFT -> focusActions(1)
+                KeyEvent.KEYCODE_DPAD_RIGHT -> focusActions(2)
+                KeyEvent.KEYCODE_DPAD_UP -> view = view.copy(
+                    footerFocus = 0, confirmClearAll = false)
+                KeyEvent.KEYCODE_DPAD_DOWN -> focusActions(2)
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_NUMPAD_ENTER -> if (view.footerFocus == 1)
+                    closeOrCancel() else requestClearAll()
+            }
+            return true
+        }
+
+        when (key) {
+            KeyEvent.KEYCODE_DPAD_LEFT -> select(-1)
+            KeyEvent.KEYCODE_DPAD_RIGHT -> select(1)
+            // Hide from Haven only, never removeTask/force-stop.
+            KeyEvent.KEYCODE_DPAD_UP -> hideSelected()
+            // Back / Clear all remain visible; Down moves remote focus to them.
+            KeyEvent.KEYCODE_DPAD_DOWN -> focusActions(2)
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_NUMPAD_ENTER -> resume()
         }
         return true
     }
@@ -313,196 +366,234 @@ class RecentAppsSwitcherActivity : ComponentActivity() {
         super.onDestroy()
     }
 
+    /** Floating Apple TV-like task stack over the underlying app, not a dashboard. */
     @Composable
     private fun SwitcherScreen(data: SwitcherState) {
         val now = LocalDateTime.now()
         Box(
-            Modifier.fillMaxSize().background(
-                Brush.verticalGradient(listOf(Color(0xE9081724), Color(0xEE07111D),
-                    Color(0xF5040A14)))
-            )
+            Modifier.fillMaxSize()
+                // Only a neutral veil: do not draw an opaque blue/gray background.
+                // Live window blur and dim are applied by WindowManager above.
+                .background(Color.Black.copy(alpha = 0.14f))
         ) {
-            Column(Modifier.fillMaxSize().padding(horizontal = 42.dp, vertical = 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("▣", fontSize = 25.sp, color = accent)
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text("H A V E N", fontSize = 15.sp, fontWeight = FontWeight.Bold,
-                            color = Color.White)
-                        Text("RECENT APPS", fontSize = 11.sp, color = Color(0xFF9AB0C5))
-                    }
-                    Spacer(Modifier.weight(1f))
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(now.format(DateTimeFormatter.ofPattern("h:mm a")),
-                            color = Color.White, fontSize = 16.sp)
-                        Text(now.format(DateTimeFormatter.ofPattern("EEE, MMM d")),
-                            color = Color(0xFFA4B4C6), fontSize = 11.sp)
+            Column(
+                Modifier.align(Alignment.TopEnd).padding(top = 18.dp, end = 30.dp),
+                horizontalAlignment = Alignment.End,
+            ) {
+                Text(now.format(DateTimeFormatter.ofPattern(if (settings.clock24)
+                    "HH:mm" else "h:mm a")), color = Color.White,
+                    fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
+                Text(now.format(DateTimeFormatter.ofPattern("EEE, MMM d")),
+                    color = Color.White.copy(alpha = 0.76f), fontSize = 12.sp)
+            }
+
+            if (data.needsShizuku) {
+                Column(
+                    Modifier.align(Alignment.Center)
+                        .width(450.dp)
+                        .glassPanel(colors, RoundedCornerShape(23.dp), alpha = 0.80f)
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("Recent apps unavailable", color = colors.ink,
+                        fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                    Text(data.notice, color = colors.inkSoft,
+                        fontSize = 14.sp, textAlign = TextAlign.Center)
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        GlassAction("Grant Shizuku", false, true, ::grantShizuku)
+                        GlassAction("Try again", false, true, ::scan)
                     }
                 }
-                Spacer(Modifier.height(18.dp))
-                Text("SWITCH BETWEEN APPS", color = accent, fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                Spacer(Modifier.height(6.dp))
-                Text("Pick up where you left off", color = Color.White, fontSize = 31.sp,
-                    fontWeight = FontWeight.Medium)
-                Spacer(Modifier.height(6.dp))
-                Text("Your recent apps, right where you left them",
-                    color = Color(0xFF9EAEBD), fontSize = 13.sp)
-
-                if (data.needsShizuku) {
-                    Column(Modifier.weight(1f).fillMaxWidth(),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Recent tasks unavailable", color = Color.White, fontSize = 24.sp)
-                        Spacer(Modifier.height(12.dp))
-                        Text(data.notice, color = Color(0xFFABC1CB), fontSize = 14.sp,
-                            textAlign = TextAlign.Center)
-                        Spacer(Modifier.height(16.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Button(onClick = ::grantShizuku) { Text("Grant Shizuku") }
-                            Button(onClick = ::scan) { Text("Try again") }
-                        }
+            } else if (data.tasks.isEmpty()) {
+                Column(
+                    Modifier.align(Alignment.Center),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(if (data.loading) "Finding recent apps..."
+                        else "No Recent Apps", color = Color.White,
+                        fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (data.loading) "Checking Android tasks"
+                        else "Apps you use will appear here.",
+                        color = Color.White.copy(alpha = 0.78f), fontSize = 14.sp)
+                    if (!data.loading) {
+                        GlassAction("Show hidden apps", false, true, ::showHidden)
                     }
-                } else if (data.tasks.isEmpty()) {
-                    Column(Modifier.weight(1f).fillMaxWidth(),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("▤", color = accent, fontSize = 48.sp)
-                        Text(if (data.loading) "Finding recent apps..."
-                            else "No Recent Apps", color = Color.White, fontSize = 25.sp)
-                        Spacer(Modifier.height(8.dp))
-                        Text(if (data.loading) "Checking Android tasks"
-                            else "Apps you use will appear here.",
-                            color = Color(0xFF9CACC0), fontSize = 14.sp)
-                        if (!data.loading) {
-                            Spacer(Modifier.height(14.dp))
-                            Button(onClick = ::showHidden) { Text("Show hidden apps") }
-                        }
-                    }
-                } else {
-                    BoxWithConstraints(
-                        Modifier.weight(1f).fillMaxWidth(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        val cardWidth: Dp = (maxWidth * 0.52f).coerceIn(280.dp, 620.dp)
-                        val shift = cardWidth * 0.79f
-                        data.tasks.forEachIndexed { index, task ->
-                            val diff = index - data.selected
-                            if (abs(diff) > 2) return@forEachIndexed
-                            key(task.taskId) {
-                            val current = diff == 0
-                            val targetOffset = shift * diff.toFloat()
-                            val x by animateDpAsState(targetOffset,
-                                animationSpec = tween(if (animationsOn) 340 else 0),
-                                label = "cardX")
-                            val scale by animateFloatAsState(if (current) 1f else 0.83f,
-                                animationSpec = tween(if (animationsOn) 340 else 0),
-                                label = "cardScale")
-                            val faded by animateFloatAsState(if (current) 1f else 0.55f,
-                                animationSpec = tween(if (animationsOn) 280 else 0),
-                                label = "cardFade")
-                            val shown = data.previews[task.taskId]
+                }
+            } else {
+                BoxWithConstraints(
+                    Modifier.fillMaxSize()
+                        .pointerInput(data.tasks.size) {
+                            var totalDrag = 0f
+                            detectHorizontalDragGestures(
+                                onDragStart = { totalDrag = 0f },
+                                onHorizontalDrag = { change, amount ->
+                                    totalDrag += amount
+                                    change.consume()
+                                },
+                                onDragEnd = {
+                                    val step = RecentSwitcherNavigation.swipeStep(
+                                        totalDrag, 68.dp.toPx())
+                                    if (step != 0) select(step)
+                                    totalDrag = 0f
+                                },
+                                onDragCancel = { totalDrag = 0f },
+                            )
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val cardWidth: Dp = (maxWidth * 0.65f).coerceIn(300.dp, 760.dp)
+                    val shift = cardWidth * 0.75f
+                    data.tasks.forEachIndexed { index, task ->
+                        val distance = index - data.selected
+                        if (abs(distance) > 2) return@forEachIndexed
+                        key(task.taskId) {
+                            val isSelected = distance == 0
+                            val x by animateDpAsState(shift * distance.toFloat(),
+                                animationSpec = tween(if (animationsOn) 430 else 0),
+                                label = "recentCardOffset")
+                            val scale by animateFloatAsState(
+                                if (isSelected) 1f else if (abs(distance) == 1) 0.86f else 0.74f,
+                                animationSpec = tween(if (animationsOn) 430 else 0),
+                                label = "recentCardScale")
+                            val fade by animateFloatAsState(
+                                if (isSelected) 1f else if (abs(distance) == 1) 0.82f else 0.48f,
+                                animationSpec = tween(if (animationsOn) 350 else 0),
+                                label = "recentCardFade")
+                            val preview = data.previews[task.taskId]
                             val name = data.labels[task.taskId]
                                 ?: task.pkg.substringAfterLast('.')
                             Column(
-                                Modifier.align(Alignment.Center).offset(x = x)
+                                Modifier.align(Alignment.Center)
+                                    .offset(x = x, y = 7.dp)
                                     .width(cardWidth)
-                                    .zIndex(if (current) 5f else if (abs(diff) == 1) 3f else 1f)
+                                    .zIndex(if (isSelected) 5f else if (abs(distance) == 1) 3f else 1f)
                                     .graphicsLayer {
                                         scaleX = scale
                                         scaleY = scale
-                                        alpha = faded
-                                        rotationY = if (current) 0f else if (diff < 0) 9f else -9f
+                                        alpha = fade
+                                        rotationY = if (isSelected) 0f else
+                                            if (distance < 0) 5f else -5f
                                     }
                                     .clickable {
-                                        if (current) resume() else select(diff)
+                                        if (isSelected) resume()
+                                        else select(distance)
                                     },
-                                horizontalAlignment = Alignment.CenterHorizontally,
+                                horizontalAlignment = Alignment.Start,
                             ) {
+                                Row(
+                                    Modifier.padding(start = 6.dp, bottom = 13.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
+                                    if (preview?.icon != null) {
+                                        Image(preview.icon.asImageBitmap(), null,
+                                            Modifier.size(36.dp).clip(RoundedCornerShape(9.dp)))
+                                    } else {
+                                        Box(
+                                            Modifier.size(36.dp)
+                                                .glassPanel(colors, RoundedCornerShape(9.dp),
+                                                    alpha = 0.68f),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Text(name.take(1).uppercase(), color = colors.ink,
+                                                fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                    Text(name, color = Color.White, fontSize = 21.sp,
+                                        fontWeight = FontWeight.Medium, maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis)
+                                }
+                                val shape = RoundedCornerShape(18.dp)
                                 Box(
                                     Modifier.fillMaxWidth().aspectRatio(16f / 9f)
-                                        .shadow(if (current) 23.dp else 9.dp,
-                                            RoundedCornerShape(19.dp))
-                                        .clip(RoundedCornerShape(19.dp))
-                                        .background(Color(0xFF162536))
-                                        .border(if (current) 2.5.dp else 1.dp,
-                                            if (current) accent else Color(0x66C2D1E5),
-                                            RoundedCornerShape(19.dp)),
+                                        .shadow(if (isSelected) 30.dp else 14.dp,
+                                            shape, ambientColor = Color.Black,
+                                            spotColor = Color.Black)
+                                        .clip(shape)
+                                        .background(colors.glass.copy(alpha = 0.26f))
+                                        .border(if (isSelected) 2.dp else 1.dp,
+                                            if (isSelected) Color.White.copy(alpha = 0.94f)
+                                            else Color.White.copy(alpha = 0.24f), shape),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    val image = shown?.bitmap
+                                    val image = preview?.bitmap
                                     if (image != null) {
                                         Image(image.asImageBitmap(), name,
                                             Modifier.fillMaxSize(),
                                             contentScale = ContentScale.Crop)
                                     } else {
-                                        Text("▣", color = accent.copy(alpha = 0.7f),
-                                            fontSize = 52.sp)
+                                        Text(name.take(1).uppercase(), color = colors.ink,
+                                            fontSize = 64.sp, fontWeight = FontWeight.Bold)
                                     }
-                                    Box(Modifier.fillMaxWidth().height(76.dp)
-                                        .align(Alignment.BottomCenter)
-                                        .background(Brush.verticalGradient(listOf(
-                                            Color.Transparent, Color(0xCC030913)))))
-                                    if (current) {
-                                        Text(shown?.label ?: "Loading preview",
-                                            modifier = Modifier.align(Alignment.TopEnd)
-                                                .padding(13.dp)
-                                                .background(Color(0xA70C1A28),
-                                                    RoundedCornerShape(10.dp))
-                                                .padding(horizontal = 9.dp, vertical = 5.dp),
-                                            color = Color(0xFFDDEBF0), fontSize = 10.sp)
-                                    }
+                                    // Outline stays on top of the preview, never tinting its pixels.
+                                    Box(Modifier.fillMaxSize().border(
+                                        if (isSelected) 2.dp else 1.dp,
+                                        if (isSelected) Color.White.copy(alpha = 0.95f)
+                                        else colors.edge, shape))
                                 }
-                                Spacer(Modifier.height(17.dp))
-                                Text(name, color = Color.White,
-                                    fontSize = if (current) 21.sp else 17.sp,
-                                    fontWeight = if (current) FontWeight.Bold else FontWeight.Medium,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Spacer(Modifier.height(5.dp))
-                                Text(if (current) "Press OK to resume" else "Recent app",
-                                    color = if (current) accent else Color(0xFF9AA9BA),
-                                    fontSize = 11.sp)
-                            }
                             }
                         }
                     }
                 }
-                if (data.confirmClearAll) {
-                    Text("Hide all these cards from Haven Recents? Apps will not be stopped.",
-                        color = Color(0xFFFFDCB2), fontSize = 16.sp)
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Button(onClick = ::clearAll) { Text("Hide all") }
-                        Button(onClick = { view = view.copy(confirmClearAll = false) }) {
-                            Text("Cancel")
-                        }
-                    }
-                } else if (data.notice.isNotBlank() && !data.loading && !data.needsShizuku) {
-                    Text(data.notice, color = Color(0xFFF0C8A0), fontSize = 13.sp)
-                }
-                Spacer(Modifier.height(13.dp))
-                Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))
-                        .background(Color(0x80233647)).border(1.dp,
-                            Color(0x444B7485), RoundedCornerShape(24.dp))
-                        .padding(horizontal = 18.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically,
+            }
+
+            // Only the two compact, always-visible liquid-glass controls.
+            Row(
+                Modifier.align(Alignment.BottomEnd)
+                    .padding(end = 28.dp, bottom = 26.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                GlassAction("Back", data.footerFocus == 1, true,
+                    onClick = ::closeOrCancel)
+                GlassAction(if (data.confirmClearAll) "Confirm clear" else "Clear all",
+                    data.footerFocus == 2, data.tasks.isNotEmpty(),
+                    showDeleteIcon = true, onClick = ::requestClearAll)
+            }
+            // Errors are transient; never reintroduce the permanent instruction strip.
+            if (data.notice.isNotBlank() && !data.loading && !data.needsShizuku) {
+                Box(
+                    Modifier.align(Alignment.BottomCenter).padding(bottom = 25.dp)
+                        .glassPanel(colors, RoundedCornerShape(14.dp), alpha = 0.81f)
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
                 ) {
-                    FooterLabel("◀ ▶  Switch")
-                    FooterLabel("OK  Resume")
-                    FooterLabel("↑  Remove from Recents")
-                    FooterLabel("↓  Clear all")
-                    FooterLabel("Back  Close")
+                    Text(data.notice, color = colors.ink, fontSize = 12.sp)
                 }
             }
         }
     }
 
+    /** Shared with Haven's settings treatment, not a separate Recents color theme. */
     @Composable
-    private fun FooterLabel(text: String) {
-        Text(text, fontSize = 12.sp, color = Color(0xFFD5E4ED),
-            fontWeight = FontWeight.Medium, maxLines = 1)
+    private fun GlassAction(
+        label: String,
+        selected: Boolean,
+        enabled: Boolean,
+        onClick: () -> Unit,
+        showDeleteIcon: Boolean = false,
+    ) {
+        val shape = RoundedCornerShape(16.dp)
+        Row(
+            Modifier
+                .glassPanel(colors, shape, alpha = if (selected) 0.86f else 0.72f)
+                .then(if (selected) Modifier.border(2.dp, colors.accent, shape)
+                    else Modifier)
+                .clickable(enabled = enabled, onClick = onClick)
+                .padding(horizontal = 18.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (showDeleteIcon) {
+                Icon(Icons.Rounded.DeleteOutline, null,
+                    tint = colors.ink.copy(alpha = if (enabled) 1f else 0.48f),
+                    modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(9.dp))
+            }
+            Text(label,
+                color = colors.ink.copy(alpha = if (enabled) 1f else 0.48f),
+                fontSize = 14.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium)
+        }
     }
 }

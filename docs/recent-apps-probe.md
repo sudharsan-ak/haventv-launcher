@@ -202,3 +202,75 @@ Ensure Haven's Accessibility service and Shizuku are running.
 **Not yet verified:** Android Gradle compilation, timing on the physical Sony
 remote, cross-task/translucent back stack behavior, and restoration across
 protected apps. Keep PR #36 open and unmerged until these pass.
+
+## Commit 8: Overlay-style liquid-glass carousel refinement
+
+This replaces Commit 7's dashboard-style Recent Apps screen with the approved
+Apple TV-inspired overlay prototype, **without changing Shizuku task management**.
+
+### Visual design
+
+- No Haven branding/header, marketing text, preview-source badge, or footer
+  instruction strip. A compact date/time remains in the top-right corner.
+- Real, overlapping 16:9 screenshots with large focused center card. App icon
+  and name appear above its preview. Screenshot-first fallback behavior stays.
+- Background stays translucent so the app beneath can remain visible. On Android
+  12+ Haven requests system `FLAG_BLUR_BEHIND` (30px radius) plus a neutral
+  dim/scrim rather than a solid bluish-gray page. The blur is **best effort**:
+  Sony firmware/GPU and protected video surfaces can disable it or render black.
+- Uses Haven's **existing Settings / Quick Settings `glassPanel` treatment**
+  for action controls, with Kingdom/Tide palette and the saved motion preference.
+- Bottom-right **Back** and **Clear all** are always visible, even when remote
+  focus is on a card. There is no permanently displayed controls/instructions row.
+
+### Controls
+
+| Input | Result |
+|---|---|
+| D-pad Left / Right | Select neighboring snapshot |
+| Touch/pointer swipe left/right | Select next/previous app (thresholded, snap back for small drags) |
+| OK on a card | Resume its real Android task through Shizuku |
+| D-pad Up while card selected | Hide selected card from Haven only, **never force-stop** |
+| D-pad Down | Focus Clear all without executing it |
+| D-pad Left/Right while controls focused | Choose Back or Clear all |
+| OK on Back | Dismiss the overlay |
+| OK / tap on Clear all | Request confirmation; second OK/tap hides all cards |
+| D-pad Up while controls focused | Return to the carousel |
+| Remote Back | Cancel a pending clear, otherwise dismiss the overlay |
+| Touch/click neighboring card | Select that card |
+| Touch/click selected card | Resume its Android task |
+
+Clear all is **visible by default**, not revealed by Down. It hides only Haven's
+cards and does not remove tasks or kill app processes. The same holds for Up.
+The empty state keeps Back and offers Show hidden apps. No changes to the
+existing short Home / long Home shortcut or home-screen Recents icon.
+
+### Sony TV test
+
+```powershell
+git fetch origin
+git switch feature/recent-apps-switcher
+git pull
+.\gradlew.bat assembleDebug
+adb install -r app\build\outputs\apk\debug\app-debug.apk
+```
+
+1. Open Recents via long-press Home or the Recents icon in Kingdom/Tide.
+2. Compare the new design to the approved prototype. Confirm the current app
+   remains faintly visible beneath the glass where the Sony TV allows.
+   If blur is disabled, dimmed translucent background is the expected fallback.
+   Protected videos may render black.
+3. Test Left/Right, selecting side cards, touch or mouse swipes (if available
+   through the TV's input device), and focus transitions. D-pad must work even
+   when the TV has no pointer/touch input.
+4. Confirm Back and Clear all appear permanently at the bottom right.
+   Press Down, then OK twice to clear. Press Up or Back to cancel / return.
+5. Confirm Up hides only a card and never removes or force-stops its task.
+6. Test SmartTube, YouTube TV Home, Prime Video and Netflix task restoration
+   from their cards. Netflix may show only app artwork but must still attempt to
+   resume its existing Android task.
+7. Verify day/night colors in Kingdom and Tide, the saved motion preference,
+   and that the underlying Home activity still works with short Home.
+
+These changes have **not been compiled with Android Gradle or tested on Sony TV
+in this environment**. Do not merge PR #36 before device acceptance tests.

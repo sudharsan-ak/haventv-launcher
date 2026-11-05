@@ -16,4 +16,18 @@ class RecentSwitcherNavigationTest {
         assertEquals(1, RecentSwitcherNavigation.afterHide(1, 3))
         assertEquals(0, RecentSwitcherNavigation.afterHide(0, 0))
     }
+
+    @Test fun swipingLeftMovesForwardAndRightMovesBack() {
+        assertEquals(1, RecentSwitcherNavigation.swipeStep(-85f, 68f))
+        assertEquals(-1, RecentSwitcherNavigation.swipeStep(85f, 68f))
+        assertEquals(0, RecentSwitcherNavigation.swipeStep(20f, 68f))
+        assertEquals(0, RecentSwitcherNavigation.swipeStep(-67.9f, 68f))
+        assertEquals(0, RecentSwitcherNavigation.swipeStep(Float.NaN, 68f))
+    }
+
+    @Test fun remoteCanFocusBottomActionsOrReturnToCards() {
+        assertEquals(2, RecentSwitcherNavigation.actionFocus(0, 1))
+        assertEquals(1, RecentSwitcherNavigation.actionFocus(2, -1))
+        assertEquals(0, RecentSwitcherNavigation.actionFocus(2, 0))
+    }
 }
