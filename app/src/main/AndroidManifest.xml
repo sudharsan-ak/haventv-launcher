@@ -144,6 +144,24 @@
                 android:resource="@xml/home_override" />
         </service>
 
+        <!-- Temporary Commit 1 diagnostics. Start explicitly through ADB; not added to Home. -->
+        <activity
+            android:name=".recent.RecentAppsLabActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.Haven" />
+
+        <!-- Shizuku UserService binder transport; optional and permission-gated. -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
         <!-- Only so NBA alerts can see what's playing (media sessions). Granted once over ADB. -->
         <service
             android:name=".HavenMediaListener"

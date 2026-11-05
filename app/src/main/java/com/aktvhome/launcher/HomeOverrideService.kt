@@ -14,6 +14,7 @@ import com.aktvhome.launcher.data.AccessibilityGuard
 import com.aktvhome.launcher.data.DeviceCapabilities
 import com.aktvhome.launcher.data.NbaAlerts
 import com.aktvhome.launcher.data.SettingsStore
+import com.aktvhome.launcher.recent.RecentCapture
 import com.aktvhome.launcher.ui.AlertBanner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -109,6 +110,8 @@ class HomeOverrideService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        // One-shot, opt-in screenshot diagnostics only; ordinary events are unchanged.
+        RecentCapture.onWindowChanged(this, event)
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         if (event.packageName != homePackage) return
         // Only the home page itself; the launcher's other screens (profiles, accounts, inputs) stay

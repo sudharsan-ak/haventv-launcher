@@ -38,7 +38,7 @@ android {
         release {
             // Shrinking keeps only the handful of Material icons Haven uses out of the full set.
             isMinifyEnabled = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("release")
         }
     }
@@ -69,6 +69,9 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     // Render a QR code for the temporary, local-only wallpaper upload page.
     implementation("com.google.zxing:core:3.5.3")
+    // Optional Shizuku task probe, explicitly user-authorized.
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
     implementation(project(":haven-core"))
     testImplementation("junit:junit:4.13.2")
 }

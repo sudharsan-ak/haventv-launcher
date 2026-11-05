@@ -15,6 +15,7 @@
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagRequestFilterKeyEvents|flagRetrieveInteractiveWindows"
     android:canRequestFilterKeyEvents="true"
+    android:canTakeScreenshot="true"
     android:canRetrieveWindowContent="true"
     android:description="@string/home_override_description"
     android:notificationTimeout="0" />
