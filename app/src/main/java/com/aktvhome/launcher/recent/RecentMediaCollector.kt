@@ -7,31 +7,39 @@ import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSession
 import android.media.session.MediaSessionManager
+import android.media.session.PlaybackState
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import com.aktvhome.launcher.HavenMediaListener
 import com.aktvhome.launcher.data.NbaAlerts
 import java.util.concurrent.Executors
 
 /**
- * Observes only opted-in, foreground app sessions using Haven's existing notification access.
- * Captures metadata BEFORE apps go into the background; never captures protected video.
+ * Opt-in foreground MediaSession listener. Notification events + a slow polling fallback
+ * help on TVs that drop active-session callbacks. No periodic screen capture occurs.
  */
 internal object RecentMediaCollector {
     private val main = Handler(Looper.getMainLooper())
-    private val io = Executors.newSingleThreadExecutor { task ->
-        Thread(task, "HavenRecentMedia").apply { isDaemon = true }
+    private val io = Executors.newSingleThreadExecutor { action ->
+        Thread(action, "HavenRecentMedia").apply { isDaemon = true }
     }
     private var context: Context? = null
     private var manager: MediaSessionManager? = null
     private var sessionListener: MediaSessionManager.OnActiveSessionsChangedListener? = null
-    private val registered = mutableMapOf<MediaSession.Token, Pair<MediaController, MediaController.Callback>>()
+    private val registered = mutableMapOf<MediaSession.Token,
+        Pair<MediaController, MediaController.Callback>>()
     private var foreground: String? = null
     private var lastRefresh = 0L
     private var lastAttempt = 0L
     private val probeTimes = mutableMapOf<String, Long>()
-    private val recentSignatures = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
+    // Written by the media IO worker and read/reset from the service thread.
+    private val historyTimes = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val signatures =
+        java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
+    private var pollGeneration = 0
+    private var polling = false
 
     fun currentForeground(): String? = foreground
 
@@ -40,27 +48,64 @@ internal object RecentMediaCollector {
             stop()
             return
         }
-        val switched = pkg != foreground
+        val switched = foreground != pkg
         foreground = pkg
-        if (!ensureStarted(service)) return
-        val now = SystemClock.elapsedRealtime()
-        if (switched || now - lastRefresh > 5_000L) refreshControllers()
-        // Active media sessions can already exist when app enters foreground.
+        ensureStarted(service.applicationContext)
+        if (manager != null && (switched ||
+            SystemClock.elapsedRealtime() - lastRefresh >= 6_000L)) refreshControllers()
         if (switched) sampleCurrent(pkg, force = true)
+        schedulePolling()
     }
 
     fun beforeHome(service: AccessibilityService, pkg: String) {
-        if (!RecentPreviewStore.enabled(service)) return
-        if (foreground == pkg) sampleCurrent(pkg, force = true)
+        if (RecentPreviewStore.enabled(service) && foreground == pkg)
+            sampleCurrent(pkg, force = true)
+    }
+
+    /** Called by the existing NotificationListenerService, without reading notifications. */
+    fun onNotificationSignal(ctx: Context, eventPackage: String?) {
+        main.post {
+            val pkg = foreground ?: return@post
+            if (!RecentPreviewStore.enabled(ctx) ||
+                (eventPackage != null && eventPackage != pkg)) return@post
+            if (manager == null) ensureStarted(ctx.applicationContext)
+            if (SystemClock.elapsedRealtime() - lastRefresh > 2_000L) refreshControllers()
+            sampleCurrent(pkg, force = false)
+        }
     }
 
     fun leaveForeground() {
         foreground = null
+        pollGeneration++
+        polling = false
     }
 
-    private fun ensureStarted(service: AccessibilityService): Boolean {
+    private fun schedulePolling() {
+        if (foreground == null || polling) return
+        polling = true
+        val generation = ++pollGeneration
+        main.postDelayed(object : Runnable {
+            override fun run() {
+                if (generation != pollGeneration) return
+                val ctx = context ?: run { polling = false; return }
+                val pkg = foreground
+                if (pkg == null || !RecentPreviewStore.enabled(ctx)) {
+                    polling = false
+                    return
+                }
+                val interactive = (ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager)
+                    ?.isInteractive != false
+                if (interactive) {
+                    if (manager == null) ensureStarted(ctx)
+                    refreshControllers()
+                }
+                main.postDelayed(this, 8_000L)
+            }
+        }, 8_000L)
+    }
+
+    private fun ensureStarted(ctx: Context): Boolean {
         if (manager != null) return true
-        val ctx = service.applicationContext
         val now = SystemClock.elapsedRealtime()
         if (now - lastAttempt < 5_000L) return false
         lastAttempt = now
@@ -84,27 +129,28 @@ internal object RecentMediaCollector {
             true
         } catch (e: Exception) {
             foreground?.let {
-                RecentMediaStore.note(ctx, it, "Media listener unavailable: " + e.javaClass.simpleName)
+                RecentMediaStore.note(ctx, it,
+                    "MediaSession listener unavailable: " + e.javaClass.simpleName)
             }
             false
         }
     }
 
     private fun refreshControllers() {
-        val ctx = context ?: return
         val m = manager ?: return
-        val listenerComponent = ComponentName(ctx, HavenMediaListener::class.java)
+        val ctx = context ?: return
+        if (SystemClock.elapsedRealtime() - lastRefresh < 1_500L) return
         lastRefresh = SystemClock.elapsedRealtime()
         io.execute {
-            val result = runCatching { m.getActiveSessions(listenerComponent) }
+            val response = runCatching {
+                m.getActiveSessions(ComponentName(ctx, HavenMediaListener::class.java))
+            }
             main.post {
                 if (manager !== m) return@post
-                result.onSuccess { bindControllers(it) }
-                    .onFailure {
-                        foreground?.let { pkg ->
-                            RecentMediaStore.note(ctx, pkg,
-                                "Media session query failed: " + it.javaClass.simpleName)
-                        }
+                response.onSuccess { bindControllers(it) }
+                    .onFailure { error ->
+                        foreground?.let { RecentMediaStore.note(ctx, it,
+                            "MediaSession query failed: " + error.javaClass.simpleName) }
                     }
             }
         }
@@ -122,12 +168,14 @@ internal object RecentMediaCollector {
             if (registered.containsKey(token)) return@forEach
             val cb = object : MediaController.Callback() {
                 override fun onMetadataChanged(metadata: MediaMetadata?) {
-                    if (metadata != null && controller.packageName == foreground)
-                        schedule(controller, "Media metadata changed")
+                    if (controller.packageName == foreground) schedule(controller, "Metadata", true)
                 }
-
-                override fun onPlaybackStateChanged(state: android.media.session.PlaybackState?) {
-                    if (controller.packageName == foreground) schedule(controller, "Playback state changed")
+                override fun onPlaybackStateChanged(state: PlaybackState?) {
+                    if (controller.packageName == foreground) schedule(controller, "Playback", true)
+                }
+                override fun onSessionDestroyed() {
+                    registered.remove(token)
+                    foreground?.let { if (it == controller.packageName) refreshControllers() }
                 }
             }
             runCatching {
@@ -135,19 +183,20 @@ internal object RecentMediaCollector {
                 registered[token] = controller to cb
             }
         }
-        foreground?.let { sampleCurrent(it, force = true) }
+        foreground?.let { sampleCurrent(it, force = false) }
     }
 
     private fun sampleCurrent(pkg: String, force: Boolean) {
         val matching = registered.values.map { it.first }.filter { it.packageName == pkg }
         if (matching.isEmpty()) {
-            context?.let { RecentMediaStore.note(it, pkg, "No active MediaSession for foreground app") }
-        } else {
-            matching.firstOrNull { it.playbackState?.state ==
-                android.media.session.PlaybackState.STATE_PLAYING }?.let {
-                schedule(it, "Foreground playback", force)
-            } ?: schedule(matching.first(), "Foreground media", force)
+            context?.let { RecentMediaStore.note(it, pkg,
+                "No active MediaSession for this foreground app") }
+            return
         }
+        val active = matching.firstOrNull {
+            it.playbackState?.state == PlaybackState.STATE_PLAYING
+        } ?: matching.first()
+        schedule(active, "Session sample", force)
     }
 
     private fun schedule(controller: MediaController, reason: String, force: Boolean = false) {
@@ -156,71 +205,94 @@ internal object RecentMediaCollector {
         if (pkg != foreground || !RecentPreviewStore.enabled(ctx)) return
         val now = SystemClock.elapsedRealtime()
         val last = probeTimes[pkg] ?: 0L
-        if (!force && now - last < 3_000L) return
-        if (force && now - last < 700L) return
+        if (now - last < (if (force) 900L else 8_000L)) return
         probeTimes[pkg] = now
         io.execute {
             if (!RecentPreviewStore.enabled(ctx)) return@execute
+            // The controller is checked again because a queued callback may run after Home.
             val metadata = runCatching { controller.metadata }.getOrNull()
-            if (metadata == null) {
-                RecentMediaStore.note(ctx, pkg, "Media session found, metadata not published")
+            // Some players only publish a queue title during session teardown.
+            val queueTitle = runCatching { controller.queueTitle?.toString() }.getOrNull()
+            if (metadata == null && queueTitle.isNullOrBlank()) {
+                RecentMediaStore.note(ctx, pkg, "MediaSession active, no metadata/queue title")
                 return@execute
             }
             val title = listOfNotNull(
-                metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE),
-                metadata.description?.title?.toString(),
-                metadata.getString(MediaMetadata.METADATA_KEY_TITLE),
+                metadata?.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE),
+                metadata?.description?.title?.toString(),
+                metadata?.getString(MediaMetadata.METADATA_KEY_TITLE),
+                metadata?.getString(MediaMetadata.METADATA_KEY_ALBUM),
+                queueTitle
             ).firstOrNull { it.isNotBlank() }?.trim().orEmpty()
-            val bitmap = runCatching {
-                metadata.getBitmap(MediaMetadata.METADATA_KEY_ART)
-                    ?: metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
-                    ?: metadata.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
-                    ?: metadata.description?.iconBitmap
+            val subtitle = listOfNotNull(
+                metadata?.getString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE),
+                metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST),
+                metadata?.getString(MediaMetadata.METADATA_KEY_DISPLAY_DESCRIPTION)
+            ).firstOrNull { it.isNotBlank() && it.trim() != title }?.trim().orEmpty()
+            val state = runCatching { controller.playbackState }.getOrNull()
+            val playbackState = state?.state ?: PlaybackState.STATE_NONE
+            val duration = metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
+            var position = state?.position ?: -1L
+            if (state != null && position >= 0 && playbackState == PlaybackState.STATE_PLAYING &&
+                state.lastPositionUpdateTime > 0) {
+                val delta = ((SystemClock.elapsedRealtime() - state.lastPositionUpdateTime)
+                    .coerceAtLeast(0L) * state.playbackSpeed).toLong()
+                position = (position + delta).coerceAtLeast(0L)
+            }
+            if (duration > 0 && position > duration) position = duration
+            val raw = runCatching {
+                metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
+                    ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+                    ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
+                    ?: metadata?.description?.iconBitmap
             }.getOrNull()
-            val uris = listOfNotNull(
-                metadata.getString(MediaMetadata.METADATA_KEY_ART_URI),
-                metadata.getString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI),
-                metadata.description?.iconUri?.toString(),
-                metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI),
+            val artUris = listOfNotNull(
+                metadata?.getString(MediaMetadata.METADATA_KEY_ART_URI),
+                metadata?.getString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI),
+                metadata?.description?.iconUri?.toString(),
+                metadata?.getString(MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI)
             ).filter { it.isNotBlank() }.distinct()
-            val signature = title + "|" + uris.joinToString("|") + "|" +
-                (bitmap?.generationId?.toString().orEmpty())
-            val last = recentSignatures[pkg]
-            val time = System.currentTimeMillis()
-            if (last != null && last.first == signature && time - last.second < 60_000L) return@execute
-            var art = RecentArtworkLoader.scale(bitmap)
-            var source = if (art == null) "title only" else "MediaSession bitmap"
-            if (art == null) {
-                for (uri in uris) {
+            val signature = title + "|" + subtitle + "|" + artUris.joinToString("|") +
+                "|" + (raw?.generationId?.toString().orEmpty())
+            val lastSignature = signatures[pkg]
+            val changed = lastSignature?.first != signature ||
+                System.currentTimeMillis() - (lastSignature?.second ?: 0L) >= 60_000L
+            val needsHistory = SystemClock.elapsedRealtime() -
+                (historyTimes[pkg] ?: 0L) >= 12_000L || changed
+            if (!changed && !needsHistory) return@execute
+            var art: android.graphics.Bitmap? = null
+            var artSource = "title only"
+            if (changed) {
+                art = RecentArtworkLoader.scale(raw)
+                if (art != null) artSource = "MediaSession bitmap"
+                else for (uri in artUris) {
                     art = RecentArtworkLoader.load(ctx, uri)
                     if (art != null) {
-                        source = "MediaSession artwork URI (" +
-                            android.net.Uri.parse(uri).scheme.orEmpty() + ")"
+                        artSource = "MediaSession artwork URI"
                         break
                     }
                 }
+                if (art == null && artUris.isNotEmpty()) artSource = "Artwork URI unreadable"
             }
-            if (art == null && uris.isNotEmpty()) {
-                source = "Title only; artwork URI unavailable"
-            }
-            if (title.isBlank() && art == null) {
-                RecentMediaStore.note(ctx, pkg,
-                    if (uris.isEmpty()) "MediaSession has no title or artwork"
-                    else "MediaSession artwork URI inaccessible; no title")
-                return@execute
-            }
-            if (RecentPreviewStore.enabled(ctx)) {
-                recentSignatures[pkg] = signature to time
-                val saved = RecentMediaStore.remember(ctx, pkg, title, art, source)
-                if (!saved) RecentMediaStore.note(ctx, pkg,
-                    "Media metadata received but could not cache: $reason")
-            }
-            // The source bitmap may come from another app's MediaMetadata. Do not recycle it.
-            if (art != null && art !== bitmap) art.recycle()
+            if (RecentPreviewStore.enabled(ctx) && (title.isNotBlank() || art != null)) {
+                if (changed) {
+                    RecentMediaStore.remember(ctx, pkg, title, art, artSource)
+                    signatures[pkg] = signature to System.currentTimeMillis()
+                }
+                if (needsHistory && title.isNotBlank()) {
+                    RecentPlaybackHistory.record(ctx, pkg, title, subtitle, position,
+                        duration, playbackState, art)
+                    main.post { historyTimes[pkg] = SystemClock.elapsedRealtime() }
+                }
+            } else RecentMediaStore.note(ctx, pkg,
+                "Session found but no title/artwork: $reason")
+            if (art != null && art !== raw) art.recycle()
         }
     }
 
     fun stop() {
+        pollGeneration++
+        polling = false
         val m = manager
         val listener = sessionListener
         if (m != null && listener != null) runCatching {
@@ -230,12 +302,13 @@ internal object RecentMediaCollector {
             runCatching { controller.unregisterCallback(callback) }
         }
         registered.clear()
+        context = null
         manager = null
         sessionListener = null
-        context = null
         foreground = null
         probeTimes.clear()
-        recentSignatures.clear()
+        historyTimes.clear()
+        signatures.clear()
         lastRefresh = 0L
         lastAttempt = 0L
     }

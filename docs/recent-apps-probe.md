@@ -77,3 +77,40 @@ the last fallback. Four selection unit tests cover the expected priority.
 
 No screenshot cadence, permissions, capture-security logic, or launcher layouts
 changed in this fix. Build and Sony TV behavior still need local verification.
+
+
+## Commit 6: broaden on-device media discovery
+
+This remains a **diagnostic build** on PR #36, not the finished carousel.
+
+- Keep successful screenshots ahead of all media artwork, including dark TV user interfaces.
+- Query the TV provider's **Watch Next**, **PreviewPrograms** and **Channels** tables. Filter results to exactly the target app or a small known package alias set. Rank resumable Watch Next content, preview items with progress, and appropriately named Continue/Resume channels ahead of general preview recommendations.
+- Limit each provider query to 350 visible rows, avoid SQL selections, reject completed/old content when timestamps and duration are available, and label results as **not verified as currently playing**.
+- Record the last **five titles per app** observed from MediaSession, with title, subtitle, resume position, duration, timestamp and optional small title-specific artwork. Limit title artwork storage to 30 images overall, and retain playback-history metadata for seven days.
+- Preserve the last meaningful playback position when a player reports zero/unknown position on STOPPED/NONE/ERROR. Normal user seeking to the beginning is respected.
+- Recheck MediaSessions on relevant notification events and every eight seconds while a foreground app is active and the TV is interactive. This is **not continuous screen recording**. Screenshot frequency is unchanged.
+- Expand foreground metadata extraction to queue titles when full MediaMetadata is absent.
+- Extend the lab's diagnostics with per-title playback history and provider source details; Clear previews also clears the metadata/history cache.
+- No new permissions or new separate background service. Netflix and other DRM-protected apps may still expose no usable metadata; nothing attempts to bypass protected video.
+
+### Build on your Sony TV
+
+```powershell
+git fetch origin
+git switch feature/recent-apps-switcher
+git pull
+.\gradlew.bat assembleDebug
+adb install -r app\build\outputs\apk\debug\app-debug.apk
+adb shell am start -n com.aktvhome.launcher/.recent.RecentAppsLabActivity
+```
+
+Keep **Automatic previews ON**, and confirm Haven's **Notification access** is enabled. The TV provider also needs the existing **READ_TV_LISTINGS** grant; if absent, the diagnostic describes the missing permission.
+
+1. SmartTube: browse normally and press Home. Real screenshot must still win.
+2. YouTube TV Home/Library/Live: a good saved interface screenshot must take priority over Friends or other metadata artwork. During protected playback, metadata/Watch Next/preview-channel sources may appear instead.
+3. Prime Video: check multiple browse screens. Play a title for at least 20 seconds, return Home, then inspect Cached preview and **Playback history** for position/duration/artwork.
+4. Netflix: repeat a title playback test. Observe whether metadata or TV provider rows exist, but **do not expect a protected video screenshot**.
+5. Where only app artwork appears, report the **last media observed** and **Playback history** lines plus the Cached preview's details, including TV provider row counts and errors.
+6. Use **Clear previews** to remove saved screenshots, media records, and title-history artwork after testing.
+
+**These changes have not been compiled or run on your Sony TV in this environment. Keep PR #36 unmerged until the build and device tests pass.**

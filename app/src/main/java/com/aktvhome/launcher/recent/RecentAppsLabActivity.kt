@@ -230,6 +230,7 @@ class RecentAppsLabActivity : ComponentActivity() {
     private fun clearCached() {
         RecentPreviewStore.clearAll(this)
         RecentMediaStore.clearAll(this)
+        RecentPlaybackHistory.clearAll(this)
         view = view.copy(cachedPreview = null, cachedPackage = null,
             message = "All saved Recent Apps previews cleared.")
     }
@@ -305,7 +306,7 @@ class RecentAppsLabActivity : ComponentActivity() {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("Haven · Recent Apps Lab", fontSize = 30.sp, fontWeight = FontWeight.Bold)
-            Text("COMMIT 5 · SCREENSHOT PRIORITY FIX · NOT FINAL UI", color = Color(0xFF92AEB6), fontSize = 13.sp)
+            Text("COMMIT 6 · MEDIA HISTORY / TV PROVIDER DIAGNOSTICS · NOT FINAL UI", color = Color(0xFF92AEB6), fontSize = 13.sp)
             Text(data.shizuku, color = Color(0xFF8CE6E8))
             Text(data.message, color = Color.White)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -319,8 +320,8 @@ class RecentAppsLabActivity : ComponentActivity() {
                 }
                 OutlinedButton(onClick = onClearCache) { Text("Clear previews") }
             }
-            Text("Opt-in previews: on-device screenshots plus optional foreground media metadata. " +
-                "Watch Next suggestions are labeled and may not match current playback.",
+            Text("Opt-in previews: screenshots first; then MediaSession artwork or titles, " +
+                "TV Watch Next / Preview Channels, then app banners. Provider items are NOT verified live playback.",
                 color = Color(0xFF9CB2BA), fontSize = 12.sp)
             Text("Cached previews: " + RecentPreviewStore.count(this@RecentAppsLabActivity) +
                 " / " + RecentPreviewPolicy.MAX_CACHED_APPS,
@@ -338,6 +339,8 @@ class RecentAppsLabActivity : ComponentActivity() {
                     Text(RecentPreviewStore.description(this@RecentAppsLabActivity, task.pkg),
                         color = Color(0xFF9DB1B9), fontSize = 12.sp)
                     Text(RecentMediaStore.status(this@RecentAppsLabActivity, task.pkg),
+                        color = Color(0xFF9DB1B9), fontSize = 12.sp)
+                    Text(RecentPlaybackHistory.status(this@RecentAppsLabActivity, task.pkg),
                         color = Color(0xFF9DB1B9), fontSize = 12.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         OutlinedButton(onClick = { onSnapshot(task) }, enabled = !data.busy) { Text("Snapshot") }

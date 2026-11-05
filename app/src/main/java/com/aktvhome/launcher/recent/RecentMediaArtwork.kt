@@ -21,28 +21,62 @@ import com.aktvhome.launcher.data.NbaAlerts
 internal object RecentMediaArtwork {
     data class Preview(val bitmap: Bitmap?, val label: String, val detail: String)
 
-    /** Called on Dispatchers.IO from the diagnostics; never from the TV UI thread. */
+    /** Called on Dispatchers.IO; actual screenshots are selected BEFORE this method. */
     fun find(context: Context, pkg: String): Preview {
         val saved = RecentMediaStore.get(context, pkg)
-        if (saved != null) return Preview(
+        val history = RecentPlaybackHistory.latest(context, pkg)
+        val historyStatus = RecentPlaybackHistory.status(context, pkg)
+
+        // A saved bitmap from the foreground session is better than a suggested program.
+        if (saved?.image != null) return Preview(
             render(context, pkg, saved.title, saved.image),
-            "Last foreground media" + (if (saved.image != null) " artwork" else " title"),
-            "Last observed while app active: " + saved.title.ifBlank { "(no title)" } +
-                " | source: " + saved.source + " | " + RecentMediaStore.status(context, pkg),
+            "Last foreground MediaSession artwork",
+            RecentMediaStore.status(context, pkg) + " | " + historyStatus
+        )
+        if (history?.artwork != null) return Preview(
+            render(context, pkg, history.title, history.artwork),
+            "Recent played-title artwork (not live screenshot)",
+            historyStatus + " | " + RecentMediaStore.status(context, pkg)
         )
 
         val active = liveSession(context, pkg)
-        if (active.bitmap != null) return active
+        if (active.bitmap != null && active.detail.contains("artwork: available")) {
+            return active.copy(detail = active.detail + " | " + historyStatus)
+        }
 
-        // Watch Next is a RECENT program listing, not the currently playing frame.
-        val watch = RecentWatchNext.find(context, pkg)
-        if (watch.title != null || watch.artwork != null) return Preview(
-            render(context, pkg, watch.title.orEmpty(), watch.artwork),
-            "Watch Next program (not verified as playing)",
-            active.detail + " | " + watch.detail,
+        // Provider titles are recommendations/history, NOT the exact currently playing frame.
+        val programs = RecentWatchNext.find(context, pkg)
+        if (programs.artwork != null) return Preview(
+            render(context, pkg, programs.title.orEmpty(), programs.artwork),
+            programs.label,
+            programs.detail + " | " + historyStatus
+        )
+        if (programs.title != null) return Preview(
+            render(context, pkg, programs.title, null),
+            programs.label.replace("artwork", "title"),
+            programs.detail + " | " + historyStatus
+        )
+
+        // A generic app name like "PrimeVideo" is NOT a TV-show title.
+        val title = listOfNotNull(saved?.title, history?.title)
+            .firstOrNull { isTitleSpecific(pkg, it) }.orEmpty()
+        if (title.isNotBlank()) return Preview(
+            render(context, pkg, title, null),
+            "Recent MediaSession title (no artwork)",
+            RecentMediaStore.status(context, pkg) + " | " + historyStatus +
+                " | " + programs.detail
         )
         return Preview(null, "App artwork fallback",
-            RecentMediaStore.status(context, pkg) + " | " + active.detail + " | " + watch.detail)
+            RecentMediaStore.status(context, pkg) + " | " + historyStatus +
+                " | " + active.detail + " | " + programs.detail)
+    }
+
+    private fun isTitleSpecific(pkg: String, title: String): Boolean {
+        val cleaned = title.trim().lowercase()
+        if (cleaned.isBlank()) return false
+        val generic = setOf("primevideo", "prime video", "netflix", "youtube tv",
+            "youtubetv", "smarttube", "amazon prime video")
+        return cleaned !in generic && cleaned != pkg.lowercase()
     }
 
     private fun liveSession(context: Context, pkg: String): Preview {
