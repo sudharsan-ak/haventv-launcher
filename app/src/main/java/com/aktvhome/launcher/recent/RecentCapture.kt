@@ -12,37 +12,36 @@ import java.io.File
 import java.util.concurrent.Executors
 
 /**
- * Reuses Haven's existing Accessibility service.
- * Automatic previews are opt-in, throttled, local and never bypass DRM/FLAG_SECURE.
- * The manual Commit 1 screenshot test remains available.
+ * Opt-in event-driven previews. All scheduling and service callbacks are on the
+ * Accessibility main thread; bitmap conversion/encoding runs on one worker.
+ * Never bypasses FLAG_SECURE or protected video.
  */
 object RecentCapture {
     @Volatile private var armedPackage: String? = null
-    private const val CAPTURE_FILE = "haven_recents_sample.jpg"
+    private const val MANUAL_FILE = "haven_recents_sample.jpg"
     private const val PREFS = "haven_recents_probe"
     private val handler = Handler(Looper.getMainLooper())
-    private val worker = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "HavenRecentPreview").apply { isDaemon = true }
+    private val worker = Executors.newSingleThreadExecutor { action ->
+        Thread(action, "HavenRecentPreview").apply { isDaemon = true }
     }
     private val lastAttempts = mutableMapOf<String, Long>()
-    private var foregroundPackage: String? = null
-    private var pendingPackage: String? = null
+    // Avoid PackageManager queries on every focus/scroll/content event.
+    private val launchableCache = mutableMapOf<String, Boolean>()
+    private var foreground: String? = null
     private var pending: Runnable? = null
+    private var pendingPackage: String? = null
     private var inFlight = false
     private var lastGlobalAttempt = 0L
 
     fun arm(context: Context, pkg: String) {
         armedPackage = pkg
-        File(context.cacheDir, CAPTURE_FILE).delete()
-        context.getSharedPreferences(PREFS, 0).edit()
-            .putString("status", "Waiting to capture " + pkg).apply()
+        File(context.cacheDir, MANUAL_FILE).delete()
+        writeManual(context, "Waiting to capture $pkg")
     }
 
     fun resetAuto() {
-        pending?.let(handler::removeCallbacks)
-        pending = null
-        pendingPackage = null
-        foregroundPackage = null
+        cancelPending()
+        foreground = null
     }
 
     fun onServiceStopped() {
@@ -50,49 +49,70 @@ object RecentCapture {
         armedPackage = null
     }
 
-    /** Runs only on the Accessibility service main thread. */
+    /**
+     * A best-effort screenshot request BEFORE Haven handles the Home press.
+     * This does not wait for a screenshot and never delays navigation.
+     * If Android delivers the buffer after switching apps it is discarded.
+     */
+    fun onHomeKeyDown(service: AccessibilityService) {
+        if (!RecentPreviewStore.enabled(service)) return
+        val pkg = service.rootInActiveWindow?.packageName?.toString() ?: return
+        if (pkg != foreground || !eligible(service, pkg)) return
+        cancelPending()
+        capture(service, pkg, "Home press", manual = false)
+    }
+
     fun onEvent(service: AccessibilityService, event: AccessibilityEvent) {
         val pkg = event.packageName?.toString() ?: return
         val window = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
         if (window && pkg == armedPackage) {
             armedPackage = null
-            handler.postDelayed({ capture(service, pkg, manual = true) }, 700L)
+            handler.postDelayed({ capture(service, pkg, "Manual test", manual = true) }, 700L)
         }
-
         if (!RecentPreviewStore.enabled(service)) {
             if (pending != null) resetAuto()
             return
         }
-        if (!window && event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return
-
-        if (window && !eligible(service, pkg)) {
-            resetAuto()
+        val navigation = when (event.eventType) {
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_SCROLLED,
+            AccessibilityEvent.TYPE_VIEW_CLICKED,
+            AccessibilityEvent.TYPE_VIEW_FOCUSED -> true
+            else -> false
+        }
+        if (!navigation) return
+        if (!eligible(service, pkg)) {
+            if (window) resetAuto()
             return
         }
-        if (!eligible(service, pkg)) return
-
-        val reentered = window && pkg != foregroundPackage
+        // Ignore notifications/background changes from a different process.
+        if (service.rootInActiveWindow?.packageName?.toString() != pkg) return
+        val reentered = pkg != foreground
         if (reentered) {
-            foregroundPackage = pkg
+            foreground = pkg
             cancelPending()
-        } else if (pkg != foregroundPackage) return
-
-        // Content-change events can arrive many times a second; don't requeue the delay.
+        }
         if (pendingPackage == pkg || inFlight) return
-        val elapsed = SystemClock.elapsedRealtime() - (lastAttempts[pkg] ?: -120_000L)
-        if (!RecentPreviewPolicy.isDue(reentered, elapsed)) return
-        val delayMs = if (reentered) RecentPreviewPolicy.FIRST_CAPTURE_DELAY_MS
-            else RecentPreviewPolicy.REFRESH_DELAY_MS
+        val now = SystemClock.elapsedRealtime()
+        val elapsed = now - (lastAttempts[pkg] ?: (now - 120_000L))
+        val gap = if (reentered) RecentPreviewPolicy.REENTRY_GAP_MS
+            else RecentPreviewPolicy.NAVIGATION_GAP_MS
+        val settle = if (reentered) RecentPreviewPolicy.FIRST_CAPTURE_DELAY_MS
+            else RecentPreviewPolicy.NAVIGATION_SETTLE_MS
+        val delay = maxOf(settle, (gap - elapsed).coerceAtLeast(0L))
         val job = Runnable {
             pending = null
             pendingPackage = null
-            if (RecentPreviewStore.enabled(service) && foregroundPackage == pkg) {
-                capture(service, pkg, manual = false)
+            if (RecentPreviewStore.enabled(service) && foreground == pkg &&
+                service.rootInActiveWindow?.packageName?.toString() == pkg) {
+                capture(service, pkg, if (reentered) "App foreground" else "Navigation",
+                    manual = false)
             }
         }
         pending = job
         pendingPackage = pkg
-        handler.postDelayed(job, delayMs)
+        handler.postDelayed(job, delay)
     }
 
     private fun cancelPending() {
@@ -102,132 +122,135 @@ object RecentCapture {
     }
 
     private fun eligible(service: AccessibilityService, pkg: String): Boolean {
-        if (pkg == service.packageName || pkg == "com.android.systemui" ||
+        if (pkg == service.packageName ||
+            pkg == "com.android.systemui" ||
             pkg == "com.google.android.apps.tv.launcherx" ||
             pkg.startsWith("com.android.inputmethod") ||
             pkg.startsWith("com.google.android.inputmethod") ||
             pkg.startsWith("com.android.permissioncontroller")) return false
-        // Exclude Settings, system overlays and non-launchable windows.
-        return runCatching {
+        launchableCache[pkg]?.let { return it }
+        val launchable = runCatching {
             service.packageManager.getLeanbackLaunchIntentForPackage(pkg) != null ||
                 service.packageManager.getLaunchIntentForPackage(pkg) != null
         }.getOrDefault(false)
+        if (launchableCache.size >= 48) launchableCache.clear()
+        launchableCache[pkg] = launchable
+        return launchable
     }
 
-    private fun capture(service: AccessibilityService, pkg: String, manual: Boolean) {
+    private fun capture(service: AccessibilityService, pkg: String, reason: String, manual: Boolean) {
+        if (!manual && !RecentPreviewStore.enabled(service)) return
         if (service.rootInActiveWindow?.packageName?.toString() != pkg) {
-            if (manual) writeStatus(service, "Skipped: foreground changed before capture")
+            if (manual) writeManual(service, "Skipped: foreground changed")
             return
         }
         val now = SystemClock.elapsedRealtime()
-        if (inFlight || now - lastGlobalAttempt < 1_500L) {
-            if (manual) writeStatus(service, "Capture already running, try again")
+        if (inFlight || now - lastGlobalAttempt < RecentPreviewPolicy.GLOBAL_GAP_MS) {
+            if (manual) writeManual(service, "Screenshot already running / rate limited")
             return
         }
         inFlight = true
         lastGlobalAttempt = now
         lastAttempts[pkg] = now
+        RecentPreviewStore.attempted(service, pkg, reason)
         try {
-            service.takeScreenshot(
-                Display.DEFAULT_DISPLAY,
-                service.mainExecutor,
+            service.takeScreenshot(Display.DEFAULT_DISPLAY, service.mainExecutor,
                 object : AccessibilityService.TakeScreenshotCallback {
                     override fun onSuccess(result: AccessibilityService.ScreenshotResult) {
                         val buffer = result.hardwareBuffer
-                        try {
-                            if (service.rootInActiveWindow?.packageName?.toString() != pkg) {
-                                if (manual) writeStatus(service, "Skipped: app switched during capture")
-                                inFlight = false
-                                return
-                            }
-                            val source = Bitmap.wrapHardwareBuffer(buffer, result.colorSpace)
-                            if (source == null || source.width <= 0 || source.height <= 0) {
-                                report(service, pkg, manual, "No screenshot buffer")
-                                inFlight = false
-                                return
-                            }
-                            val width = minOf(480, source.width)
-                            val height = maxOf(1, source.height * width / source.width)
-                            val scaled = Bitmap.createScaledBitmap(source, width, height, true)
-                            val small = if (scaled.config == Bitmap.Config.HARDWARE)
-                                scaled.copy(Bitmap.Config.ARGB_8888, false) else scaled
-                            if (small == null) {
-                                report(service, pkg, manual, "Could not decode preview")
-                                inFlight = false
-                                return
-                            }
-                            val samples = (0 until 6).flatMap { row ->
-                                (0 until 10).map { col ->
-                                    small.getPixel((col * (small.width - 1)) / 9,
-                                        (row * (small.height - 1)) / 5)
+                        // A callback may arrive after Home opens; never cache Haven as the app.
+                        if (service.rootInActiveWindow?.packageName?.toString() != pkg ||
+                            (!manual && !RecentPreviewStore.enabled(service))) {
+                            buffer.close()
+                            RecentPreviewStore.note(service, pkg,
+                                "Skipped: app switched before screenshot completed")
+                            inFlight = false
+                            return
+                        }
+                        worker.execute {
+                            try {
+                                val source = Bitmap.wrapHardwareBuffer(buffer, result.colorSpace)
+                                    ?: throw IllegalStateException("Bitmap buffer unreadable")
+                                if (source.width <= 0 || source.height <= 0) {
+                                    throw IllegalStateException("Empty screenshot buffer")
                                 }
-                            }
-                            if (RecentPreviewPolicy.isAlmostBlack(samples)) {
-                                RecentPreviewStore.clearSecure(service, pkg)
-                                report(service, pkg, manual, "Blank/near-black preview; use app artwork")
-                                if (small !== source) small.recycle()
-                                inFlight = false
-                                return
-                            }
-                            worker.execute {
+                                val width = minOf(480, source.width)
+                                val height = maxOf(1, source.height * width / source.width)
+                                val scaled = Bitmap.createScaledBitmap(source, width, height, true)
+                                val small = if (scaled.config == Bitmap.Config.HARDWARE)
+                                    scaled.copy(Bitmap.Config.ARGB_8888, false)
+                                else scaled
+                                if (small == null) throw IllegalStateException("Bitmap conversion failed")
                                 try {
-                                    val saved = RecentPreviewStore.save(service, pkg, small)
-                                    if (manual && saved) {
-                                        File(service.cacheDir, CAPTURE_FILE).outputStream().use { out ->
-                                            small.compress(Bitmap.CompressFormat.JPEG, 78, out)
+                                    // Sampling happens off the Accessibility main thread.
+                                    val pixels = (0 until 8).flatMap { row ->
+                                        (0 until 12).map { col ->
+                                            small.getPixel(col * (small.width - 1) / 11,
+                                                row * (small.height - 1) / 7)
                                         }
                                     }
-                                    if (manual) {
-                                        writeStatus(service, if (saved) "Captured " + pkg
-                                            else "Unable to save preview for " + pkg)
+                                    if (RecentPreviewPolicy.isAlmostBlack(pixels)) {
+                                        RecentPreviewStore.clearSecure(service, pkg)
+                                        if (manual) writeManual(service, "Blank screenshot for $pkg")
+                                    } else {
+                                        val partial = RecentPreviewPolicy.hasLargeDarkRegion(pixels)
+                                        val saved = RecentPreviewStore.save(service, pkg, small, partial)
+                                        if (!saved) RecentPreviewStore.note(service, pkg,
+                                            "Screenshot save failed; previous file retained")
+                                        if (manual && saved) {
+                                            File(service.cacheDir, MANUAL_FILE).outputStream().use {
+                                                small.compress(Bitmap.CompressFormat.JPEG, 78, it)
+                                            }
+                                            writeManual(service, "Captured $pkg")
+                                        }
                                     }
-                                } catch (e: Exception) {
-                                    report(service, pkg, manual, "Save error: " + e.javaClass.simpleName)
                                 } finally {
                                     if (small !== source) small.recycle()
-                                    handler.post { inFlight = false }
                                 }
+                            } catch (e: Exception) {
+                                RecentPreviewStore.note(service, pkg,
+                                    "Screenshot processing error: " + e.javaClass.simpleName)
+                                if (manual) writeManual(service,
+                                    "Screenshot processing failed: " + e.javaClass.simpleName)
+                            } finally {
+                                buffer.close()
+                                handler.post { inFlight = false }
                             }
-                        } catch (e: Exception) {
-                            report(service, pkg, manual, "Screenshot error: " + e.javaClass.simpleName)
-                            inFlight = false
-                        } finally {
-                            buffer.close()
                         }
                     }
 
                     override fun onFailure(errorCode: Int) {
-                        val reason = when (errorCode) {
+                        val reasonText = when (errorCode) {
                             AccessibilityService.ERROR_TAKE_SCREENSHOT_SECURE_WINDOW -> "Secure window"
-                            AccessibilityService.ERROR_TAKE_SCREENSHOT_NO_ACCESSIBILITY_ACCESS -> "No Accessibility screenshot access"
-                            AccessibilityService.ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT -> "Screenshot rate limited"
-                            else -> "Android screenshot error " + errorCode
+                            AccessibilityService.ERROR_TAKE_SCREENSHOT_NO_ACCESSIBILITY_ACCESS ->
+                                "Accessibility screenshot permission missing"
+                            AccessibilityService.ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT ->
+                                "Android screenshot rate limit"
+                            else -> "Screenshot error code $errorCode"
                         }
-                        if (errorCode == AccessibilityService.ERROR_TAKE_SCREENSHOT_SECURE_WINDOW) {
+                        if (errorCode == AccessibilityService.ERROR_TAKE_SCREENSHOT_SECURE_WINDOW)
                             RecentPreviewStore.clearSecure(service, pkg)
-                        }
-                        report(service, pkg, manual, reason)
+                        else RecentPreviewStore.note(service, pkg, reasonText)
+                        if (manual) writeManual(service, reasonText)
                         inFlight = false
                     }
-                },
-            )
+                })
         } catch (e: Exception) {
-            report(service, pkg, manual, "Screenshot exception: " + e.javaClass.simpleName)
+            RecentPreviewStore.note(service, pkg,
+                "Screenshot API error: " + e.javaClass.simpleName)
+            if (manual) writeManual(service, "Screenshot API error: " + e.javaClass.simpleName)
             inFlight = false
         }
     }
 
-    private fun report(service: AccessibilityService, pkg: String, manual: Boolean, reason: String) {
-        RecentPreviewStore.note(service, pkg, reason)
-        if (manual) writeStatus(service, reason + " (" + pkg + ")")
-    }
-
-    private fun writeStatus(context: Context, value: String) {
-        context.getSharedPreferences(PREFS, 0).edit().putString("status", value).apply()
+    private fun writeManual(context: Context, text: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString("status", text).apply()
     }
 
     fun status(context: Context): String =
-        context.getSharedPreferences(PREFS, 0).getString("status", "No manual screenshot test yet").orEmpty()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString("status", "No manual screenshot test yet").orEmpty()
 
-    fun imageFile(context: Context): File = File(context.cacheDir, CAPTURE_FILE)
+    fun imageFile(context: Context): File = File(context.cacheDir, MANUAL_FILE)
 }

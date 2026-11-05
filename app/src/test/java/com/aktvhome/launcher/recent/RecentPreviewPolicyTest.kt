@@ -10,14 +10,24 @@ class RecentPreviewPolicyTest {
         assertTrue(RecentPreviewPolicy.isDue(true, 8_000))
     }
 
-    @Test fun refreshRequiresSixtySeconds() {
-        assertFalse(RecentPreviewPolicy.isDue(false, 59_999))
-        assertTrue(RecentPreviewPolicy.isDue(false, 60_000))
+    @Test fun navigationRefreshNeedsSixSeconds() {
+        assertFalse(RecentPreviewPolicy.isDue(false, 5_999))
+        assertTrue(RecentPreviewPolicy.isDue(false, 6_000))
     }
 
-    @Test fun rejectsAlmostBlackSamples() {
-        assertTrue(RecentPreviewPolicy.isAlmostBlack(List(60) { 0xff050506.toInt() }))
-        assertFalse(RecentPreviewPolicy.isAlmostBlack(List(60) { 0xff2e3b51.toInt() }))
+    @Test fun detectAlmostBlackButNotPartiallyBlack() {
+        assertTrue(RecentPreviewPolicy.isAlmostBlack(List(100) { 0xff050506.toInt() }))
+        assertFalse(RecentPreviewPolicy.isAlmostBlack(List(100) {
+            if (it < 70) 0xff050506.toInt() else 0xff9eafc1.toInt()
+        }))
         assertFalse(RecentPreviewPolicy.isAlmostBlack(emptyList()))
+    }
+
+    @Test fun detectMostlyBlackUiAsPartialNotSecure() {
+        val pixels = List(100) {
+            if (it < 70) 0xff050506.toInt() else 0xff9eafc1.toInt()
+        }
+        assertTrue(RecentPreviewPolicy.hasLargeDarkRegion(pixels))
+        assertFalse(RecentPreviewPolicy.hasLargeDarkRegion(List(100) { 0xff050506.toInt() }))
     }
 }

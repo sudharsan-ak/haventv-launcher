@@ -41,7 +41,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import rikka.shizuku.Shizuku
 
 private data class LabState(
@@ -231,26 +233,39 @@ class RecentAppsLabActivity : ComponentActivity() {
     }
 
     private fun showCached(task: RecentTask) {
-        val image = RecentPreviewStore.file(this, task.pkg)
-        val bitmap = if (image.exists()) BitmapFactory.decodeFile(image.absolutePath) else null
-        val fallback = if (bitmap == null) runCatching {
-            val drawable = packageManager.getApplicationBanner(task.pkg)
-                ?: packageManager.getApplicationIcon(task.pkg)
-            val bmp = Bitmap.createBitmap(480, 270, Bitmap.Config.ARGB_8888)
-            val canvas = android.graphics.Canvas(bmp)
-            canvas.drawColor(android.graphics.Color.rgb(16, 28, 34))
-            if (packageManager.getApplicationBanner(task.pkg) != null) {
-                drawable.setBounds(0, 0, 480, 270)
-            } else {
-                drawable.setBounds(176, 71, 304, 199)
+        view = view.copy(cachedPackage = task.pkg, cachedPreview = null,
+            cachedLabel = "Checking preview", message = "Inspecting " + task.pkg)
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                val file = RecentPreviewStore.file(applicationContext, task.pkg)
+                val screenshot = if (file.exists())
+                    BitmapFactory.decodeFile(file.absolutePath) else null
+                val partial = screenshot != null &&
+                    RecentPreviewStore.isPartialDark(applicationContext, task.pkg)
+                // Media sessions are available only when the app publishes metadata
+                // and Haven's existing Notification Listener is authorized.
+                val media = if (screenshot == null || partial)
+                    RecentMediaArtwork.find(applicationContext, task.pkg) else null
+                val bitmap = when {
+                    media?.bitmap != null -> media.bitmap
+                    screenshot != null -> screenshot
+                    else -> RecentMediaArtwork.appFallback(applicationContext, task.pkg)
+                }
+                val label = when {
+                    media?.bitmap != null -> media.label
+                    screenshot != null && partial -> "Saved screenshot (large dark area)"
+                    screenshot != null -> "Saved screenshot"
+                    else -> "App artwork fallback"
+                }
+                Triple(bitmap, label, media?.detail.orEmpty())
             }
-            drawable.draw(canvas)
-            bmp
-        }.getOrNull() else null
-        view = view.copy(cachedPreview = bitmap ?: fallback,
-            cachedPackage = task.pkg,
-            cachedLabel = if (bitmap != null) "Saved screenshot" else "App artwork fallback",
-            message = RecentPreviewStore.description(this, task.pkg))
+            // The diagnostic screen only displays results for the latest selected app.
+            if (view.cachedPackage != task.pkg) return@launch
+            val details = RecentPreviewStore.description(this@RecentAppsLabActivity, task.pkg)
+            view = view.copy(cachedPreview = result.first,
+                cachedLabel = result.second,
+                message = details + if (result.third.isBlank()) "" else " | " + result.third)
+        }
     }
 
     private fun labelFor(pkg: String): String = runCatching {
@@ -281,7 +296,7 @@ class RecentAppsLabActivity : ComponentActivity() {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("Haven · Recent Apps Lab", fontSize = 30.sp, fontWeight = FontWeight.Bold)
-            Text("COMMIT 2 · AUTOMATIC PREVIEW DIAGNOSTICS · NOT FINAL UI", color = Color(0xFF92AEB6), fontSize = 13.sp)
+            Text("COMMIT 3 · PREVIEW ACCURACY / MEDIA FALLBACK · NOT FINAL UI", color = Color(0xFF92AEB6), fontSize = 13.sp)
             Text(data.shizuku, color = Color(0xFF8CE6E8))
             Text(data.message, color = Color.White)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -296,7 +311,7 @@ class RecentAppsLabActivity : ComponentActivity() {
                 OutlinedButton(onClick = onClearCache) { Text("Clear previews") }
             }
             Text("Opt-in only. One JPEG per app, max 12. Nothing is uploaded. " +
-                "Open an app, browse, then reopen this lab to inspect its preview.",
+                "Navigation now refreshes previews more often. Media artwork is used only when published by the app.",
                 color = Color(0xFF9CB2BA), fontSize = 12.sp)
             Text("Cached previews: " + RecentPreviewStore.count(this@RecentAppsLabActivity) +
                 " / " + RecentPreviewPolicy.MAX_CACHED_APPS,
@@ -328,17 +343,19 @@ class RecentAppsLabActivity : ComponentActivity() {
                 OutlinedButton(onClick = onClearConfirmation) { Text("Cancel remove") }
             }
             if (data.snapshotFor != null) {
-                Text("Saved Android task snapshot · task #" + data.snapshotFor, fontWeight = FontWeight.Bold)
+                Text("Saved Android task snapshot · task #" + data.snapshotFor,
+                    fontWeight = FontWeight.Bold, color = Color.White)
                 if (data.snapshot != null) {
                     Image(data.snapshot.asImageBitmap(), "Android task snapshot", Modifier.width(480.dp).height(270.dp))
-                } else Text("No usable saved snapshot available")
+                } else Text("No usable saved snapshot available", color = Color.White)
             }
             if (data.cachedPackage != null) {
-                Text(data.cachedLabel + " · " + data.cachedPackage, fontWeight = FontWeight.Bold)
+                Text(data.cachedLabel + " · " + data.cachedPackage,
+                    fontWeight = FontWeight.Bold, color = Color.White)
                 if (data.cachedPreview != null) {
                     Image(data.cachedPreview.asImageBitmap(), "Cached screenshot or app artwork",
                         Modifier.width(480.dp).height(270.dp))
-                } else Text("No saved screenshot or app artwork available")
+                } else Text("No saved screenshot or app artwork available", color = Color.White)
             }
             Text("Accessibility manual test: " + data.captureStatus, color = Color(0xFF8CE6E8))
             if (data.capture != null) {

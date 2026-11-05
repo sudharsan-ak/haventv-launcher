@@ -104,6 +104,11 @@ class HomeOverrideService : AccessibilityService() {
     override fun onKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode != KeyEvent.KEYCODE_HOME) return false
         banner?.dismissAll()
+        // Request the final preview on key-down while the previous app is still visible.
+        // Never block the Home key waiting for screenshot completion.
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+            RecentCapture.onHomeKeyDown(this)
+        }
         // Act on release; swallow the press too so Google TV's home never flashes up.
         if (event.action == KeyEvent.ACTION_UP) return openHaven()
         return true
