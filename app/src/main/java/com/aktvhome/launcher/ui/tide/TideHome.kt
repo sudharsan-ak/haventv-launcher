@@ -64,6 +64,7 @@ import com.aktvhome.launcher.ui.CollapsedAppsHandle
 import com.aktvhome.launcher.ui.SlidingApps
 import com.aktvhome.launcher.ui.collapseOnLastDown
 import com.aktvhome.launcher.ui.SearchButton
+import androidx.compose.ui.platform.LocalContext
 import com.aktvhome.launcher.ui.HavenState
 import com.aktvhome.launcher.ui.Overlay
 import com.aktvhome.launcher.ui.Pill
@@ -88,6 +89,7 @@ import kotlin.math.sin
 @Composable
 fun TideHome(state: HavenState, colors: ThemeColors, preview: Boolean = false) {
     val settings = state.settingsStore.settings
+    val context = LocalContext.current
     val motion = if (preview) Motion.OFF else settings.motion
     val shown = state.shownCollections()
     val current = state.currentCollection(shown)

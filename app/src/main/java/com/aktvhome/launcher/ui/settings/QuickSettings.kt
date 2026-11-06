@@ -28,6 +28,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import com.aktvhome.launcher.recent.RecentAppsSwitcherActivity
 import com.aktvhome.launcher.data.SonyControl
 import com.aktvhome.launcher.data.Setup
 import com.aktvhome.launcher.data.Capability
@@ -132,6 +133,13 @@ fun QuickSettings(state: HavenState, colors: ThemeColors) {
                 // Compact and always visible in Quick Settings, without adding a
                 // seventh grid tile or increasing the panel's height.
                 if (current == null) {
+                    // A reachable fallback for firmware that reserves the Home
+                    // long-press, without a dedicated icon competing with
+                    // Search/Settings on the home screen itself.
+                    Pill("Recents", colors) {
+                        close()
+                        RecentAppsSwitcherActivity.launch(context)
+                    }
                     Pill(
                         if (s.showWatchNowCards) "Watch: On" else "Watch: Off",
                         colors, selected = s.showWatchNowCards,

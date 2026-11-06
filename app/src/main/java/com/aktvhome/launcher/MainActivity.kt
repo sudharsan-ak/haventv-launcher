@@ -29,6 +29,7 @@ import com.aktvhome.launcher.data.PrivateDns
 import kotlinx.coroutines.launch
 import com.aktvhome.launcher.data.SettingsStore
 import com.aktvhome.launcher.data.ThemeId
+import com.aktvhome.launcher.recent.RecentAppsVisibility
 import com.aktvhome.launcher.ui.AccessibilityReminder
 import com.aktvhome.launcher.ui.LastNightRecap
 import com.aktvhome.launcher.ui.HavenState
@@ -116,8 +117,10 @@ class MainActivity : ComponentActivity() {
             }
 
             // This TV can't blur across windows (the overlays' blur-behind does nothing), so the home
-            // blurs itself while anything floats over it; the overlays stay sharp.
-            val covered = state.overlay != Overlay.NONE || state.backup.offerRestore
+            // blurs itself while anything floats over it; the overlays stay sharp. Recents is a
+            // separate Activity, not an in-process overlay, so it signals through RecentAppsVisibility.
+            val covered = state.overlay != Overlay.NONE || state.backup.offerRestore ||
+                RecentAppsVisibility.isOpen
             val homeBlur by animateDpAsState(if (covered) 18.dp else 0.dp, tween(200), label = "homeBlur")
             Box(Modifier.fillMaxSize().then(if (homeBlur > 0.dp) Modifier.blur(homeBlur) else Modifier)) {
                 Crossfade(targetState = s.theme, animationSpec = tween(350), label = "theme") { theme ->

@@ -5,4 +5,14 @@
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowAnimationStyle">@null</item>
     </style>
+
+    <!-- A temporary translucent task above whichever app is in the foreground.
+         Protected apps may render black underneath, but their own pixels are never read. -->
+    <style name="Theme.Haven.Recents" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
 </resources>

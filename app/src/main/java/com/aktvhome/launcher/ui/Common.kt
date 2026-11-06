@@ -233,15 +233,18 @@ fun Pill(
     focusRequester: FocusRequester? = null,
     icon: ImageVector? = null,
     onFocused: () -> Unit = {},
+    /** For screens that manage D-pad focus themselves instead of Compose focus traversal. */
+    forceFocused: Boolean = false,
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
+    val visuallyFocused = focused || forceFocused
     val bg = when {
-        focused -> colors.pill
+        visuallyFocused -> colors.pill
         selected -> colors.pill.copy(alpha = 0.22f)
         else -> colors.glass
     }
-    val ink = if (focused) colors.pillInk else colors.ink
+    val ink = if (visuallyFocused) colors.pillInk else colors.ink
     Row(
         modifier
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
@@ -255,7 +258,7 @@ fun Pill(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (icon != null) Icon(icon, null, tint = ink, modifier = Modifier.size(18.dp))
-        Text(text, color = ink, fontSize = 14.sp, fontWeight = if (selected || focused) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1, softWrap = false)
+        Text(text, color = ink, fontSize = 14.sp, fontWeight = if (selected || visuallyFocused) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1, softWrap = false)
     }
 }
 

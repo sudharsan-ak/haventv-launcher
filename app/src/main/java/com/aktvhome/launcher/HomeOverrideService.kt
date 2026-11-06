@@ -14,6 +14,9 @@ import com.aktvhome.launcher.data.AccessibilityGuard
 import com.aktvhome.launcher.data.DeviceCapabilities
 import com.aktvhome.launcher.data.NbaAlerts
 import com.aktvhome.launcher.data.SettingsStore
+import com.aktvhome.launcher.recent.RecentCapture
+import com.aktvhome.launcher.recent.RecentHiddenStore
+import com.aktvhome.launcher.recent.RecentAppsSwitcherActivity
 import com.aktvhome.launcher.ui.AlertBanner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -47,6 +50,16 @@ import kotlinx.coroutines.launch
 class HomeOverrideService : AccessibilityService() {
 
     private var lastRedirect = 0L
+
+    // Short Home keeps its existing behavior. Holding Home 650ms opens Recents.
+    private val homeHandler = Handler(Looper.getMainLooper())
+    private var homeHeld = false
+    private var homeLongTriggered = false
+    private val recentsHold = Runnable {
+        if (homeHeld && !homeLongTriggered) {
+            homeLongTriggered = RecentAppsSwitcherActivity.launch(this)
+        }
+    }
 
     /** The device's own home screen activity, watched so Haven opens instead. */
     private var home: ComponentName? = null
@@ -103,13 +116,43 @@ class HomeOverrideService : AccessibilityService() {
     override fun onKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode != KeyEvent.KEYCODE_HOME) return false
         banner?.dismissAll()
-        // Act on release; swallow the press too so Google TV's home never flashes up.
-        if (event.action == KeyEvent.ACTION_UP) return openHaven()
-        return true
+        when (event.action) {
+            KeyEvent.ACTION_DOWN -> {
+                if (event.repeatCount == 0 && !homeHeld) {
+                    homeHeld = true
+                    homeLongTriggered = false
+                    // Request the last preview while the previous app is still visible.
+                    RecentCapture.onHomeKeyDown(this)
+                    homeHandler.removeCallbacks(recentsHold)
+                    homeHandler.postDelayed(recentsHold, 650L)
+                } else if (event.isLongPress && homeHeld && !homeLongTriggered) {
+                    homeHandler.removeCallbacks(recentsHold)
+                    homeLongTriggered = RecentAppsSwitcherActivity.launch(this)
+                }
+                return true
+            }
+            KeyEvent.ACTION_UP -> {
+                homeHandler.removeCallbacks(recentsHold)
+                homeHeld = false
+                val wasRecents = homeLongTriggered
+                homeLongTriggered = false
+                // A completed long press must not subsequently open Haven's Home.
+                if (wasRecents) return true
+                return openHaven()
+            }
+            else -> return true
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        // Opt-in recent previews use the existing service; Home interception is unchanged.
+        RecentCapture.onEvent(this, event)
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        val packageName = event.packageName?.toString()
+        if (packageName != null &&
+            rootInActiveWindow?.packageName?.toString() == packageName) {
+            RecentHiddenStore.onForeground(this, packageName)
+        }
         if (event.packageName != homePackage) return
         // Only the home page itself; the launcher's other screens (profiles, accounts, inputs) stay
         // usable. Google TV's home page is its HomeActivity; other launchers' is their Home activity.
@@ -210,6 +253,9 @@ class HomeOverrideService : AccessibilityService() {
         alerts?.stop()
         banner?.destroy()
         guard.cancel()
+        RecentCapture.onServiceStopped()
+        homeHeld = false
+        homeHandler.removeCallbacks(recentsHold)
         connected = false
         instance = null
         pending = null
