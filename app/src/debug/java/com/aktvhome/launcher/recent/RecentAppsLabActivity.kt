@@ -64,7 +64,7 @@ private data class LabState(
 )
 
 /**
- * Commit 1 only: a diagnostic screen, not the finished app switcher.
+ * Debug-only diagnostic screen, not packaged in the release APK.
  * Start it from ADB; it does not change Home, Kingdom, Tide, or remote shortcuts.
  *
  * adb shell am start -n com.aktvhome.launcher/.recent.RecentAppsLabActivity
@@ -110,10 +110,10 @@ class RecentAppsLabActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        val file = RecentCapture.imageFile(this)
+        val file = RecentCaptureDiagnostics.imageFile(this)
         view = view.copy(
             shizuku = client.status(),
-            captureStatus = RecentCapture.status(this),
+            captureStatus = RecentCaptureDiagnostics.status(this),
             automatic = RecentPreviewStore.enabled(this),
             capture = if (file.exists()) BitmapFactory.decodeFile(file.absolutePath) else null,
         )
@@ -204,7 +204,7 @@ class RecentAppsLabActivity : ComponentActivity() {
             problem("No launch intent for " + task.pkg)
             return
         }
-        RecentCapture.arm(this, task.pkg)
+        RecentCaptureDiagnostics.arm(this, task.pkg)
         runCatching { startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             .onFailure { problem("Cannot open " + task.pkg + ": " + it.message) }
     }

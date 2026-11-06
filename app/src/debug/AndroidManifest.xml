@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- This Activity and its UI exist only in assembleDebug builds. -->
+    <application>
+        <activity
+            android:name=".recent.RecentAppsLabActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.Haven" />
+    </application>
+</manifest>

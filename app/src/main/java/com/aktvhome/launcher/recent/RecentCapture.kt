@@ -1,14 +1,12 @@
 package com.aktvhome.launcher.recent
 
 import android.accessibilityservice.AccessibilityService
-import android.content.Context
 import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
-import java.io.File
 import java.util.concurrent.Executors
 
 /**
@@ -17,9 +15,6 @@ import java.util.concurrent.Executors
  * Never bypasses FLAG_SECURE or protected video.
  */
 object RecentCapture {
-    @Volatile private var armedPackage: String? = null
-    private const val MANUAL_FILE = "haven_recents_sample.jpg"
-    private const val PREFS = "haven_recents_probe"
     private val handler = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor { action ->
         Thread(action, "HavenRecentPreview").apply { isDaemon = true }
@@ -33,12 +28,6 @@ object RecentCapture {
     private var inFlight = false
     private var lastGlobalAttempt = 0L
 
-    fun arm(context: Context, pkg: String) {
-        armedPackage = pkg
-        File(context.cacheDir, MANUAL_FILE).delete()
-        writeManual(context, "Waiting to capture $pkg")
-    }
-
     fun resetAuto() {
         cancelPending()
         foreground = null
@@ -48,7 +37,7 @@ object RecentCapture {
     fun onServiceStopped() {
         resetAuto()
         RecentMediaCollector.stop()
-        armedPackage = null
+        RecentCaptureDiagnostics.onServiceStopped()
     }
 
     /**
@@ -66,16 +55,13 @@ object RecentCapture {
         // Only the real foreground window is eligible for a screen capture.
         if (pkg != foreground || active != pkg) return
         cancelPending()
-        capture(service, pkg, "Home press", manual = false)
+        capture(service, pkg, "Home press")
     }
 
     fun onEvent(service: AccessibilityService, event: AccessibilityEvent) {
+        RecentCaptureDiagnostics.onEvent(service, event)
         val pkg = event.packageName?.toString() ?: return
         val window = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-        if (window && pkg == armedPackage) {
-            armedPackage = null
-            handler.postDelayed({ capture(service, pkg, "Manual test", manual = true) }, 700L)
-        }
         if (!RecentPreviewStore.enabled(service)) {
             if (pending != null) resetAuto()
             return
@@ -119,8 +105,7 @@ object RecentCapture {
             pendingPackage = null
             if (RecentPreviewStore.enabled(service) && foreground == pkg &&
                 service.rootInActiveWindow?.packageName?.toString() == pkg) {
-                capture(service, pkg, if (reentered) "App foreground" else "Navigation",
-                    manual = false)
+                capture(service, pkg, if (reentered) "App foreground" else "Navigation")
             }
         }
         pending = job
@@ -151,17 +136,11 @@ object RecentCapture {
         return launchable
     }
 
-    private fun capture(service: AccessibilityService, pkg: String, reason: String, manual: Boolean) {
-        if (!manual && !RecentPreviewStore.enabled(service)) return
-        if (service.rootInActiveWindow?.packageName?.toString() != pkg) {
-            if (manual) writeManual(service, "Skipped: foreground changed")
-            return
-        }
+    private fun capture(service: AccessibilityService, pkg: String, reason: String) {
+        if (!RecentPreviewStore.enabled(service)) return
+        if (service.rootInActiveWindow?.packageName?.toString() != pkg) return
         val now = SystemClock.elapsedRealtime()
-        if (inFlight || now - lastGlobalAttempt < RecentPreviewPolicy.GLOBAL_GAP_MS) {
-            if (manual) writeManual(service, "Screenshot already running / rate limited")
-            return
-        }
+        if (inFlight || now - lastGlobalAttempt < RecentPreviewPolicy.GLOBAL_GAP_MS) return
         inFlight = true
         lastGlobalAttempt = now
         lastAttempts[pkg] = now
@@ -173,7 +152,7 @@ object RecentCapture {
                         val buffer = result.hardwareBuffer
                         // A callback may arrive after Home opens; never cache Haven as the app.
                         if (service.rootInActiveWindow?.packageName?.toString() != pkg ||
-                            (!manual && !RecentPreviewStore.enabled(service))) {
+                            !RecentPreviewStore.enabled(service)) {
                             buffer.close()
                             RecentPreviewStore.note(service, pkg,
                                 "Skipped: app switched before screenshot completed")
@@ -204,18 +183,12 @@ object RecentCapture {
                                     }
                                     if (RecentPreviewPolicy.isAlmostBlack(pixels)) {
                                         RecentPreviewStore.clearSecure(service, pkg)
-                                        if (manual) writeManual(service, "Blank screenshot for $pkg")
                                     } else {
                                         val partial = RecentPreviewPolicy.hasLargeDarkRegion(pixels)
                                         val saved = RecentPreviewStore.save(service, pkg, small, partial)
                                         if (!saved) RecentPreviewStore.note(service, pkg,
                                             "Screenshot save failed; previous file retained")
-                                        if (manual && saved) {
-                                            File(service.cacheDir, MANUAL_FILE).outputStream().use {
-                                                small.compress(Bitmap.CompressFormat.JPEG, 78, it)
-                                            }
-                                            writeManual(service, "Captured $pkg")
-                                        }
+
                                     }
                                 } finally {
                                     if (small !== source) small.recycle()
@@ -223,8 +196,6 @@ object RecentCapture {
                             } catch (e: Exception) {
                                 RecentPreviewStore.note(service, pkg,
                                     "Screenshot processing error: " + e.javaClass.simpleName)
-                                if (manual) writeManual(service,
-                                    "Screenshot processing failed: " + e.javaClass.simpleName)
                             } finally {
                                 buffer.close()
                                 handler.post { inFlight = false }
@@ -244,26 +215,14 @@ object RecentCapture {
                         if (errorCode == AccessibilityService.ERROR_TAKE_SCREENSHOT_SECURE_WINDOW)
                             RecentPreviewStore.clearSecure(service, pkg)
                         else RecentPreviewStore.note(service, pkg, reasonText)
-                        if (manual) writeManual(service, reasonText)
                         inFlight = false
                     }
                 })
         } catch (e: Exception) {
             RecentPreviewStore.note(service, pkg,
                 "Screenshot API error: " + e.javaClass.simpleName)
-            if (manual) writeManual(service, "Screenshot API error: " + e.javaClass.simpleName)
             inFlight = false
         }
     }
 
-    private fun writeManual(context: Context, text: String) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString("status", text).apply()
-    }
-
-    fun status(context: Context): String =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString("status", "No manual screenshot test yet").orEmpty()
-
-    fun imageFile(context: Context): File = File(context.cacheDir, MANUAL_FILE)
 }

@@ -18,7 +18,7 @@ import kotlin.coroutines.resume
 class RecentProbeClient(private val context: Context) {
     private val args = Shizuku.UserServiceArgs(
         ComponentName(context, RecentTaskUserService::class.java)
-    ).processNameSuffix("haven_recents_probe").tag("haven_recents_probe").version(3).daemon(false)
+    ).processNameSuffix("haven_recents_probe").tag("haven_recents_probe").version(4).daemon(false)
 
     @Volatile private var remote: IBinder? = null
     private var connection: ServiceConnection? = null
@@ -82,23 +82,11 @@ class RecentProbeClient(private val context: Context) {
         transact(RecentTaskUserService.LIST, {}, { it.readString().orEmpty() })
     }
 
-    data class SnapshotProbe(val detail: String, val bytes: ByteArray?)
-
-    suspend fun snapshot(taskId: Int): SnapshotProbe = withContext(Dispatchers.IO) {
-        transact(RecentTaskUserService.SNAPSHOT, { it.writeInt(taskId) }, {
-            SnapshotProbe(it.readString().orEmpty(), it.createByteArray())
-        })
-    }
-
     suspend fun restore(taskId: Int): Boolean = withContext(Dispatchers.IO) {
         transact(RecentTaskUserService.RESTORE, { it.writeInt(taskId) }, { it.readInt() != 0 })
     }
 
-    suspend fun dismiss(taskId: Int): Boolean = withContext(Dispatchers.IO) {
-        transact(RecentTaskUserService.DISMISS, { it.writeInt(taskId) }, { it.readInt() != 0 })
-    }
-
-    private fun <T> transact(
+    internal fun <T> transact(
         operation: Int, write: (Parcel) -> Unit, read: (Parcel) -> T,
     ): T {
         val binder = remote?.takeIf { it.isBinderAlive } ?: error("UserService is not connected")

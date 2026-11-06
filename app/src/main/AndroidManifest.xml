@@ -155,15 +155,6 @@
             android:screenOrientation="landscape"
             android:theme="@style/Theme.Haven.Recents" />
 
-        <!-- Temporary diagnostics remain available via ADB until Sony TV testing passes. -->
-        <activity
-            android:name=".recent.RecentAppsLabActivity"
-            android:exported="true"
-            android:excludeFromRecents="true"
-            android:taskAffinity=""
-            android:screenOrientation="landscape"
-            android:theme="@style/Theme.Haven" />
-
         <!-- Shizuku UserService binder transport; optional and permission-gated. -->
         <provider
             android:name="rikka.shizuku.ShizukuProvider"

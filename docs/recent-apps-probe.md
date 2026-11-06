@@ -274,3 +274,50 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
 
 These changes have **not been compiled with Android Gradle or tested on Sony TV
 in this environment**. Do not merge PR #36 before device acceptance tests.
+
+
+## Commit 13: Debug-only Recent Apps diagnostics
+
+The diagnostic lab has been moved from `app/src/main` to `app/src/debug`.
+The main manifest no longer declares `RecentAppsLabActivity`; a Debug-only manifest
+declares it for `assembleDebug`.
+
+The one-shot Accessibility screenshot probe and the reflective native-task snapshot
+probe now live in `app/src/debug/java`. Production keeps the **existing automatic**
+Accessibility capture, preview caching, foreground media tracking, and Shizuku
+task listing/resume unchanged. The shared capture and Shizuku service call tiny
+variant-specific debug/release adapters; Release adapters contain no screenshot or
+native task-snapshot diagnostic implementation. The old disabled task-dismiss
+transaction was removed. All of these source files remain in Git history.
+
+### Verify both Android build variants
+
+```powershell
+git switch feature/recent-apps-switcher
+git pull
+.\gradlew.bat :app:compileDebugKotlin :app:compileReleaseKotlin
+.\gradlew.bat :app:assembleDebug :app:assembleRelease
+```
+
+If release signing isn't configured on the machine, Release APK packaging may need
+its signing configuration first; `compileReleaseKotlin` still checks release code.
+
+Debug: install the Debug APK and verify this ADB command opens the lab:
+
+```powershell
+adb shell am start -n com.aktvhome.launcher/.recent.RecentAppsLabActivity
+```
+
+Release: inspect the merged release manifest or release APK with Android SDK tools.
+`RecentAppsLabActivity` must **not** be declared or included as a compiled class.
+Debug should still show the lab's Snapshot, Capture & open, and Cached preview
+controls. Release should have only the normal carousel and its required
+preview/task-management code.
+
+After either build, test: long-press Home opens the carousel, D-pad and swipe
+switch between cards, Back dismisses, Clear all hides without stopping any tasks,
+and SmartTube/YouTube TV screenshots and media-artwork fallbacks still work.
+
+This cleanup is not an update to the visible Recent Apps carousel.
+It has not been built on a Sony TV in this environment; keep PR #36 draft/unmerged
+until the user validates Debug and Release.
